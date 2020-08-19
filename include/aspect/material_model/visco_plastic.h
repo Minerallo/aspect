@@ -264,7 +264,14 @@ namespace aspect
 
         double min_strain_rate;
         double ref_strain_rate;
-        double min_visc;
+
+        double min_visc_first;
+        double min_visc_second;
+
+        // std::vector<double> min_visc;
+        bool change_min_visc;
+        double time_change_min_visc;
+
         double max_visc;
         double ref_visc;
 

@@ -116,7 +116,7 @@ FOREACH(_source_file ${TARGET_SRC})
 ENDFOREACH()
 
 
-SET(ASPECT_WITH_WORLD_BUILDER ON CACHE BOOL "Whether to enable compiling aspect with the Geodynamic World Builder.")
+SET(ASPECT_WITH_WORLD_BUILDER OFF CACHE BOOL "Whether to enable compiling aspect with the Geodynamic World Builder.")
 message(STATUS "ASPECT_WITH_WORLD_BUILDER = '${ASPECT_WITH_WORLD_BUILDER}'")
 if(ASPECT_WITH_WORLD_BUILDER)
   # Check whether we can find the WorldBuilder.

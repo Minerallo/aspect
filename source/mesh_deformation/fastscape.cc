@@ -659,69 +659,73 @@ namespace aspect
             fastscape_set_v_(vx.get(), vy.get());
           }
 
-          //Change diffusion parameter in time
-          if (diffuse_area && minimum_topography_diffusion){
-            this->get_pcout() << "   Tracking the minimum topography for specific diffusion... " << (1 + surface_resolution + additional_refinement) << " levels, cell size: " << dx << " m." << std::endl;
-          // Find the minimum elevation
-          // There might be a better way to track the minimum of the elevation using min_element
-          double min_h = 99999999;
-          double idx_h = 0;
-          for (int i = 0; i <= nx; i++)
-          {
-            if (h[nx * 5 + i] < min_h)
+         if(this->get_time()/ year_in_seconds>=time_to_diffuse)     
+          {      
+            //Change diffusion parameter in time
+            if (diffuse_area && minimum_topography_diffusion)
+            {      
+              this->get_pcout() << "   Tracking the minimum topography for specific diffusion... " << (1 + surface_resolution + additional_refinement) << " levels, cell size: " << dx << " m." << std::endl;
+            // Find the minimum elevation
+            // There might be a better way to track the minimum of the elevation using min_element
+            double min_h = 99999999;
+            double idx_h = 0;
+            for (int i = 0; i <= nx; i++)
             {
-              min_h = h[nx * 5 + i];
-              idx_h = i;
-              // std::cout << "Elevations: " << h[nx * 5 + i] <<"  "<< idx_h << " / " << nx << std::endl;
-            }
-          }
-          std::cout << " Minimum elevation (inverted) : " << min_h << " index : " << idx_h<< " Position in km : " << ((idx_h-2) * dx) /1000 << std::endl;
-          // Since the variable are not carried from one timestep to another I redefine the diffusion grid here
-          //one index is equal to one element or about 1dx
-
-
-            if (diffusion_sinusoid){
-              for (int i = 0; i <= array_size-nx; i++){
-                double current_ny = i/nx;
-                double current_cut = nx*trunc(current_ny)+idx_h-round(dx_diffusion/2);
-                if (i>=current_cut && i <=nx*trunc(current_ny)+idx_h+round(dx_diffusion/2)){
-                  kd[i]=new_diffusion*(1-(cos((2*boost::math::double_constants::pi/dx_diffusion)*(i-current_cut))+1)/2);
-                }
-                else{
-                  kd[i]=kdd;
-                }
-              }  
-              std::cout << " Use sinuosid function for Diffusion " <<std::endl; 
-              fastscape_set_erosional_parameters_(kf.get(), &kfsed, &m, &n, kd.get(), &kdsed, &g, &g, &p);               
-            }
-            else{
-              for (int i = 0; i <= array_size-nx; i++){
-                double current_ny = i/nx;
-                //std::cout << "current_ny :" << current_ny <<std::endl;
-                if (i>=nx*trunc(current_ny)+idx_h-round(dx_diffusion/2) && i <=nx*trunc(current_ny)+idx_h+round(dx_diffusion/2)){
-                  kd[i]=new_diffusion;
-                  //std::cout << "new_diffusion :"<<std::endl; 
-                }
-                else{
-                  kd[i]=kdd;
-                  //std::cout << "old_diffusion :"<<std::endl; 
-                }
-              }  
-              fastscape_set_erosional_parameters_(kf.get(), &kfsed, &m, &n, kd.get(), &kdsed, &g, &g, &p);               
-            } 
-          }
-          else if (diffuse_area && new_diffusion_step != 0 && use_intervals )
-          {
-            if (current_timestep == new_diffusion_step)
-            {
-              this->get_pcout() << "   Initializing FastScape with new diffusion... " << (1 + surface_resolution + additional_refinement) << " levels, cell size: " << dx << " m." << std::endl;
-              for (int i = 0; i <= array_size; i++)
+              if (h[nx * 5 + i] < min_h)
               {
-                if (test[i] == 1)
-                  kd[i] = new_diffusion;
-                else
-                  kd[i] = kdd;
+                min_h = h[nx * 5 + i];
+                idx_h = i;
+                // std::cout << "Elevations: " << h[nx * 5 + i] <<"  "<< idx_h << " / " << nx << std::endl;
               }
+            }
+            std::cout << " Minimum elevation (inverted) : " << min_h << " index : " << idx_h<< " Position in km : " << ((idx_h-2) * dx) /1000 << std::endl;
+            // Since the variable are not carried from one timestep to another I redefine the diffusion grid here
+            //one index is equal to one element or about 1dx
+    
+              if (diffusion_sinusoid){
+                for (int i = 0; i <= array_size-nx; i++){
+                  double current_ny = i/nx;
+                  double current_cut = nx*trunc(current_ny)+idx_h-round(dx_diffusion/2);
+                  if (i>=current_cut && i <=nx*trunc(current_ny)+idx_h+round(dx_diffusion/2)){
+                    kd[i]=new_diffusion*(1-(cos((2*boost::math::double_constants::pi/dx_diffusion)*(i-current_cut))+1)/2);
+                  }
+                  else{
+                    kd[i]=kdd;
+                  }
+                }  
+                std::cout << " Use sinuosid function for Diffusion " <<std::endl; 
+                fastscape_set_erosional_parameters_(kf.get(), &kfsed, &m, &n, kd.get(), &kdsed, &g, &g, &p);               
+              }
+              else{
+                for (int i = 0; i <= array_size-nx; i++){
+                  double current_ny = i/nx;
+                  //std::cout << "current_ny :" << current_ny <<std::endl;
+                  if (i>=nx*trunc(current_ny)+idx_h-round(dx_diffusion/2) && i <=nx*trunc(current_ny)+idx_h+round(dx_diffusion/2)){
+                    kd[i]=new_diffusion;
+                    //std::cout << "new_diffusion :"<<std::endl; 
+                  }
+                  else{
+                    kd[i]=kdd;
+                    //std::cout << "old_diffusion :"<<std::endl; 
+                  }
+                }  
+                fastscape_set_erosional_parameters_(kf.get(), &kfsed, &m, &n, kd.get(), &kdsed, &g, &g, &p);               
+              } 
+            }
+            else if (diffuse_area && new_diffusion_step != 0 && use_intervals )
+            {
+              if (current_timestep == new_diffusion_step)
+              {
+                this->get_pcout() << "   Initializing FastScape with new diffusion... " << (1 + surface_resolution + additional_refinement) << " levels, cell size: " << dx << " m." << std::endl;
+                for (int i = 0; i <= array_size; i++)
+                {
+                  if (test[i] == 1)
+                    kd[i] = new_diffusion;
+                  else
+                    kd[i] = kdd;
+                }
+              }
+              fastscape_set_erosional_parameters_(kf.get(), &kfsed, &m, &n, kd.get(), &kdsed, &g, &g, &p);
             }
             fastscape_set_erosional_parameters_(kf.get(), &kfsed, &m, &n, kd.get(), &kdsed, &g, &g, &p);
           }
@@ -1022,7 +1026,10 @@ namespace aspect
                             "Set a the number of dx to diffuse near the minimum topography."); 
             prm.declare_entry("Use sinusoid diffusion", "true",
                               Patterns::Bool(),
-                              "sinuosid function of diffusion. The minimum topography is diffuse at the specific diffusion and decrease to reach normal Kd away ");                                                                                                       
+                              "sinuosid function of diffusion. The minimum topography is diffuse at the specific diffusion and decrease to reach normal Kd away ");  
+            prm.declare_entry("Start diffusing", "100e3",
+                              Patterns::Double(),
+                              "timestep when the specific area should start diffusing.");                                                                                                                                    
           }
           prm.leave_subsection();
 
@@ -1182,6 +1189,7 @@ namespace aspect
             x_max_diffusion = prm.get_double("Diffusion interval x2");
             new_diffusion = prm.get_double("Specific bedrock diffusivity");
             new_diffusion_step = prm.get_double("Start diffusing at timestep");
+            time_to_diffuse = prm.get_double("Start diffusing");            
             dx_diffusion = prm.get_double("Number of dx to diffuse");
             diffusion_sinusoid = prm.get_bool("Use sinusoid diffusion");
           }

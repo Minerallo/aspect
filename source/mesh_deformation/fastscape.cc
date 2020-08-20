@@ -18,6 +18,7 @@
 #include <aspect/geometry_model/box.h>
 #include <deal.II/numerics/vector_tools.h>
 #include <ctime>
+#include <aspect/simulator_access.h>
 
 namespace aspect
 {
@@ -658,74 +659,91 @@ namespace aspect
             fastscape_set_u_(vz.get());
             fastscape_set_v_(vx.get(), vy.get());
           }
-
-         if(this->get_time()/ year_in_seconds>=time_to_diffuse)     
+   
+          //Change diffusion parameter in time
+          if (diffuse_area && minimum_topography_diffusion)
           {      
-            //Change diffusion parameter in time
-            if (diffuse_area && minimum_topography_diffusion)
-            {      
-              this->get_pcout() << "   Tracking the minimum topography for specific diffusion... " << (1 + surface_resolution + additional_refinement) << " levels, cell size: " << dx << " m." << std::endl;
-            // Find the minimum elevation
-            // There might be a better way to track the minimum of the elevation using min_element
-            double min_h = 99999999;
-            double idx_h = 0;
-            for (int i = 0; i <= nx; i++)
+            this->get_pcout() << "   Tracking the minimum topography for specific diffusion... " << (1 + surface_resolution + additional_refinement) << " levels, cell size: " << dx << " m." << std::endl;
+          // Find the minimum elevation
+          // There might be a better way to track the minimum of the elevation using min_element
+          double min_h = 99999999;
+          double idx_h = 0;
+          for (int i = 0; i <= nx; i++)
+          {
+            if (h[nx * 5 + i] < min_h)
             {
-              if (h[nx * 5 + i] < min_h)
-              {
-                min_h = h[nx * 5 + i];
-                idx_h = i;
-                // std::cout << "Elevations: " << h[nx * 5 + i] <<"  "<< idx_h << " / " << nx << std::endl;
-              }
+              min_h = h[nx * 5 + i];
+              idx_h = i;
+              // std::cout << "Elevations: " << h[nx * 5 + i] <<"  "<< idx_h << " / " << nx << std::endl;
             }
-            std::cout << " Minimum elevation (inverted) : " << min_h << " index : " << idx_h<< " Position in km : " << ((idx_h-2) * dx) /1000 << std::endl;
-            // Since the variable are not carried from one timestep to another I redefine the diffusion grid here
-            //one index is equal to one element or about 1dx
-    
-              if (diffusion_sinusoid){
-                for (int i = 0; i <= array_size-nx; i++){
-                  double current_ny = i/nx;
-                  double current_cut = nx*trunc(current_ny)+idx_h-round(dx_diffusion/2);
-                  if (i>=current_cut && i <=nx*trunc(current_ny)+idx_h+round(dx_diffusion/2)){
-                    kd[i]=new_diffusion*(1-(cos((2*boost::math::double_constants::pi/dx_diffusion)*(i-current_cut))+1)/2);
+          }
+          std::cout << " Minimum elevation (inverted) : " << min_h << " index : " << idx_h<< " Position in km : " << ((idx_h-2) * dx) /1000 << std::endl;
+          // Since the variable are not carried from one timestep to another I redefine the diffusion grid here
+          //one index is equal to one element or about 1dx
+   
+            if (diffusion_sinusoid){
+
+               if(this->get_time()/ year_in_seconds>=time_to_diffuse)     
+                  {    
+                  std::cout << " It is time to use sinuosid function for Diffusion " <<std::endl;                   
+                  for (int i = 0; i <= array_size-nx; i++){
+                    double current_ny = i/nx;
+                    double current_cut = nx*trunc(current_ny)+idx_h-round(dx_diffusion/2);                        
+                    if (i>=current_cut && i <=nx*trunc(current_ny)+idx_h+round(dx_diffusion/2)){
+                      kd[i]=new_diffusion*(1-(cos((2*boost::math::double_constants::pi/dx_diffusion)*(i-current_cut))+1)/2);
+                    }
+                    else{
+                      kd[i]=kdd;
+                    }
                   }
-                  else{
+                }else{
+                  std::cout << " Not the time to use sinuosid function for Diffusion " <<std::endl; 
+                  for (int i = 0; i <= array_size-nx; i++){ 
                     kd[i]=kdd;
-                  }
+                  }                 
                 }  
-                std::cout << " Use sinuosid function for Diffusion " <<std::endl; 
-                fastscape_set_erosional_parameters_(kf.get(), &kfsed, &m, &n, kd.get(), &kdsed, &g, &g, &p);               
-              }
-              else{
-                for (int i = 0; i <= array_size-nx; i++){
-                  double current_ny = i/nx;
-                  //std::cout << "current_ny :" << current_ny <<std::endl;
-                  if (i>=nx*trunc(current_ny)+idx_h-round(dx_diffusion/2) && i <=nx*trunc(current_ny)+idx_h+round(dx_diffusion/2)){
-                    kd[i]=new_diffusion;
-                    //std::cout << "new_diffusion :"<<std::endl; 
-                  }
-                  else{
-                    kd[i]=kdd;
-                    //std::cout << "old_diffusion :"<<std::endl; 
-                  }
-                }  
-                fastscape_set_erosional_parameters_(kf.get(), &kfsed, &m, &n, kd.get(), &kdsed, &g, &g, &p);               
-              } 
+
+              // for (int i = 0; i <= array_size-nx; i++){
+              //   double current_ny = i/nx;
+              //   double current_cut = nx*trunc(current_ny)+idx_h-round(dx_diffusion/2);
+              //   if (i>=current_cut && i <=nx*trunc(current_ny)+idx_h+round(dx_diffusion/2)){
+              //     kd[i]=new_diffusion*(1-(cos((2*boost::math::double_constants::pi/dx_diffusion)*(i-current_cut))+1)/2);
+              //   }
+              //   else{
+              //     kd[i]=kdd;
+              //   }
+              // }  
+              // std::cout << " Use sinuosid function for Diffusion " <<std::endl; 
+              fastscape_set_erosional_parameters_(kf.get(), &kfsed, &m, &n, kd.get(), &kdsed, &g, &g, &p);               
             }
-            else if (diffuse_area && new_diffusion_step != 0 && use_intervals )
-            {
-              if (current_timestep == new_diffusion_step)
-              {
-                this->get_pcout() << "   Initializing FastScape with new diffusion... " << (1 + surface_resolution + additional_refinement) << " levels, cell size: " << dx << " m." << std::endl;
-                for (int i = 0; i <= array_size; i++)
-                {
-                  if (test[i] == 1)
-                    kd[i] = new_diffusion;
-                  else
-                    kd[i] = kdd;
+            else{
+              for (int i = 0; i <= array_size-nx; i++){
+                double current_ny = i/nx;
+                //std::cout << "current_ny :" << current_ny <<std::endl;
+                if (i>=nx*trunc(current_ny)+idx_h-round(dx_diffusion/2) && i <=nx*trunc(current_ny)+idx_h+round(dx_diffusion/2)){
+                  kd[i]=new_diffusion;
+                  //std::cout << "new_diffusion :"<<std::endl; 
                 }
+                else{
+                  kd[i]=kdd;
+                  //std::cout << "old_diffusion :"<<std::endl; 
+                }
+              }  
+              fastscape_set_erosional_parameters_(kf.get(), &kfsed, &m, &n, kd.get(), &kdsed, &g, &g, &p);               
+            } 
+          }
+          else if (diffuse_area && new_diffusion_step != 0 && use_intervals )
+          {
+            if (current_timestep == new_diffusion_step)
+            {
+              this->get_pcout() << "   Initializing FastScape with new diffusion... " << (1 + surface_resolution + additional_refinement) << " levels, cell size: " << dx << " m." << std::endl;
+              for (int i = 0; i <= array_size; i++)
+              {
+                if (test[i] == 1)
+                  kd[i] = new_diffusion;
+                else
+                  kd[i] = kdd;
               }
-              fastscape_set_erosional_parameters_(kf.get(), &kfsed, &m, &n, kd.get(), &kdsed, &g, &g, &p);
             }
             fastscape_set_erosional_parameters_(kf.get(), &kfsed, &m, &n, kd.get(), &kdsed, &g, &g, &p);
           }

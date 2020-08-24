@@ -38,30 +38,8 @@ namespace aspect
                const unsigned int input_index,
                MaterialModel::EquationOfStateOutputs<dim> &out) const 
       {
-//         std::vector<double> T_ref =  {1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800};
-// //         {1800,1800,1800,1800,1800,1800,1800,1800,1800,400,400,400,400,400,400,1800,1800,1800,400,400,400,400,400,400,400,1800,1800,1800,1800,1800,1800,1800,1800};
-//         for (unsigned int c=0; c < out.densities.size(); ++c)
-//           {
-// //             std::cout<<c<<std::endl;
-//             out.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[input_index] - T_ref[c]));
-//             out.thermal_expansion_coefficients[c] = thermal_expansivities[c];
-//             out.specific_heat_capacities[c] = specific_heats[c];
-//             out.compressibilities[c] = 0.0;
-//             out.entropy_derivative_pressure[c] = 0.0;
-//             out.entropy_derivative_temperature[c] = 0.0;
-//           }
-
-
-//       for (unsigned int i=0; i < in.temperature.size(); ++i)
-//         {
-//         const double T_ref = this->get_adiabatic_conditions().is_initialized() ? this->get_adiabatic_conditions().temperature(in.position[i]) : this->get_adiabatic_surface_temperature();
-//         const double T_ref = this->get_adiabatic_conditions().is_initialized() ? this->get_adiabatic_conditions().temperature(in.position[input_index]) : this->get_adiabatic_surface_temperature();
-
-    // set Densities = background:3300 ,UPM:3300|3736|3875|4380 ,TZ:3736|3875|4380 ,TZ2:3875|4380 ,LM:4380 ,(Weak_Layer:2670) ,Oceanic_crust:3000|3450|3567|3900|4112|4256 ,Oceanic_mantle:3280|3737|3938|4046 ,Sediments:2670 ,Upper_Crust:2800 ,Lower_Crust:3000|3450|3567|3900|4112|4256 ,Continental_mantle:3280|3737|3938|4046 ,Craton:3280|3737|3938|4046 ,plastic_strain:3300
           
-         std::vector<double> T_ref =  {293,293,293,293,293,293,293,293,293,293,293,350,350,350,350,350,350,1000,1000,1000,1000,1000,1000,1000,1000,326,510,803,803,803,803,803,803,1240,1240,1240,1240,1100,1100,1100,1100,293};
-//              1600,1600,1600,1600,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800,1800};
-//        {1800,1800,1800,1800,1800,1800,1800,1800,1800,400,400,400,400,400,400,1800,1800,1800,400,400,400,400,400,400,400,1800,1800,1800,1800,1800,1800,1800,1800};
+         std::vector<double> T_ref = {293,293,293,293,293,293,293,293,293,293,293,293,350,350,350,350,350,350,1000,1000,1000,1000,326,510,803,803,803,803,803,803,1240,1240,1240,1240,1100,1100,1100,1100,293,293};
           
           
                 // Loop through all requested points
@@ -69,7 +47,7 @@ namespace aspect
         for (unsigned int c=0; c < out.densities.size(); ++c)        
           {
               //for some reason it doesn't work if I just write >=12
-            if(c==12 || c==13 || c==14 || c==15 || c==16 || c==17 || c==18 || c==19 || c==20 || c==21 || c==22 || c==23 || c==24 || c==25 || c==26 || c==27 || c==28 || c==29 || c==30 ||  c==31 ||  c==32 ||  c==33 || c==34 || c==35 || c==36 || c==37 || c==38 || c==39 || c==40 || c==41)
+            if(c==13 || c==14 || c==15 || c==16 || c==17 || c==18 || c==19 || c==20 || c==21 || c==22 || c==23 || c==24 || c==25 || c==26 || c==27 || c==28 || c==29 || c==30 ||  c==31 ||  c==32 ||  c==33 || c==34 || c==35 || c==36 || c==37 || c==38 || c==39 || c==40)
             {
               out.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[input_index] - T_ref[c]));    
               out.thermal_expansion_coefficients[c] = thermal_expansivities[c];
@@ -77,7 +55,16 @@ namespace aspect
               out.compressibilities[c] = 0.0;
               out.entropy_derivative_pressure[c] = 0.0;
               out.entropy_derivative_temperature[c] = 0.0;
-            }                       
+            }  
+            else if(c==12)
+            {
+              out.densities[c] = densities[c];    
+              out.thermal_expansion_coefficients[c] = thermal_expansivities[c];
+              out.specific_heat_capacities[c] = specific_heats[c];
+              out.compressibilities[c] = 0.0;
+              out.entropy_derivative_pressure[c] = 0.0;
+              out.entropy_derivative_temperature[c] = 0.0;
+            }                     
             //for the rest the reference temperature is based on the adiabatic gradient
             else
              {
@@ -90,30 +77,6 @@ namespace aspect
              }
           } 
       }
-                 
-//             out.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[i] - T_ref));
-
-        //for the crustal layers 
-//             if(c==12 || c==13 || c==14 || c==15 || c==16 || c==17 || c==22 || c==23 || c==24 || c==25 || c==26 || c==27 || c==28 || c==29)
-//             {
-//               out.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[input_index] - reference_T));    
-//               out.thermal_expansion_coefficients[c] = thermal_expansivities[c];
-//               out.specific_heat_capacities[c] = specific_heats[c];
-//               out.compressibilities[c] = 0.0;
-//               out.entropy_derivative_pressure[c] = 0.0;
-//               out.entropy_derivative_temperature[c] = 0.0;
-//             }
-/*            else if(c==18 || c==19 || c==20 || c==21 ||  c==30 ||  c==31 ||  c==32 ||  c==33 || c==34 || c==35 || c==36 || c==37) 
-             {
-              out.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[input_index] - T_ref[c]));
-//               out.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[input_index] - (this->get_adiabatic_conditions().temperature(in.position[input_index])-(this->get_adiabatic_surface_temperature()-400))));
-//               std::cout<<(this->get_adiabatic_conditions().temperature(in.position[input_index])-(this->get_adiabatic_surface_temperature()-400))<<std::endl;
-              out.thermal_expansion_coefficients[c] = thermal_expansivities[c];
-              out.specific_heat_capacities[c] = specific_heats[c];
-              out.compressibilities[c] = 0.0;
-              out.entropy_derivative_pressure[c] = 0.0;
-              out.entropy_derivative_temperature[c] = 0.0;
-             }  */ 
 
       template <int dim>
       bool

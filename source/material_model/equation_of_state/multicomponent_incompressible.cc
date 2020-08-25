@@ -39,7 +39,9 @@ namespace aspect
                MaterialModel::EquationOfStateOutputs<dim> &out) const 
       {
           
-         std::vector<double> T_ref = {293,293,293,293,293,293,293,293,293,293,293,293,350,350,350,350,350,350,1000,1000,1000,1000,326,510,803,803,803,803,803,803,1240,1240,1240,1240,1100,1100,1100,1100,293,293};
+/*    set Densities = background:3300 ,UPM:3300|3736|3875|4263 ,TZ:3736|3875|4263 ,TZ2:3875|4263 ,LM:4263 ,Weak_Layer:2670 ,Oceanic_crust:3000|3450|3567|3900|4112|4256 ,Oceanic_mantle:3280|3737|3938|4382 ,Sediments:2670 ,Upper_Crust:2800 ,Lower_Crust:3000|3450|3567|3900|4112|4256 ,Continental_mantle:3280|3737|3938|4382 ,Craton:3280|3737|3938|4382 ,plastic_strain:3300, Damping:4530
+         */ 
+         std::vector<double> T_ref = {293,293,293,293,293,293,293,293,293,293,293,293,350,650,800,890,1080,1315,1000,1000,1000,1000,326,510,803,803,803,803,803,803,1240,1240,1240,1240,1100,1100,1100,1100,293,293};
           
           
                 // Loop through all requested points

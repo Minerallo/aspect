@@ -101,6 +101,15 @@ namespace aspect
                                quadrature,
                                update_quadrature_points | update_values | update_gradients);
 
+      QTrapez<dim-1> face_corners;
+
+      // const Quadrature<dim> quadrature(this->get_fe().base_element(this->introspection().base_elements.compositional_fields).get_unit_support_points());
+        FEFaceValues<dim> fe_face_values(this->get_mapping(),
+                                         this->get_fe(),
+                                         face_corners,
+                                         update_values |
+                                             update_quadrature_points);                               
+
     //   MaterialModel::MaterialModelInputs<dim> in(quadrature.size(), this->n_compositional_fields());
     //   MaterialModel::MaterialModelOutputs<dim> out(quadrature.size(), this->n_compositional_fields());
         
@@ -155,78 +164,91 @@ namespace aspect
                 //     }                  
                 //     }            
                 //   }
-                }                
+                } 
 
-                for (unsigned int p=0; p<quadrature.size(); ++p)
-                  {
-                    //  if (prelim_composition_values[weak_layer_refinement[0]][p] > 0.01)
-                    //   {
-                    //     weak_layer_present = true;
+                for (unsigned int face_no = 0; face_no < GeometryInfo<dim>::faces_per_cell; ++face_no)
+                {
+                  fe_face_values.reinit(cell, face_no);
 
-                    //   }     
-                    // std::cout<<prelim_composition_values[upper_crust_refinement[0]][p]<<std::endl;  
-                    if (prelim_composition_values[weak_zone_refinement[0]][p] >= 0.005)
-                      {
-                        weak_zone_present = true;
-                        // if (prelim_composition_values[weak_zone_refinement[0]][p] >= 1.0)
-                        // {
-                        //   in_center_of_compo = true;
-                        // }
-                        break;
-                      }                                      
-                    if (prelim_composition_values[upper_crust_refinement[0]][p] > 0.01)
-                      {
-                        upper_crust_present = true;
-                        // //Crust will have smallest res, so not interested in other fields
-                        // break;
-                      }
-                     if (prelim_composition_values[lower_crust_refinement[0]][p] > 0.01)
-                      {
-                        lower_crust_present = true;
-                        // break;
-                      }
-                     if (prelim_composition_values[sediments_refinement[0]][p] > 0.01)
-                      {
-                        sediments_present = true;
-                        // break;
-                      }
-                     if (prelim_composition_values[oceanic_crust_refinement[0]][p] > 0.01)
-                      {
-                        oceanic_crust_present = true;
-                        // break;
-                      }                                                                             
-                    if (prelim_composition_values[oceanic_mantle_refinement[0]][p] > 0.1)
+                  for (unsigned int corner = 0; corner < face_corners.size(); ++corner)
                     {
-                      oceanic_mantle_present = true;
-                        if (prelim_composition_values[oceanic_mantle_refinement[0]][p] >= 1.0)
-                        {
-                          in_center_of_compo = true;
-                        }
-                        // if (prelim_composition_values[oceanic_mantle_refinement[0]][p] < 0.1)
-                        // // if(prelim_composition_values[oceanic_mantle_refinement[0]][p] > 0.35 && prelim_composition_values[oceanic_mantle_refinement[0]][p] < 0.65)
-                        // {
-                        //   refine_border_present = true;
-                        // }   
-                    }                                                          
-                    if (prelim_composition_values[continental_mantle_refinement[0]][p] > 0.1)
+                    const Point<dim> vertex = fe_face_values.quadrature_point(corner);                
+
+
+                    for (unsigned int p=0; p<quadrature.size(); ++p)
                       {
-                        continental_mantle_present = true;
-                        if (prelim_composition_values[continental_mantle_refinement[0]][p] >= 1.0)
+                        //  if (prelim_composition_values[weak_layer_refinement[0]][p] > 0.01)
+                        //   {
+                        //     weak_layer_present = true;
+
+                        //   }     
+                        // std::cout<<prelim_composition_values[upper_crust_refinement[0]][p]<<std::endl;  
+                        if (prelim_composition_values[weak_zone_refinement[0]][p] >= 0.005)
+                          {
+                            weak_zone_present = true;
+                            // if (prelim_composition_values[weak_zone_refinement[0]][p] >= 1.0)
+                            // {
+                            //   in_center_of_compo = true;
+                            // }
+                            break;
+                          }                                      
+                        if (prelim_composition_values[upper_crust_refinement[0]][p] > 0.01)
+                          {
+                            if (vertex(0) < 1670000){
+                            upper_crust_present = true;
+                            // //Crust will have smallest res, so not interested in other fields
+                            // break;
+                          }
+                          }
+                        if (prelim_composition_values[lower_crust_refinement[0]][p] > 0.01)
+                          {
+                            lower_crust_present = true;
+                            // break;
+                          }
+                        if (prelim_composition_values[sediments_refinement[0]][p] > 0.01)
+                          {
+                            sediments_present = true;
+                            // break;
+                          }
+                        if (prelim_composition_values[oceanic_crust_refinement[0]][p] > 0.01)
+                          {
+                            oceanic_crust_present = true;
+                            // break;
+                          }                                                                             
+                        if (prelim_composition_values[oceanic_mantle_refinement[0]][p] > 0.1)
                         {
-                          in_center_of_compo = true;
-                        }
+                          oceanic_mantle_present = true;
+                            if (prelim_composition_values[oceanic_mantle_refinement[0]][p] >= 1.0)
+                            {
+                              in_center_of_compo = true;
+                            }
+                            // if (prelim_composition_values[oceanic_mantle_refinement[0]][p] < 0.1)
+                            // // if(prelim_composition_values[oceanic_mantle_refinement[0]][p] > 0.35 && prelim_composition_values[oceanic_mantle_refinement[0]][p] < 0.65)
+                            // {
+                            //   refine_border_present = true;
+                            // }   
+                        }                                                          
+                        if (prelim_composition_values[continental_mantle_refinement[0]][p] > 0.1)
+                          {
+                            continental_mantle_present = true;
+                            if (prelim_composition_values[continental_mantle_refinement[0]][p] >= 1.0)
+                            {
+                              in_center_of_compo = true;
+                            }
+                          }
+                        if (prelim_composition_values[craton_refinement[0]][p] > 0.1)
+                          {
+                            craton_present = true;
+                            if (prelim_composition_values[craton_refinement[0]][p] >= 1.0)
+                            {
+                              in_center_of_compo = true;
+                            }
+                          }
+                          
+                                                                                                                                                          
                       }
-                    if (prelim_composition_values[craton_refinement[0]][p] > 0.1)
-                      {
-                        craton_present = true;
-                        if (prelim_composition_values[craton_refinement[0]][p] >= 1.0)
-                        {
-                          in_center_of_compo = true;
-                        }
-                      }
-                      
-                                                                                                                                                      
                   }
+                }
         
                //Only continue if at least one is true
 

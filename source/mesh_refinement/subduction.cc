@@ -65,6 +65,7 @@ namespace aspect
          */
         std::vector<unsigned int> sediments_refinement;         
         std::vector<unsigned int> upper_crust_refinement;
+        std::vector<unsigned int> upper_crust_refinement_two;        
         std::vector<unsigned int> lower_crust_refinement;
         std::vector<unsigned int> continental_mantle_refinement;
         std::vector<unsigned int> craton_refinement;
@@ -128,14 +129,17 @@ namespace aspect
                 bool clear_refine = false;
                 bool clear_coarsen = false;
                 bool upper_crust_present = false;
+                bool upper_crust_present_two = false;
                 bool lower_crust_present = false;
                 bool sediments_present =false;
                 bool continental_mantle_present = false;
                 bool craton_present = false;
                 // bool oceanic_mantle_border_present = false;
                 bool oceanic_crust_present = false;
+                bool oceanic_crust_present_one = false;                
                 bool oceanic_mantle_present = false;                
                 bool weak_zone_present = false;
+                bool weak_zone_present_two = false;                
                 // bool UPM_present = false;
                 // bool TZ_present = false;
                 // bool TZ2_present = false;
@@ -185,12 +189,17 @@ namespace aspect
                         // std::cout<<prelim_composition_values[upper_crust_refinement[0]][p]<<std::endl;  
                         if (prelim_composition_values[weak_zone_refinement[0]][p] >= 0.005)
                           {
+                            if (vertex(1) > 980000){
                             weak_zone_present = true;
                             // if (prelim_composition_values[weak_zone_refinement[0]][p] >= 1.0)
                             // {
                             //   in_center_of_compo = true;
                             // }
                             break;
+                            }else{
+                              weak_zone_present_two = true;                              
+                            }
+
                           }                                      
                         if (prelim_composition_values[upper_crust_refinement[0]][p] > 0.01)
                           {
@@ -198,6 +207,8 @@ namespace aspect
                             upper_crust_present = true;
                             // //Crust will have smallest res, so not interested in other fields
                             // break;
+                          }else{
+                            upper_crust_present_two = true;
                           }
                           }
                         if (prelim_composition_values[lower_crust_refinement[0]][p] > 0.01)
@@ -212,8 +223,12 @@ namespace aspect
                           }
                         if (prelim_composition_values[oceanic_crust_refinement[0]][p] > 0.01)
                           {
+                            if (vertex(0) > 350000){                            
                             oceanic_crust_present = true;
-                            // break;
+                            // break;                           
+                          }else{
+                            oceanic_crust_present_one = true;                            
+                          }
                           }                                                                             
                         if (prelim_composition_values[oceanic_mantle_refinement[0]][p] > 0.1)
                         {
@@ -261,6 +276,12 @@ namespace aspect
                         minimum_refinement_level = upper_crust_refinement[1];
                         maximum_refinement_level = upper_crust_refinement[2];
                       }
+                    else if (upper_crust_present_two)
+                      {
+                        // std::cout<<"UPC"<<std::endl; 
+                        minimum_refinement_level = upper_crust_refinement_two[1];
+                        maximum_refinement_level = upper_crust_refinement_two[2];
+                      }                      
                     else if (lower_crust_present)
                       {
                         // std::cout<<"UPL"<<std::endl; 
@@ -282,6 +303,11 @@ namespace aspect
                         minimum_refinement_level = oceanic_crust_refinement[1];
                         maximum_refinement_level = oceanic_crust_refinement[2];
                       }   
+                    else if (oceanic_crust_present_one)
+                      {
+                        minimum_refinement_level = oceanic_crust_refinement[1]-1;
+                        maximum_refinement_level = oceanic_crust_refinement[2]-1;
+                      }                         
                     else if (oceanic_mantle_present == true && refine_border_present == false)
                       {
                         // std::cout<<"OM"<<std::endl; 
@@ -305,7 +331,12 @@ namespace aspect
                       {
                         minimum_refinement_level = weak_zone_refinement[1];
                         maximum_refinement_level = weak_zone_refinement[2];
-                      }                       
+                      }    
+                    else if (weak_zone_present_two)
+                      {
+                        minimum_refinement_level = weak_zone_refinement[1]-3;
+                        maximum_refinement_level = weak_zone_refinement[2]-3;
+                      }                                            
                     else if (continental_mantle_present)
                       {
                         // std::cout<<"CM"<<std::endl; 
@@ -393,6 +424,10 @@ namespace aspect
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
                             "its maximum refinement level.");
+          prm.declare_entry("Upper Crust 2 refinement","",
+                            Patterns::List (Patterns::Integer(0)),
+                            "The compositional field number of the crust, its minimum refinement level and "
+                            "its maximum refinement level.");                            
           prm.declare_entry("Lower Crust refinement","",
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
@@ -511,6 +546,28 @@ namespace aspect
           AssertThrow (upper_crust_refinement[2] <= max_level,
                        ExcMessage ("The maximum refinement for the crust cannot be "
                                    "greater than the maximum level of the whole model. "));
+
+          const std::vector<int> upper_crust_two
+            = Utilities::string_to_int(
+                Utilities::split_string_list(prm.get("Upper Crust 2 refinement")));
+
+          upper_crust_refinement_two = std::vector<unsigned int> (upper_crust_two.begin(),upper_crust_two.end());
+
+          AssertThrow (upper_crust_refinement.size() == 3,
+                       ExcMessage ("The number of refinement data given here must be "
+                                   "equal to 3 (field number + min level + max level). "));
+
+          AssertThrow (upper_crust_refinement[0] < this->n_compositional_fields(),
+                       ExcMessage ("The number of compositional field to refine (starting "
+                                   "from 0) should be smaller than the number of fields. "));
+
+          AssertThrow (upper_crust_refinement[1] >= min_level,
+                       ExcMessage ("The minimum refinement for the crust cannot be "
+                                   "smaller than the minimum level of the whole model. "));
+
+          AssertThrow (upper_crust_refinement[2] <= max_level,
+                       ExcMessage ("The maximum refinement for the crust cannot be "
+                                   "greater than the maximum level of the whole model. "));                                   
 
           const std::vector<int> lower_crust
             = Utilities::string_to_int(

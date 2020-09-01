@@ -45,7 +45,7 @@ namespace aspect
 
 //     set Densities = background:3300 ,UPM:3300|3736|3875|4263 ,TZ:3736|3875|4263 ,TZ2:3875|4263 ,LM:4263 ,Oceanic_crust:3000|3450|3567|3900|4112|4256 ,Oceanic_mantle:3280|3737|3938|4382 ,Weak_Zone:2670,Sediments:2670 ,Upper_Crust:2920 ,Lower_Crust:3000|3450|3567|3900|4112|4256 ,Continental_mantle:3280|3737|3938|4382 ,Craton:3260|3737|3938|4382 ,plastic_strain:3300, Damping:4530
 
-//     set Densities = background:0 ,UPM:1|2|3|4 ,TZ:5|6|7 ,TZ2:8|9 ,LM:10 ,Oceanic_crust:11|12|13|14|15|16 ,Oceanic_mantle:17|18|19|20 ,Weak_Zone:21,Sediments:2670 ,Upper_Crust:2920 ,Lower_Crust:3000|3450|3567|3900|4112|4256 ,Continental_mantle:3280|3737|3938|4382 ,Craton:3260|3737|3938|4382 ,plastic_strain:3300, Damping:4530
+//     set Densities = background:0 ,UPM:1|2|3|4 ,TZ:5|6|7 ,TZ2:8|9 ,LM:10 ,Oceanic_crust:11|12|13|14|15|16 ,Oceanic_mantle:17|18|19|20 ,Weak_Zone:21,Sediments:22 ,Upper_Crust:23 ,Lower_Crust:24|25|26|27|28|29 ,Continental_mantle:30|31|32|33 ,Craton:34|35|36|37 ,plastic_strain:38, Damping:39
 
          std::vector<double> T_ref = {293,293,293,293,293,293,293,293,293,293,293,350,650,800,890,1080,1315,1000,1000,1000,1000,293,326,510,803,803,803,803,803,803,1240,1240,1240,1240,1100,1100,1100,1100,293,293};
           

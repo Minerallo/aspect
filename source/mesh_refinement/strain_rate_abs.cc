@@ -86,19 +86,20 @@ namespace aspect
     StrainRateAbs<dim>::tag_additional_cells() const
     {
 
-      double a_dt = this->get_timestep();
-      double b_dt = this->get_old_timestep(); 
-      //I need it to get a better approximation of the real time but this doesn not really make sense
-      double time =this->get_time();
-      if (this->convert_output_to_years())
-      {
-        a_dt = this->get_timestep() / year_in_seconds;
-        b_dt = this->get_old_timestep() / year_in_seconds;
-        time = this->get_time()/year_in_seconds;
-      }
-      double full_time = time+a_dt+b_dt/2;//not right but I don't find the right time for some reason. time + a_dt should be enough.
-      // std::cout<<"refinement, model time : "<<a_dt<<"  "<<this->get_time()<<"  "<<this->get_timestep()<<"  "<<this->get_old_timestep()<<std::endl;
-      if (full_time > start_strain_refinement){
+      // double a_dt = this->get_timestep();
+      // double b_dt = this->get_old_timestep(); 
+      // //I need it to get a better approximation of the real time but this doesn not really make sense
+      // double time =this->get_time();
+      // if (this->convert_output_to_years())
+      // {
+      //   a_dt = this->get_timestep() / year_in_seconds;
+      //   b_dt = this->get_old_timestep() / year_in_seconds;
+      //   time = this->get_time()/year_in_seconds;
+      // }
+      // double full_time = time+a_dt+b_dt/2;//not right but I don't find the right time for some reason. time + a_dt should be enough.
+      // // std::cout<<"refinement, model time : "<<a_dt<<"  "<<this->get_time()<<"  "<<this->get_timestep()<<"  "<<this->get_old_timestep()<<std::endl;
+
+      if (this->get_time()/ year_in_seconds > start_strain_refinement){
       // std::cout<<a_dt<<std::endl; 
         // std::cout<<"refinement, model b time : "<<full_time<<std::endl; 
         // std::cout<<"finally working"<<std::endl;
@@ -110,6 +111,15 @@ namespace aspect
                                update_quadrature_points | update_values | update_gradients);
 
       std::vector<SymmetricTensor<2,dim> > strain_rates (quadrature.size());
+
+            QTrapez<dim-1> face_corners;
+
+      // const Quadrature<dim> quadrature(this->get_fe().base_element(this->introspection().base_elements.compositional_fields).get_unit_support_points());
+        FEFaceValues<dim> fe_face_values(this->get_mapping(),
+                                         this->get_fe(),
+                                         face_corners,
+                                         update_values |
+                                             update_quadrature_points);  
 
 
       for (const auto &cell : this->get_dof_handler().active_cell_iterators())
@@ -127,15 +137,32 @@ namespace aspect
 
             fe_values[this->introspection().extractors.velocities].get_function_symmetric_gradients (this->get_solution(),
                 strain_rates);
-                if(use_superior){
-                  if (strain_rate_cut<= strain_rates[0].norm()){
-                      smaller_strain_rate = true;
-                  }                  
-                }else {
-                  if (strain_rate_cut>= strain_rates[0].norm()){
-                      smaller_strain_rate = true;
-                  }                         
-                }                
+
+               for (unsigned int face_no = 0; face_no < GeometryInfo<dim>::faces_per_cell; ++face_no)
+                {
+                  fe_face_values.reinit(cell, face_no);
+
+                  for (unsigned int corner = 0; corner < face_corners.size(); ++corner)
+                    {
+                    const Point<dim> vertex = fe_face_values.quadrature_point(corner);                
+
+                    for (unsigned int p=0; p<quadrature.size(); ++p)
+                      {
+
+                        if (vertex(1) > 980000){                        
+                          if(use_superior){
+                            if (strain_rate_cut<= strain_rates[0].norm()){
+                                smaller_strain_rate = true;
+                            }                  
+                          }else {
+                            if (strain_rate_cut>= strain_rates[0].norm()){
+                                smaller_strain_rate = true;
+                            }                         
+                          }
+                        } 
+                      }
+                    }
+                }               
 
             // else{
             //     bigger_strain_rate = true;

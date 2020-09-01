@@ -67,6 +67,7 @@ namespace aspect
         std::vector<unsigned int> upper_crust_refinement;
         std::vector<unsigned int> upper_crust_refinement_two;        
         std::vector<unsigned int> lower_crust_refinement;
+        std::vector<unsigned int> lower_crust_refinement_two;        
         std::vector<unsigned int> continental_mantle_refinement;
         std::vector<unsigned int> craton_refinement;
         std::vector<unsigned int> weak_zone_refinement;         
@@ -131,6 +132,7 @@ namespace aspect
                 bool upper_crust_present = false;
                 bool upper_crust_present_two = false;
                 bool lower_crust_present = false;
+                bool lower_crust_present_two = false;
                 bool sediments_present =false;
                 bool continental_mantle_present = false;
                 bool craton_present = false;
@@ -147,6 +149,7 @@ namespace aspect
                 // bool overriding_present = false;
                 bool in_center_of_compo = false;
                 bool refine_border_present = false;
+                bool mantle_present =false;
 
 
               fe_values.reinit(cell);
@@ -213,8 +216,12 @@ namespace aspect
                           }
                         if (prelim_composition_values[lower_crust_refinement[0]][p] > 0.01)
                           {
+                            if (vertex(0) < 1670000){
                             lower_crust_present = true;
                             // break;
+                            }else{
+                            lower_crust_present_two = true;
+                            }
                           }
                         if (prelim_composition_values[sediments_refinement[0]][p] > 0.01)
                           {
@@ -245,10 +252,12 @@ namespace aspect
                         }                                                          
                         if (prelim_composition_values[continental_mantle_refinement[0]][p] > 0.1)
                           {
+                            if (vertex(1) > 800000){                            
                             continental_mantle_present = true;
                             if (prelim_composition_values[continental_mantle_refinement[0]][p] >= 1.0)
                             {
                               in_center_of_compo = true;
+                            }
                             }
                           }
                         if (prelim_composition_values[craton_refinement[0]][p] > 0.1)
@@ -259,6 +268,10 @@ namespace aspect
                               in_center_of_compo = true;
                             }
                           }
+                        if (prelim_composition_values[0][p] > 0.95)
+                          {
+                            mantle_present = true;
+                          }                          
                           
                                                                                                                                                           
                       }
@@ -288,6 +301,12 @@ namespace aspect
                         minimum_refinement_level = lower_crust_refinement[1];
                         maximum_refinement_level = lower_crust_refinement[2];
                       }  
+                    else if (lower_crust_present_two)
+                      {
+                        // std::cout<<"UPL"<<std::endl; 
+                        minimum_refinement_level = lower_crust_refinement_two[1];
+                        maximum_refinement_level = lower_crust_refinement_two[2];
+                      }                        
                     else if (sediments_present)
                       {
                         minimum_refinement_level = sediments_refinement[1];
@@ -347,7 +366,13 @@ namespace aspect
                       {
                         minimum_refinement_level = craton_refinement[1];
                         maximum_refinement_level = craton_refinement[2];
-                      }                                                                                                                                                           
+                      }          
+                      // This mantle present will be helpfull to not refine tiny amount of composition that get lost in the model
+                    else if (mantle_present)
+                      {
+                        minimum_refinement_level = mantle_refinement[0];
+                        maximum_refinement_level = mantle_refinement[1];
+                      }                                                                                                                                                                       
                     else
                       {
                         minimum_refinement_level = mantle_refinement[0];
@@ -432,6 +457,10 @@ namespace aspect
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
                             "its maximum refinement level.");
+          prm.declare_entry("Lower Crust 2 refinement","",
+                            Patterns::List (Patterns::Integer(0)),
+                            "The compositional field number of the crust, its minimum refinement level and "
+                            "its maximum refinement level.");                            
           prm.declare_entry("Continental Mantle refinement","",
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
@@ -553,19 +582,19 @@ namespace aspect
 
           upper_crust_refinement_two = std::vector<unsigned int> (upper_crust_two.begin(),upper_crust_two.end());
 
-          AssertThrow (upper_crust_refinement.size() == 3,
+          AssertThrow (upper_crust_refinement_two.size() == 3,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
-          AssertThrow (upper_crust_refinement[0] < this->n_compositional_fields(),
+          AssertThrow (upper_crust_refinement_two[0] < this->n_compositional_fields(),
                        ExcMessage ("The number of compositional field to refine (starting "
                                    "from 0) should be smaller than the number of fields. "));
 
-          AssertThrow (upper_crust_refinement[1] >= min_level,
+          AssertThrow (upper_crust_refinement_two[1] >= min_level,
                        ExcMessage ("The minimum refinement for the crust cannot be "
                                    "smaller than the minimum level of the whole model. "));
 
-          AssertThrow (upper_crust_refinement[2] <= max_level,
+          AssertThrow (upper_crust_refinement_two[2] <= max_level,
                        ExcMessage ("The maximum refinement for the crust cannot be "
                                    "greater than the maximum level of the whole model. "));                                   
 
@@ -591,6 +620,27 @@ namespace aspect
                        ExcMessage ("The maximum refinement for the crust cannot be "
                                    "greater than the maximum level of the whole model. "));
 
+          const std::vector<int> lower_crust_two
+            = Utilities::string_to_int(
+                Utilities::split_string_list(prm.get("Lower Crust 2 refinement")));
+
+          lower_crust_refinement_two = std::vector<unsigned int> (lower_crust_two.begin(),lower_crust_two.end());
+
+          AssertThrow (lower_crust_refinement_two.size() == 3,
+                       ExcMessage ("The number of refinement data given here must be "
+                                   "equal to 3 (field number + min level + max level). "));
+
+          AssertThrow (lower_crust_refinement_two[0] < this->n_compositional_fields(),
+                       ExcMessage ("The number of compositional field to refine (starting "
+                                   "from 0) should be smaller than the number of fields. "));
+
+          AssertThrow (lower_crust_refinement_two[1] >= min_level,
+                       ExcMessage ("The minimum refinement for the crust cannot be "
+                                   "smaller than the minimum level of the whole model. "));
+
+          AssertThrow (lower_crust_refinement_two[2] <= max_level,
+                       ExcMessage ("The maximum refinement for the crust cannot be "
+                                   "greater than the maximum level of the whole model. "));
 
           const std::vector<int> continental_mantle
             = Utilities::string_to_int(

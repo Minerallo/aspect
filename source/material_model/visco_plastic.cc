@@ -25,6 +25,8 @@
 #include <aspect/newton.h>
 #include <aspect/adiabatic_conditions/interface.h>
 #include <aspect/gravity_model/interface.h>
+// #include <aspect/material_model/equation_of_state/multicomponent_compressible.h>
+#include <aspect/material_model/equation_of_state/multicomponent_compressibletwo.h>
 
 namespace aspect
 {
@@ -640,7 +642,8 @@ namespace aspect
         {
           MaterialUtilities::PhaseFunction<dim>::declare_parameters(prm);
 
-          EquationOfState::MulticomponentIncompressible<dim>::declare_parameters (prm);
+          // EquationOfState::MulticomponentIncompressible<dim>::declare_parameters (prm);
+          EquationOfState::MulticomponentCompressibletwo<dim>::declare_parameters (prm);
 
           Rheology::StrainDependent<dim>::declare_parameters (prm);
 

@@ -18,13 +18,15 @@
   <http://www.gnu.org/licenses/>.
 */
 
-#ifndef _aspect_material_model_equation_of_state_multicomponent_compressible_h
-#define _aspect_material_model_equation_of_state_multicomponent_compressible_h
+#ifndef _aspect_material_model_equation_of_state_multicomponent_compressibletwo_h
+#define _aspect_material_model_equation_of_state_multicomponent_compressibletwo_h
 
 #include <aspect/material_model/interface.h>
 #include <aspect/simulator_access.h>
 #include <aspect/material_model/equation_of_state/interface.h>
 
+#include <aspect/utilities.h>
+#include <aspect/adiabatic_conditions/interface.h>
 
 namespace aspect
 {
@@ -50,7 +52,7 @@ namespace aspect
        * There is no pressure-dependence of the density.
        */
       template <int dim>
-      class MulticomponentCompressible :  public ::aspect::SimulatorAccess<dim>
+      class MulticomponentCompressibletwo :  public ::aspect::SimulatorAccess<dim>
       {
         public:
           /**
@@ -59,7 +61,6 @@ namespace aspect
            * determines which entry of the vector of inputs is used.
            */
           void evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
-                        const unsigned int q,
                         MaterialModel::EquationOfStateOutputs<dim> &out) const;
 
           /**
@@ -82,8 +83,8 @@ namespace aspect
            */
           static
           void
-          declare_parameters (ParameterHandler &prm,
-                              const double default_thermal_expansion = 3.5e-5);
+        declare_parameters (ParameterHandler &prm);
+
 
           /**
            * Read the parameters this class declares from the parameter file.
@@ -103,20 +104,8 @@ namespace aspect
           std::vector<double> reference_densities;
 
         private:
-          /**
-           * Vector for reference temperatures, read from parameter file .
-           */
-          std::vector<double> reference_temperatures;
 
-          /**
-           * Vector for reference compressibilities, read from parameter file.
-           */
-          std::vector<double> reference_isothermal_compressibilities;
 
-          /**
-           * Vector for isothermal bulk modulus pressure derivatives, read from parameter file.
-           */
-          std::vector<double> isothermal_bulk_modulus_pressure_derivatives;
 
           /**
            * Vector for reference thermal expansivities, read from parameter file.
@@ -128,13 +117,19 @@ namespace aspect
            */
           std::vector<double> isochoric_specific_heats;
 
+        /**
+         * The constant compressibility.
+         */
+        double reference_compressibility;
+
+
           /**
            * A vector that stores how many separate phases there are per compositional
            * field. In other words if there is a background field without phase transitions
            * and one more composition that has 2 phase transitions this vector would store {1,3}.
            */
-          std::shared_ptr<std::vector<unsigned int> > n_phases_per_composition;          
-
+          std::shared_ptr<std::vector<unsigned int> > n_phases_per_composition;        
+         
       };
     }
   }

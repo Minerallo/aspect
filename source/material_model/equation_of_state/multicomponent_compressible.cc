@@ -73,47 +73,50 @@ namespace aspect
 
       template <int dim>
       void
-      MulticomponentCompressible<dim>::declare_parameters (ParameterHandler &prm)
+      MulticomponentCompressible<dim>::declare_parameters (ParameterHandler &prm,
+                                                             const double default_thermal_expansion)
       {
         prm.declare_entry ("Reference temperatures", "298.15",
-                           Patterns::List(Patterns::Double (0.)),
+                           Patterns::Anything(),
                            "List of reference temperatures $T_0$ for background mantle and compositional fields,"
                            "for a total of N+1 values, where N is the number of compositional fields."
                            "If only one value is given, then all use the same value. Units: $K$.");
-        prm.declare_entry ("Reference densities", "3300.",
-                           Patterns::List(Patterns::Double (0.)),
+        prm.declare_entry ("Densities", "3300.",
+                           Patterns::Anything(),
                            "List of densities for background mantle and compositional fields,"
                            "for a total of N+1 values, where N is the number of compositional fields."
                            "If only one value is given, then all use the same value.  Units: $kg / m^3$");
         prm.declare_entry ("Reference isothermal compressibilities", "4e-12",
-                           Patterns::List(Patterns::Double (0.)),
+                           Patterns::Anything(),
                            "List of isothermal compressibilities for background mantle and compositional fields,"
                            "for a total of N+1 values, where N is the number of compositional fields."
                            "If only one value is given, then all use the same value. "
                            "Units: $1/Pa$.");
         prm.declare_entry ("Isothermal bulk modulus pressure derivatives", "4.",
-                           Patterns::List(Patterns::Double (0.)),
+                           Patterns::Anything(),
                            "List of isothermal pressure derivatives of the bulk moduli for background mantle and compositional fields,"
                            "for a total of N+1 values, where N is the number of compositional fields."
                            "If only one value is given, then all use the same value. "
                            "Units: [].");
-        prm.declare_entry ("Reference thermal expansivities", "4.e-5",
-                           Patterns::List(Patterns::Double (0.)),
+        prm.declare_entry ("Thermal expansivities", std::to_string(default_thermal_expansion),
+                           Patterns::Anything(),
                            "List of thermal expansivities for background mantle and compositional fields,"
                            "for a total of N+1 values, where N is the number of compositional fields."
                            "If only one value is given, then all use the same value. Units: $1/K$");
-        prm.declare_entry ("Isochoric specific heats", "1250.",
-                           Patterns::List(Patterns::Double (0.)),
-                           "List of isochoric specific heats $C_v$ for background mantle and compositional fields,"
+        prm.declare_entry ("Heat capacities", "1250.",
+                           Patterns::Anything(),
+                           "List of specific heats $C_p$ for background mantle and compositional fields,"
                            "for a total of N+1 values, where N is the number of compositional fields."
                            "If only one value is given, then all use the same value. Units: $J /kg /K$");
+        prm.declare_alias ("Heat capacities", "Specific heats");                           
       }
 
 
 
       template <int dim>
       void
-      MulticomponentCompressible<dim>::parse_parameters (ParameterHandler &prm)
+      MulticomponentCompressible<dim>::parse_parameters (ParameterHandler &prm,
+                                                           const std::shared_ptr<std::vector<unsigned int>> expected_n_phases_per_composition)
       {
         // Establish that a background field is required here
         const bool has_background_field = true;
@@ -125,32 +128,44 @@ namespace aspect
         reference_temperatures = Utilities::parse_map_to_double_array (prm.get("Reference temperatures"),
                                                                        list_of_composition_names,
                                                                        has_background_field,
-                                                                       "Reference temperatures");
+                                                                       "Reference temperatures",
+                                                                       true,
+                                                                       expected_n_phases_per_composition);
 
-        reference_densities = Utilities::parse_map_to_double_array (prm.get("Reference densities"),
-                                                                    list_of_composition_names,
-                                                                    has_background_field,
-                                                                    "Reference densities");
+        reference_densities = Utilities::parse_map_to_double_array (prm.get("Densities"),
+                                                          list_of_composition_names,
+                                                          has_background_field,
+                                                          "Densities",
+                                                          true,
+                                                          expected_n_phases_per_composition);
 
         reference_isothermal_compressibilities = Utilities::parse_map_to_double_array (prm.get("Reference isothermal compressibilities"),
                                                                                        list_of_composition_names,
                                                                                        has_background_field,
-                                                                                       "Reference isothermal compressibilities");
+                                                                                       "Reference isothermal compressibilities",
+                                                                                       true,
+                                                                                       expected_n_phases_per_composition);
 
         isothermal_bulk_modulus_pressure_derivatives = Utilities::parse_map_to_double_array (prm.get("Isothermal bulk modulus pressure derivatives"),
                                                        list_of_composition_names,
                                                        has_background_field,
-                                                       "Isothermal bulk modulus pressure derivatives");
+                                                       "Isothermal bulk modulus pressure derivatives",
+                                                       true,
+                                                       expected_n_phases_per_composition);
 
-        reference_thermal_expansivities = Utilities::parse_map_to_double_array (prm.get("Reference thermal expansivities"),
-                                                                                list_of_composition_names,
-                                                                                has_background_field,
-                                                                                "Reference thermal expansivities");
+        reference_thermal_expansivities = Utilities::parse_map_to_double_array (prm.get("Thermal expansivities"),
+                                                                      list_of_composition_names,
+                                                                      has_background_field,
+                                                                      "Thermal expansivities",
+                                                                      true,
+                                                                      expected_n_phases_per_composition);
 
-        isochoric_specific_heats = Utilities::parse_map_to_double_array (prm.get("Isochoric specific heats"),
-                                                                         list_of_composition_names,
-                                                                         has_background_field,
-                                                                         "Isochoric specific heats");
+        isochoric_specific_heats = Utilities::parse_map_to_double_array (prm.get("Heat capacities"),
+                                                               list_of_composition_names,
+                                                               has_background_field,
+                                                               "Specific heats",
+                                                               true,
+                                                               expected_n_phases_per_composition);
       }
     }
   }

@@ -28,7 +28,9 @@
 #include <aspect/material_model/rheology/dislocation_creep.h>
 #include <aspect/material_model/rheology/constant_viscosity_prefactors.h>
 #include <aspect/material_model/rheology/drucker_prager.h>
-#include <aspect/material_model/equation_of_state/multicomponent_incompressible.h>
+// #include <aspect/material_model/equation_of_state/multicomponent_incompressible.h>
+#include <aspect/material_model/equation_of_state/multicomponent_compressible.h>
+
 #include <aspect/material_model/rheology/elasticity.h>
 
 #include<deal.II/fe/component_mask.h>
@@ -284,7 +286,11 @@ namespace aspect
 
         std::vector<double> thermal_conductivities;
 
-        EquationOfState::MulticomponentIncompressible<dim> equation_of_state;
+        // EquationOfState::MulticomponentIncompressible<dim> equation_of_state;
+        // EquationOfState::MulticomponentCompressible<dim> equation_of_state;
+        // EquationOfState::MulticomponentCompressibletwo<dim> equation_of_state;
+
+
 
         /**
          * Enumeration for selecting which viscosity averaging scheme to use.

@@ -192,53 +192,70 @@ namespace aspect
                         // std::cout<<prelim_composition_values[upper_crust_refinement[0]][p]<<std::endl;  
                         if (prelim_composition_values[weak_zone_refinement[0]][p] >= 0.005)
                           {
-                            if (vertex(1) > 980000){
-                            weak_zone_present = true;
-                            // if (prelim_composition_values[weak_zone_refinement[0]][p] >= 1.0)
-                            // {
-                            //   in_center_of_compo = true;
-                            // }
-                            break;
-                            }else{
-                              weak_zone_present_two = true;                              
+                            if(vertex(1) > 250000)
+                            {
+                              if (vertex(1) > 980000){
+                              weak_zone_present = true;
+                              // if (prelim_composition_values[weak_zone_refinement[0]][p] >= 1.0)
+                              // {
+                              //   in_center_of_compo = true;
+                              // }
+                              break;
+                              // }else{
+                              //   weak_zone_present_two = true;                              
+                              // }
+                              }
                             }
-
                           }                                      
                         if (prelim_composition_values[upper_crust_refinement[0]][p] > 0.01)
                           {
-                            if (vertex(0) < 1670000){
-                            upper_crust_present = true;
-                            // //Crust will have smallest res, so not interested in other fields
-                            // break;
-                          }else{
-                            upper_crust_present_two = true;
-                          }
+                            if(vertex(1) > 250000)
+                            {                            
+                              if (vertex(0) < 1670000){
+                              upper_crust_present = true;
+                              // //Crust will have smallest res, so not interested in other fields
+                              // break;
+                              }else{
+                                upper_crust_present_two = true;
+                              }
+                            }
                           }
                         if (prelim_composition_values[lower_crust_refinement[0]][p] > 0.01)
                           {
+                            if(vertex(1) > 250000)
+                            {                                   
                             if (vertex(0) < 1670000){
                             lower_crust_present = true;
                             // break;
                             }else{
                             lower_crust_present_two = true;
                             }
+                            }
                           }
                         if (prelim_composition_values[sediments_refinement[0]][p] > 0.01)
                           {
+                            if(vertex(1) > 250000)
+                            {                                   
                             sediments_present = true;
                             // break;
+                            }
                           }
-                        if (prelim_composition_values[oceanic_crust_refinement[0]][p] > 0.01)
+                        if (prelim_composition_values[oceanic_crust_refinement[0]][p] > 0.1)
                           {
-                            if (vertex(0) > 350000){                            
-                            oceanic_crust_present = true;
-                            // break;                           
-                          }else{
-                            oceanic_crust_present_one = true;                            
-                          }
+                            if(vertex(1) > 250000)
+                            {                                   
+                              if (vertex(0) > 350000){                            
+                              oceanic_crust_present = true;
+                              break;                           
+                              }else{
+                                oceanic_crust_present_one = true;                            
+                              }
+                            }
                           }                                                                             
                         if (prelim_composition_values[oceanic_mantle_refinement[0]][p] > 0.1)
                         {
+                            if(vertex(1) > 250000)
+                            {                                 
                           oceanic_mantle_present = true;
                             if (prelim_composition_values[oceanic_mantle_refinement[0]][p] >= 1.0)
                             {
@@ -248,27 +265,34 @@ namespace aspect
                             // // if(prelim_composition_values[oceanic_mantle_refinement[0]][p] > 0.35 && prelim_composition_values[oceanic_mantle_refinement[0]][p] < 0.65)
                             // {
                             //   refine_border_present = true;
-                            // }   
+                            // }
+                            }   
                         }                                                          
-                        if (prelim_composition_values[continental_mantle_refinement[0]][p] > 0.1)
+                        if (prelim_composition_values[continental_mantle_refinement[0]][p] > 0.5)
                           {
-                            if (vertex(1) > 800000){                            
-                            continental_mantle_present = true;
-                            if (prelim_composition_values[continental_mantle_refinement[0]][p] >= 1.0)
-                            {
-                              in_center_of_compo = true;
-                            }
+                            if(vertex(1) > 250000)
+                            {                                   
+                              if (vertex(1) > 800000){                            
+                              continental_mantle_present = true;
+                              // if (prelim_composition_values[continental_mantle_refinement[0]][p] >= 1.0)
+                              // {
+                              //   in_center_of_compo = true;
+                              // }
+                              }
                             }
                           }
                         if (prelim_composition_values[craton_refinement[0]][p] > 0.1)
                           {
+                            if(vertex(1) > 250000)
+                            {                                   
                             craton_present = true;
                             if (prelim_composition_values[craton_refinement[0]][p] >= 1.0)
                             {
                               in_center_of_compo = true;
                             }
+                            }
                           }
-                        if (prelim_composition_values[0][p] > 0.95)
+                        if (prelim_composition_values[0][p] > 0.5)
                           {
                             mantle_present = true;
                           }                          
@@ -327,7 +351,7 @@ namespace aspect
                         minimum_refinement_level = oceanic_crust_refinement[1]-1;
                         maximum_refinement_level = oceanic_crust_refinement[2]-1;
                       }                         
-                    else if (oceanic_mantle_present == true && refine_border_present == false)
+                    else if (oceanic_mantle_present)
                       {
                         // std::cout<<"OM"<<std::endl; 
                         minimum_refinement_level = oceanic_mantle_refinement[1];
@@ -351,11 +375,11 @@ namespace aspect
                         minimum_refinement_level = weak_zone_refinement[1];
                         maximum_refinement_level = weak_zone_refinement[2];
                       }    
-                    else if (weak_zone_present_two)
-                      {
-                        minimum_refinement_level = weak_zone_refinement[1]-3;
-                        maximum_refinement_level = weak_zone_refinement[2]-3;
-                      }                                            
+                    // else if (weak_zone_present_two)
+                    //   {
+                    //     minimum_refinement_level = weak_zone_refinement[1]-3;
+                    //     maximum_refinement_level = weak_zone_refinement[2]-3;
+                    //   }                                            
                     else if (continental_mantle_present)
                       {
                         // std::cout<<"CM"<<std::endl; 
@@ -380,9 +404,9 @@ namespace aspect
                       }
 
                     
-                    if (refine_border_present){
-                      maximum_refinement_level = border_refinement_level;
-                    }   
+                    // if (refine_border_present){
+                    //   maximum_refinement_level = border_refinement_level;
+                    // }   
 
                     const int cell_level = cell->level();
                     if (cell_level >= maximum_refinement_level)

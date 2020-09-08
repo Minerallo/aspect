@@ -54,8 +54,8 @@ namespace aspect
         // for (unsigned int c=0; c < out.densities.size(); ++c)
         for (unsigned int c=0; c < out.densities.size(); ++c)        
           {
-              //for some reason it doesn't work if I just write >=12
-            if(c==17 || c==18 || c==19 || c==20 || c==22 || c==23 || c==24 || c==25 || c==26 || c==27 || c==28 || c==29 || c==30 ||  c==31 ||  c==32 ||  c==33 || c==34 || c==35 || c==36 || c==37 || c==38 || c==39 || c==40)
+            //   //for some reason it doesn't work if I just write >=12
+            if(c==22 || c==23 || c==24 || c==25 || c==26 || c==27 || c==28 || c==29 || c==30 ||  c==31 ||  c==32 ||  c==33 || c==34 || c==35 || c==36 || c==37 || c==38 || c==39 || c==40)
             {
               out.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[input_index] - T_ref[c]));    
               out.thermal_expansion_coefficients[c] = thermal_expansivities[c];
@@ -63,16 +63,7 @@ namespace aspect
               out.compressibilities[c] = 0.0;
               out.entropy_derivative_pressure[c] = 0.0;
               out.entropy_derivative_temperature[c] = 0.0;
-            }  
-            else if(c==11 || c==12|| c==13 || c==14 || c==15 || c==16 || c==21)
-            {
-              out.densities[c] = densities[c];    
-              out.thermal_expansion_coefficients[c] = thermal_expansivities[c];
-              out.specific_heat_capacities[c] = specific_heats[c];
-              out.compressibilities[c] = 0.0;
-              out.entropy_derivative_pressure[c] = 0.0;
-              out.entropy_derivative_temperature[c] = 0.0;
-            }                     
+            }                    
             //for the rest the reference temperature is based on the adiabatic gradient
             else
              {

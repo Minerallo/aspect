@@ -106,7 +106,7 @@ namespace aspect
     {
       QTrapez<dim-1> face_corners;
 
-      const Quadrature<dim> quadrature(this->get_fe().base_element(this->introspection().base_elements.compositional_fields).get_unit_support_points());
+      // const Quadrature<dim> quadrature(this->get_fe().base_element(this->introspection().base_elements.compositional_fields).get_unit_support_points());
         FEFaceValues<dim> fe_face_values(this->get_mapping(),
                                          this->get_fe(),
                                          face_corners,
@@ -130,8 +130,8 @@ namespace aspect
         // (this->n_compositional_fields(),
         // std::vector<double> (quadrature.size()));
 
-        std::vector<double>compositional_values(quadrature.size()); 
-
+        std::vector<double>compositional_values(face_corners.size()); 
+        // double compositional_values =0.0;
         // std::vector<std::vector<double>> temporary_variables(0, std::vector<double>());
 
 
@@ -145,29 +145,30 @@ namespace aspect
           for (unsigned int face_no = 0; face_no < GeometryInfo<dim>::faces_per_cell; ++face_no)
           {
                 fe_face_values.reinit(cell, face_no);
-
+                fe_face_values[this->introspection().extractors.compositional_fields[composition_number]].get_function_values (this->get_solution(),
+                          compositional_values);
+                
                 for (unsigned int corner = 0; corner < face_corners.size(); ++corner)
                   {
-                  const Point<dim> vertex = fe_face_values.quadrature_point(corner);
-                    const double elevation = this->get_geometry_model().height_above_reference_surface(vertex);  
+                      const Point<dim> vertex = fe_face_values.quadrature_point(corner);
+                      const double elevation = this->get_geometry_model().height_above_reference_surface(vertex);  
 
-                fe_face_values[this->introspection().extractors.compositional_fields[composition_number]].get_function_values (this->get_solution(),
-                    compositional_values);
+                    // std::cout<<corner<<"  "<<compositional_values[corner]<<std::endl;
 
-                for (unsigned int p=0; p<quadrature.size(); ++p)
-                  {     
-                    if (compositional_values[p] >= 0.95)
-                      {
-                        composition_tracked_present = true;
-                      }                        
-                  } 
+                  // for (unsigned int p=0; p<face_corners.size(); ++p)
+                  //   {     
+                      if (compositional_values[corner] >= 0.95)
+                        {
+                          composition_tracked_present = true;
+                        }                        
+                    //  } 
+
                if(composition_tracked_present)
                {
                     if (elevation < local_min_depth)
                       local_min_depth = elevation;                   
-               }
-
-            }
+               } 
+                }           
           }        
         }
       }

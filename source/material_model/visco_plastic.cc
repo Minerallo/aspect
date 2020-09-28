@@ -762,11 +762,6 @@ namespace aspect
           prm.declare_entry ("Minimum strain rate", "1.0e-20", Patterns::Double (0.),
                              "Stabilizes strain dependent viscosity. Units: \\si{\\per\\second}.");
           prm.declare_entry ("Reference strain rate","1.0e-15",Patterns::Double (0.),
-<<<<<<< HEAD
-                             "Reference strain rate for first time step. Units: \\si{\\per\\second}.");
-          prm.declare_entry ("Minimum viscosity", "1e17", Patterns::Double (0.),
-                             "Lower cutoff for effective viscosity. Units: \\si{\\pascal\\second}.");
-=======
                              "Reference strain rate for first time step. Units: $1 / s$");
 
           // We want to change the minimum viscosity depending on time so we need a vector with at 
@@ -786,8 +781,6 @@ namespace aspect
                              "Time to switch the minimum viscosity. Units: $Pa \\, s$");   
                                                  
 
-
->>>>>>> Fastscape clone Derek plus changes
           prm.declare_entry ("Maximum viscosity", "1e28", Patterns::Double (0.),
                              "Upper cutoff for effective viscosity. Units: \\si{\\pascal\\second}.");
           prm.declare_entry ("Reference viscosity", "1e22", Patterns::Double (0.),

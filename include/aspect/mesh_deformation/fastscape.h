@@ -149,7 +149,10 @@ namespace aspect
         bool minimum_topography_diffusion;
         double dx_diffusion;
         bool diffusion_sinusoid;
+
         double time_to_diffuse;
+
+
 
         //Boundary conditions
         unsigned int bottom;

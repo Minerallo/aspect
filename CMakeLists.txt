@@ -119,8 +119,27 @@ ENDIF()
 DEAL_II_INITIALIZE_CACHED_VARIABLES()
 PROJECT(${TARGET} CXX)
 
-SET(ASPECT_WITH_WORLD_BUILDER ON CACHE BOOL "Whether to enable compiling aspect with the Geodynamic World Builder.")
-MESSAGE(STATUS "ASPECT_WITH_WORLD_BUILDER = '${ASPECT_WITH_WORLD_BUILDER}'")
+
+IF (ASPECT_USE_PETSC)
+FOREACH(_source_file ${TARGET_SRC})
+  SET_PROPERTY(SOURCE ${_source_file}
+    APPEND PROPERTY COMPILE_DEFINITIONS ASPECT_USE_PETSC="1")
+ENDFOREACH()
+ENDIF()
+
+
+# Pass down the source directory to the sources. This can be used
+# to hard-code the location of data files, such as in
+# $ASPECT_SOURCE_DIR/data/velocity-boundary-conditions/gplates/*
+FOREACH(_source_file ${TARGET_SRC})
+  SET_PROPERTY(SOURCE ${_source_file}
+    APPEND PROPERTY COMPILE_DEFINITIONS ASPECT_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+ENDFOREACH()
+
+
+SET(ASPECT_WITH_WORLD_BUILDER OFF CACHE BOOL "Whether to enable compiling aspect with the Geodynamic World Builder.")
+message(STATUS "ASPECT_WITH_WORLD_BUILDER = '${ASPECT_WITH_WORLD_BUILDER}'")
+
 if(ASPECT_WITH_WORLD_BUILDER)
   # Check whether we can find the WorldBuilder.
   SET(WORLD_BUILDER_SOURCE_DIR "" CACHE PATH "Provide an external World Builder directory to be compiled with ASPECT. \

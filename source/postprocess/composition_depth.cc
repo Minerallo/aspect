@@ -134,6 +134,7 @@ namespace aspect
         // double compositional_values =0.0;
         // std::vector<std::vector<double>> temporary_variables(0, std::vector<double>());
 
+      //std::cout<<"name composition selected :"<<this->introspection().name_for_compositional_index(composition_number)<<std::endl;  
 
       // loop over all cells and find cell with 100 % of the defined composition, then save the elevation to stored_value
       for (const auto &cell : this->get_dof_handler().active_cell_iterators())
@@ -174,8 +175,9 @@ namespace aspect
       }
 
       //Calculate max depth across all processes
-      const double min_depth = extents[1] - Utilities::MPI::min(local_min_depth, this->get_mpi_communicator());        
-      // std::cout<<"Maximum depth value for composition :"<<local_min_height<<std::endl;
+      const double min_depth = std::abs(Utilities::MPI::min(local_min_depth, this->get_mpi_communicator())); 
+
+      //std::cout<<"abs depth :"<<min_depth<<" ending depth :"<<ending_depth<<std::endl;    
 
       // statistics.add_value ("Maximum depth value for composition " + this->introspection().name_for_compositional_index(composition_number),
       //                           local_min_height);
@@ -186,31 +188,31 @@ namespace aspect
           {
             std::string filename = this->get_output_directory() +"terminate-aspect";            
             std::ofstream file (filename.c_str());
-            file << "This is a generated random file generated when the tracked composition reached the defined depth of "<<ending_depth<<" m, it can be later used to end the run using the user request termination criteria " << std::endl;
+            file << "This is a generated random file generated when the tracked composition, "<<this->introspection().name_for_compositional_index(composition_number)<<" reached the defined depth of "<<ending_depth<<" m, it can be later used to end the run using the user request termination criteria " << std::endl;
           }        
       }
 
       //Write results to statistics file
-      statistics.add_value ("Depth (m)",
-                            min_depth);
-      const char *columns[] = { "Depth (m)"};
+      statistics.add_value ("Depth (km)",
+                            min_depth/1000);
+      const char *columns[] = { "Depth (km)"};
       for (unsigned int i=0; i<sizeof(columns)/sizeof(columns[0]); ++i)
         {
           statistics.set_precision (columns[i], 8);
           statistics.set_scientific (columns[i], true);
         }
 
-      output_stats.precision(4);
-      output_stats << min_depth << " m";
+      output_stats.precision(5);
+      output_stats << min_depth/1000 << " km";
 
       // Just return stats if text output is not required at all or not needed at this time
       if (!write_to_file || ((this->get_time() < last_output_time + output_interval)
                              && (this->get_timestep_number() != 0)))
-        return std::pair<std::string, std::string> (" Depth composition seclected (m):",
+        return std::pair<std::string, std::string> (" Depth of the selected composition (km):",
                                                     output_stats.str());
 
 
-      return std::pair<std::string, std::string> ("Depth (m):",
+      return std::pair<std::string, std::string> ("Depth (km):",
                                                   output_stats.str());
 
       // statistics.add_value ("Depth (m)",

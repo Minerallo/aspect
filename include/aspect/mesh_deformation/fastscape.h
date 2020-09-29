@@ -151,8 +151,6 @@ namespace aspect
         bool diffusion_sinusoid;
         double time_to_diffuse;
 
-        double time_to_diffuse;
-
 
 
         //Boundary conditions

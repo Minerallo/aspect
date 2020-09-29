@@ -31,8 +31,8 @@ namespace aspect
     {
       const GeometryModel::Box<dim> *geometry = dynamic_cast<const GeometryModel::Box<dim> *>(&this->get_geometry_model());
 
-      AssertThrow(geometry != nullptr,
-                  ExcMessage("Fastscape can only be run with a box model"));
+//       AssertThrow(geometry != nullptr,
+//                   ExcMessage("Fastscape can only be run with a box model"));
 
       //Initialize parameters for restarting fastscape
       restart = this->get_parameters().resume_computation;

@@ -108,7 +108,9 @@ namespace aspect
            * All components use the same reference temperature.
            */
           double reference_T;
-          std::vector<double> T_ref;
+          double reference_compressibility;
+          bool use_compressible_model; 
+          // std::vector<double> T_ref;
           /**
            * Vector of thermal expansivities with one entry per composition and phase plus one
            * for the background field.

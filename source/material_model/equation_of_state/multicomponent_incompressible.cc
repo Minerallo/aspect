@@ -47,75 +47,56 @@ namespace aspect
 
 //     set Densities = background:0 ,UPM:1|2|3|4 ,Oceanic_crust:5|6|7|8|9|10 ,Oceanic_mantle:11|12|13|14 ,Weak_Zone:15,Sediments:16 ,Upper_Crust:17 ,Lower_Crust:18|19|20|21|22|23 ,Continental_mantle:24|25|26|27 ,Craton:28|29|30|31 ,plastic_strain:32
 
-         std::vector<double> T_ref = {293,293,293,293,293,350,650,800,890,1080,1315,1315,1000,1000,1000,1000,1000,293,326,510,803,803,803,803,803,803,1240,1240,1240,1240,1100,1100,1100,1100,293};
+        //  std::vector<double> T_ref = {293,293,293,293,293,350,650,800,890,1080,1315,1315,1000,1000,1000,1000,1000,293,326,510,803,803,803,803,803,803,1240,1240,1240,1240,1100,1100,1100,1100,293};
           
           
                 // Loop through all requested points
         // for (unsigned int c=0; c < out.densities.size(); ++c)
         for (unsigned int c=0; c < out.densities.size(); ++c)        
           {
-            //   //for some reason it doesn't work if I just write >=12
-            if (c == 18 || c == 19 || c == 20 || c == 21 || c == 22 || c == 23 || c == 24 || c == 25 || c == 26 || c == 27 || c == 28 || c == 29 || c == 30 || c == 31 || c == 32 || c == 33 || c == 34 || c == 35)
-            {
-              out.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[input_index] - T_ref[c]));    
+            // //   //for some reason it doesn't work if I just write >=12
+            // if (c == 18 || c == 19 || c == 20 || c == 21 || c == 22 || c == 23 || c == 24 || c == 25 || c == 26 || c == 27 || c == 28 || c == 29 || c == 30 || c == 31 || c == 32 || c == 33 || c == 34 || c == 35)
+            // {
+            //   out.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[input_index] - T_ref[c]));    
+            //   out.thermal_expansion_coefficients[c] = thermal_expansivities[c];
+            //   out.specific_heat_capacities[c] = specific_heats[c];
+            //   out.compressibilities[c] = 0.0;
+            //   out.entropy_derivative_pressure[c] = 0.0;
+            //   out.entropy_derivative_temperature[c] = 0.0;
+            // }                    
+            // //for the rest the reference temperature is based on the adiabatic gradient
+            // else
+            //  {
+              //  double rho = densities[c] * std::exp(reference_compressibility * (in.pressure[input_index] - this->get_surface_pressure()));
+              // rho *= (1 - thermal_expansivities[c]  * (in.temperature[input_index] - this->get_adiabatic_conditions().temperature(in.position[input_index])));
+              // out.densities[c]=rho;
+              // out.thermal_expansion_coefficients[c] = thermal_expansivities[c];
+              // out.specific_heat_capacities[c] = specific_heats[c];
+              // out.compressibilities[c] = reference_compressibility;
+              // out.entropy_derivative_pressure[c] = 0.0;
+              // out.entropy_derivative_temperature[c] = 0.0;  
+          // }
+              if(use_compressible_model)
+              {
+              double rho = densities[c] * std::exp(reference_compressibility * (in.pressure[input_index] - this->get_surface_pressure()));
+              rho *= (1 - thermal_expansivities[c]  * (in.temperature[input_index] - this->get_adiabatic_conditions().temperature(in.position[input_index])));
+              out.densities[c]=rho;
               out.thermal_expansion_coefficients[c] = thermal_expansivities[c];
               out.specific_heat_capacities[c] = specific_heats[c];
-              out.compressibilities[c] = 0.0;
+              out.compressibilities[c] = reference_compressibility;
               out.entropy_derivative_pressure[c] = 0.0;
-              out.entropy_derivative_temperature[c] = 0.0;
-            }                    
-            //for the rest the reference temperature is based on the adiabatic gradient
-            else
-             {
-              out.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[input_index] - (this->get_adiabatic_conditions().temperature(in.position[input_index]))));
+              out.entropy_derivative_temperature[c] = 0.0;  
+              }else{
+              // Simple compressible
+              out.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[input_index] - (this->get_adiabatic_conditions().temperature(in.position[input_index])))*reference_compressibility *(in.pressure[input_index] -  (this->get_adiabatic_conditions().pressure(in.position[input_index]))));
               out.thermal_expansion_coefficients[c] = thermal_expansivities[c];
               out.specific_heat_capacities[c] = specific_heats[c];
-              out.compressibilities[c] = 0.0;
+              out.compressibilities[c] = reference_compressibility;
               out.entropy_derivative_pressure[c] = 0.0;
               out.entropy_derivative_temperature[c] = 0.0;
-             }
+              }         
+            //  }
           }           
-          
-// //           OPTION 1 : Weak zone constant density, lithosphere reference temperature  in order for the average density to be equal to the density of reference, mantle density constrained by mantle adiabat.
-// // /*    set Densities = background:3300 ,UPM:3300|3736|3875|4263 ,TZ:3736|3875|4263 ,TZ2:3875|4263 ,LM:4263 ,Weak_Layer:2670 ,Oceanic_crust:3000|3450|3567|3900|4112|4256 ,Oceanic_mantle:3280|3737|3938|4382 ,Sediments:2670 ,Upper_Crust:2800 ,Lower_Crust:3000|3450|3567|3900|4112|4256 ,Continental_mantle:3280|3737|3938|4382 ,Craton:3280|3737|3938|4382 ,plastic_strain:3300, Damping:4530
-// //          */ 
-// //          std::vector<double> T_ref = {293,293,293,293,293,293,293,293,293,293,293,293,350,650,800,890,1080,1315,1000,1000,1000,1000,326,510,803,803,803,803,803,803,1240,1240,1240,1240,1100,1100,1100,1100,293,293};
-// //           
-// //           
-// //                 // Loop through all requested points
-// //         // for (unsigned int c=0; c < out.densities.size(); ++c)
-// //         for (unsigned int c=0; c < out.densities.size(); ++c)        
-// //           {
-// //               //for some reason it doesn't work if I just write >=12
-// //             if(c==13 || c==14 || c==15 || c==16 || c==17 || c==18 || c==19 || c==20 || c==21 || c==22 || c==23 || c==24 || c==25 || c==26 || c==27 || c==28 || c==29 || c==30 ||  c==31 ||  c==32 ||  c==33 || c==34 || c==35 || c==36 || c==37 || c==38 || c==39 || c==40)
-// //             {
-// //               out.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[input_index] - T_ref[c]));    
-// //               out.thermal_expansion_coefficients[c] = thermal_expansivities[c];
-// //               out.specific_heat_capacities[c] = specific_heats[c];
-// //               out.compressibilities[c] = 0.0;
-// //               out.entropy_derivative_pressure[c] = 0.0;
-// //               out.entropy_derivative_temperature[c] = 0.0;
-// //             }  
-// //             else if(c==12)
-// //             {
-// //               out.densities[c] = densities[c];    
-// //               out.thermal_expansion_coefficients[c] = thermal_expansivities[c];
-// //               out.specific_heat_capacities[c] = specific_heats[c];
-// //               out.compressibilities[c] = 0.0;
-// //               out.entropy_derivative_pressure[c] = 0.0;
-// //               out.entropy_derivative_temperature[c] = 0.0;
-// //             }                     
-// //             //for the rest the reference temperature is based on the adiabatic gradient
-// //             else
-// //              {
-// //               out.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[input_index] - (this->get_adiabatic_conditions().temperature(in.position[input_index]))));
-// //               out.thermal_expansion_coefficients[c] = thermal_expansivities[c];
-// //               out.specific_heat_capacities[c] = specific_heats[c];
-// //               out.compressibilities[c] = 0.0;
-// //               out.entropy_derivative_pressure[c] = 0.0;
-// //               out.entropy_derivative_temperature[c] = 0.0;
-// //              }
-// //           } 
       }
 
       template <int dim>
@@ -123,7 +104,11 @@ namespace aspect
       MulticomponentIncompressible<dim>::
       is_compressible () const
       {
-        return false;
+        if(use_compressible_model){
+          return true; 
+        }else{
+          return false; 
+        }
       }
 
 
@@ -133,6 +118,10 @@ namespace aspect
       MulticomponentIncompressible<dim>::declare_parameters (ParameterHandler &prm,
                                                              const double default_thermal_expansion)
       {
+        prm.declare_entry ("Compressibility", "5.124e-12",
+                          Patterns::Double (0),
+                          "The value of the compressibility $\\kappa$. "
+                          "Units: $1/Pa$.");        
         prm.declare_entry ("Reference temperature", "293.",
                            Patterns::Double (0.),
                            "The reference temperature $T_0$. Units: \\si{\\kelvin}.");
@@ -163,6 +152,10 @@ namespace aspect
       MulticomponentIncompressible<dim>::parse_parameters (ParameterHandler &prm,
                                                            const std::shared_ptr<std::vector<unsigned int>> &expected_n_phases_per_composition)
       {
+        use_compressible_model = prm.get_bool ("Use compressible model"); 
+        if (use_compressible_model){ 
+        reference_compressibility  = prm.get_double ("Compressibility");}
+
         reference_T = prm.get_double ("Reference temperature");
 
         // Establish that a background field is required here

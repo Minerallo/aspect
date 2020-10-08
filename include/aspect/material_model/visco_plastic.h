@@ -13,7 +13,7 @@
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU General Public License for more details.
 
-  You should have received a copy of the GNU General Public License
+  You should have received a copy of the GNU General Public License 
   along with ASPECT; see the file LICENSE.  If not see
   <http://www.gnu.org/licenses/>.
 */
@@ -21,6 +21,7 @@
 #ifndef _aspect_material_model_visco_plastic_h
 #define _aspect_material_model_visco_plastic_h
 
+#include <aspect/mesh_deformation/fastscape.h>
 #include <aspect/material_model/interface.h>
 #include <aspect/material_model/rheology/strain_dependent.h>
 #include <aspect/simulator_access.h>
@@ -50,6 +51,7 @@ namespace aspect
     class PlasticAdditionalOutputs : public NamedAdditionalMaterialOutputs<dim>
     {
       public:
+
         PlasticAdditionalOutputs(const unsigned int n_points);
 
         std::vector<double> get_nth_output(const unsigned int idx) const override;
@@ -223,8 +225,12 @@ namespace aspect
     {
       public:
 
+        // double get_trench_position()const;
+        
         void evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
                       MaterialModel::MaterialModelOutputs<dim> &out) const override;
+        
+        void get_trench_position(); 
 
         /**
          * Return whether the model is compressible or not.  Incompressibility
@@ -276,6 +282,7 @@ namespace aspect
 
       private:
 
+        double Ptrench; 
         double min_strain_rate;
         double ref_strain_rate;
 

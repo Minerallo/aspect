@@ -30,7 +30,7 @@ namespace aspect
     FastScape<dim>::initialize()
     {
       const GeometryModel::Box<dim> *geometry = dynamic_cast<const GeometryModel::Box<dim> *>(&this->get_geometry_model());
-
+      Ptrench= 0; 
 //       AssertThrow(geometry != nullptr,
 //                   ExcMessage("Fastscape can only be run with a box model"));
 
@@ -683,7 +683,11 @@ namespace aspect
             std::cout << " Minimum elevation (inverted) : " << min_h << " index : " << idx_h<< " Position in km : " << ((idx_h-2) * dx) /1000 << std::endl;
             // Since the variable are not carried from one timestep to another I redefine the diffusion grid here
             //one index is equal to one element or about 1dx
-    
+
+            Ptrench = ((idx_h-2) * dx); 
+            // double Ptrench2=trench_position(); 
+            // std::cout<<"here we get the Ptrench "<<Ptrench<<" "<<Ptrench2<<std::endl; 
+            std::cout<<"here we get the Ptrench of Fastscape "<<Ptrench<<" "<<std::endl;
               if (diffusion_sinusoid){
                 for (int i = 0; i <= array_size-nx; i++){
                   double current_ny = i/nx;
@@ -906,6 +910,14 @@ namespace aspect
                                                  vector_function_object,
                                                  mesh_velocity_constraints);
       }
+    }
+
+
+    template <int dim>
+    double
+    FastScape<dim>::trench_position() const
+    {
+      return Ptrench;
     }
 
     //TODO: Give better explanations of variables and cite the fastscape documentation.
@@ -1271,5 +1283,8 @@ namespace aspect
                                            "when called. Once FastScape has run for the given amount of timesteps, it "
                                            "compares the initial and final heights to send a velocity back to the mesh "
                                            "deformation plugin.")
+                                           
+    // template class FastScape<2>;
+    // template class FastScape<3>;
   }
 } // namespace aspect

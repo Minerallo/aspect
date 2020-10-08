@@ -256,7 +256,8 @@ namespace aspect
                         {
                             if(vertex(1) > 250000)
                             {                                 
-                          oceanic_mantle_present = true;
+                            oceanic_mantle_present = true;
+                            break; 
                             if (prelim_composition_values[oceanic_mantle_refinement[0]][p] >= 1.0)
                             {
                               in_center_of_compo = true;
@@ -292,7 +293,7 @@ namespace aspect
                             }
                             }
                           }
-                        if (prelim_composition_values[0][p] > 0.5)
+                        if (prelim_composition_values[0][p] > 0.85)
                           {
                             mantle_present = true;
                           }                          

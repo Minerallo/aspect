@@ -77,6 +77,7 @@ namespace aspect
     {
       public:
 
+        double trench_position() const;
         //FastScape();
 
         virtual void initialize ();
@@ -103,6 +104,7 @@ namespace aspect
         /**
          * A function object representing the mesh deformation.
          */
+        mutable double Ptrench; 
         int nstep;
         int bc;
         int array_size;

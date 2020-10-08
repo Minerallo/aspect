@@ -37,7 +37,7 @@ namespace aspect
       {
         std::vector<std::string> names;
         names.emplace_back("current_cohesions");
-        names.emplace_back("current_friction_angles");
+        names.emplace_back("current_friction_angles"); 
         names.emplace_back("plastic_yielding");
         return names;
       }
@@ -169,7 +169,15 @@ namespace aspect
       return cohesions;
     }
 
-
+      template <int dim>
+      void
+      ViscoPlastic<dim>::get_trench_position()
+      {
+      aspect::MeshDeformation::FastScape<dim> obj;
+      Ptrench= obj.trench_position();  
+      // std::cout<<"here we get the Ptrench Yiahh "<<Ptrench<<std::endl;
+      // return Ptrench2;
+      }
 
     template <int dim>
     std::pair<std::vector<double>, std::vector<bool> >
@@ -206,6 +214,18 @@ namespace aspect
         // Calculate the square root of the second moment invariant for the deviatoric strain rate tensor.
         edot_ii = std::max(std::sqrt(std::fabs(second_invariant(deviator(in.strain_rate[i])))),
                            min_strain_rate);
+
+      
+      // const aspect::MeshDeformation::FastScape<dim> *surface_trench = dynamic_cast<const aspect::MeshDeformation::FastScape<dim> *>(1); 
+
+      // double Ptrench2=aspect::MeshDeformation::FastScape<dim>::trench_position();                     
+      // std::cout<<"here we get the Ptrench "<<Ptrench2<<std::endl; 
+
+      // aspect::MeshDeformation::FastScape<dim> obj;
+      // double Ptrench2= obj.trench_position(); 
+      // std::cout<<"here we get the Ptrench Yiahh "<<Ptrench2<<std::endl; 
+
+      // std::cout<<"here we get the Ptrench Yiahh "<<Ptrench<<std::endl;
 
       double min_visc=0;
       // Set the minimum viscosity depending on time
@@ -391,6 +411,8 @@ namespace aspect
 
           // Step 5: limit the viscosity with specified minimum and maximum bounds
           composition_viscosities[j] = std::min(std::max(viscosity_yield, min_visc), max_visc);
+          // composition_viscosities[] = std::min(std::max(viscosity_yield, min_visc(in.position[i]), max_visc);
+
         }
       return std::make_pair (composition_viscosities, composition_yielding);
     }
@@ -1291,5 +1313,6 @@ namespace aspect
                                    "The value for the components of this formula and additional "
                                    "parameters are read from the parameter file in subsection "
                                    " 'Material model/Visco Plastic'.")
+
   }
 }

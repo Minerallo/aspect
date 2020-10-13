@@ -97,6 +97,12 @@ namespace aspect
                               std::shared_ptr<std::vector<unsigned int>>());
 
         private:
+        // const bool use_density_model1;
+        // const bool use_density_model2; 
+        // const bool use_density_model3; 
+        std::vector<double> reference_compressibilities;
+        std::vector<double> reference_temperatures;
+        std::vector<double> isothermal_bulk_modulus_pressure_derivatives;
           /**
            * Vector of reference densities $\rho_0$ with one entry per composition and phase plus one
            * for the background field.
@@ -107,9 +113,9 @@ namespace aspect
            * The reference temperature $T_0$ used in the computation of the density.
            * All components use the same reference temperature.
            */
-          double reference_T;
+          // double reference_T;
           double reference_compressibility;
-          bool use_compressible_model; 
+          
           // std::vector<double> T_ref;
           /**
            * Vector of thermal expansivities with one entry per composition and phase plus one

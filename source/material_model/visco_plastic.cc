@@ -26,11 +26,12 @@
 #include <aspect/adiabatic_conditions/interface.h>
 #include <aspect/gravity_model/interface.h>
 
+// #include <aspect/material_model/interface.h>
+// #include <aspect/simulator_access.h>
 namespace aspect
 {
   namespace MaterialModel
   {
-
     namespace
     {
       std::vector<std::string> make_plastic_additional_outputs_names()
@@ -42,6 +43,40 @@ namespace aspect
         return names;
       }
     }
+
+    // template <int dim>
+    // ViscoPlastic<dim>::AsciiReferenceProfile ()
+    //   :
+    //   density_index(numbers::invalid_unsigned_int),
+    //   thermal_expansivity_index(numbers::invalid_unsigned_int),
+    //   specific_heat_index(numbers::invalid_unsigned_int),
+    //   compressibility_index(numbers::invalid_unsigned_int),
+    // {}
+
+    // template <int dim>
+    // void
+    // ViscoPlastic<dim>::initialize ()
+    // {
+    //   density_index=numbers::invalid_unsigned_int;
+    //   thermal_expansivity_index=numbers::invalid_unsigned_int;
+    //   specific_heat_index=numbers::invalid_unsigned_int;
+    //   compressibility_index=numbers::invalid_unsigned_int;
+    //   profile.initialize(this->get_mpi_communicator());
+
+    //   density_index = profile.get_column_index_from_name("density");
+    //   thermal_expansivity_index = profile.get_column_index_from_name("thermal_expansivity");
+    //   specific_heat_index = profile.get_column_index_from_name("specific_heat");
+    //   compressibility_index = profile.get_column_index_from_name("compressibility");
+    // }
+
+    // template <int dim>
+    // std::vector<string>
+    // ViscoPlastic<dim>::get_burnman_index() const
+    // {
+    //   return density index;
+    // }
+
+
 
     template <int dim>
     bool

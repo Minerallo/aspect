@@ -25,7 +25,7 @@
 #include <aspect/simulator_access.h>
 #include <aspect/material_model/equation_of_state/interface.h>
 
-
+#include <aspect/utilities.h>
 namespace aspect
 {
   namespace MaterialModel
@@ -53,6 +53,7 @@ namespace aspect
       class MulticomponentIncompressible :  public ::aspect::SimulatorAccess<dim>
       {
         public:
+
           /**
            * A function that computes the output of the equation of state @p out
            * for all compositions, given the inputs in @p in and an index q that
@@ -101,6 +102,19 @@ namespace aspect
           std::vector<double> reference_densities;
 
         private:
+
+        /**
+         * Object containing the data profile.
+         */
+        aspect::Utilities::AsciiDataProfile<dim> profile;
+
+        /**
+         * The column indices of the temperature, pressure, and density column
+         * in the data file.
+         */
+
+        // aspect::MaterialModel::AsciiReferenceProfile<dim>::AsciiReferenceProfile(); 
+        // aspect::MaterialModel::AsciiReferenceProfile<dim>::initialize(); 
           /**
            * Vector for reference temperatures, read from parameter file .
            */

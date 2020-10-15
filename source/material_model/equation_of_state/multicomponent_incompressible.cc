@@ -21,12 +21,15 @@
 
 #include <aspect/material_model/equation_of_state/multicomponent_incompressible.h>
 #include <aspect/utilities.h>
-
-
+#include <aspect/adiabatic_conditions/interface.h>
+// #include <aspect/material_model/ascii_reference_profile.h>
+#include <aspect/simulator_access.h>
+// #include <aspect/material_model/visco_plastic.h>
 namespace aspect
 {
   namespace MaterialModel
   {
+
     namespace EquationOfState
     {
       template <int dim>
@@ -36,26 +39,59 @@ namespace aspect
                const unsigned int q,
                MaterialModel::EquationOfStateOutputs<dim> &out) const
       {
-
         const double pressure = in.pressure[q];
         const double temperature = std::max(in.temperature[q], 1.); // temperature can't be zero for correct evaluation
+        const Point<dim> position = in.position[q];
+        const double temperature_deviation = temperature - this->get_adiabatic_conditions().temperature(position);
+        const double pressure_deviation = pressure - this->get_adiabatic_conditions().pressure(position);
+        const double depth = this->get_geometry_model().depth(position);
+        const Point<1> profile_position(depth);
 
         for (unsigned int c=0; c < out.densities.size(); ++c)
           {
-            const double ak = reference_thermal_expansivities[c]/reference_isothermal_compressibilities[c];
-            const double f = (1. + (pressure - ak*(temperature - reference_temperatures[c])) *
-                              isothermal_bulk_modulus_pressure_derivatives[c] *
-                              reference_isothermal_compressibilities[c]);
+              // out.thermal_expansion_coefficients[c] = profile.get_data_component(profile_position,5);
+              // std::cout<<"#Phase = "<<c<<" , thermal exp = "<<out.thermal_expansion_coefficients[c]<<std::endl;
+              // out.specific_heat_capacities[c] = profile.get_data_component(profile_position,6);
+              // out.compressibilities[c] = profile.get_data_component(profile_position,7);
 
-            out.densities[c] = reference_densities[c]*std::pow(f, 1./isothermal_bulk_modulus_pressure_derivatives[c]);
-            out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c] / f;
-            out.specific_heat_capacities[c] = (isochoric_specific_heats[c] +
-                                               (temperature*reference_thermal_expansivities[c] *
-                                                ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
-                                                / reference_densities[c]));
-            out.compressibilities[c] = reference_isothermal_compressibilities[c]/f;
-            out.entropy_derivative_pressure[c] = 0.;
-            out.entropy_derivative_temperature[c] = 0.;
+              // out.densities[c] = profile.get_data_component(profile_position,3)
+              //                   * (1.0 - out.thermal_expansion_coefficients[c] * temperature_deviation)
+              //                   * (1.0 + out.compressibilities[c] * pressure_deviation);
+
+              // out.entropy_derivative_pressure[c] = 0.0;
+              // out.entropy_derivative_temperature[c] = 0.0;  
+
+            if(c<6)
+            {
+              out.thermal_expansion_coefficients[c] = profile.get_data_component(profile_position,5);
+              std::cout<<"#Phase = "<<c<<" , thermal exp = "<<out.thermal_expansion_coefficients[c]<<std::endl;
+              out.specific_heat_capacities[c] = profile.get_data_component(profile_position,6);
+              out.compressibilities[c] = profile.get_data_component(profile_position,7);
+
+              out.densities[c] = profile.get_data_component(profile_position,3)
+                                * (1.0 - out.thermal_expansion_coefficients[c] * temperature_deviation)
+                                * (1.0 + out.compressibilities[c] * pressure_deviation);
+
+              out.entropy_derivative_pressure[c] = 0.0;
+              out.entropy_derivative_temperature[c] = 0.0;     
+            } else{
+              const double ak = reference_thermal_expansivities[c]/reference_isothermal_compressibilities[c];
+              const double f = (1. + (pressure - ak*(temperature - reference_temperatures[c])) *
+                                isothermal_bulk_modulus_pressure_derivatives[c] *
+                                reference_isothermal_compressibilities[c]);
+
+              out.densities[c] = reference_densities[c]*std::pow(f, 1./isothermal_bulk_modulus_pressure_derivatives[c]);
+              out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c] / f;
+              out.specific_heat_capacities[c] = (isochoric_specific_heats[c] +
+                                                (temperature*reference_thermal_expansivities[c] *
+                                                  ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
+                                                  / reference_densities[c]));
+              out.compressibilities[c] = reference_isothermal_compressibilities[c]/f;
+              out.entropy_derivative_pressure[c] = 0.;
+              out.entropy_derivative_temperature[c] = 0.;              
+            }            
+  
+
           }
       }
 

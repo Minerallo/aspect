@@ -36,6 +36,7 @@
 
 #include<deal.II/fe/component_mask.h>
 
+
 namespace aspect
 {
   namespace MaterialModel
@@ -225,6 +226,31 @@ namespace aspect
     {
       public:
 
+        // /**
+        //  * Object containing the data profile.
+        //  */
+        // aspect::Utilities::AsciiDataProfile<dim> profile;
+
+        // /**
+        //  * The column indices of the temperature, pressure, and density column
+        //  * in the data file.
+        //  */
+        // unsigned int density_index;
+        // unsigned int thermal_expansivity_index;
+        // unsigned int specific_heat_index;
+        // unsigned int compressibility_index;      
+        
+        // AsciiReferenceProfile ();	
+
+
+        // /**
+        //  * Initialization function. This function is called once at the
+        //  * beginning of the program after parse_parameters is run and after
+        //  * the SimulatorAccess (if applicable) is initialized.
+        //  */
+        // void
+        // initialize () override;      
+
         // double get_trench_position()const;
         
         void evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
@@ -281,6 +307,20 @@ namespace aspect
         is_yielding (const MaterialModelInputs<dim> &in) const;
 
       private:
+
+        /**
+         * Object containing the data profile.
+         */
+        // aspect::Utilities::AsciiDataProfile<dim> profile;
+
+        /**
+         * The column indices of the temperature, pressure, and density column
+         * in the data file.
+         */
+        // unsigned int density_index;
+        // unsigned int thermal_expansivity_index;
+        // unsigned int specific_heat_index;
+        // unsigned int compressibility_index;      
 
         double Ptrench; 
         double min_strain_rate;

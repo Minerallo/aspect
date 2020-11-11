@@ -227,15 +227,22 @@ namespace aspect
 
       // std::cout<<"here we get the Ptrench Yiahh "<<Ptrench<<std::endl;
 
+        
       double min_visc=0;
       // Set the minimum viscosity depending on time
       if(change_min_visc)
       {
-        if(this->get_time()/ year_in_seconds>=time_change_min_visc)     
+        if(this->get_time()/ year_in_seconds>=time_change_min_visc_second)     
+        {
+          min_visc=min_visc_third;
+          // [1]; 
+        }
+        else if(this->get_time()/year_in_seconds>=time_change_min_visc) 
         {
           min_visc=min_visc_second;
           // [1]; 
-        }else 
+        }
+        else 
         {
           min_visc=min_visc_first;
         // [0];
@@ -243,8 +250,9 @@ namespace aspect
       }else{
           min_visc=min_visc_first;        
       } 
+      
+    
            
-
       // Calculate viscosities for each of the individual compositional phases
       for (unsigned int j=0; j < volume_fractions.size(); ++j)
         {
@@ -790,18 +798,25 @@ namespace aspect
           // least 2 entries
           // prm.declare_entry ("Minimum viscosity", "1e17", Patterns::Double (0.),
           //                    "Lower cutoff for effective viscosity. Units: $Pa \\, s$");
-          prm.declare_entry ("Minimum viscosity", "1e17", Patterns::Double (0.),
+          prm.declare_entry ("Minimum viscosity", "1e20", Patterns::Double (0.),
                              "Lower cutoff for effective viscosity. Units: $Pa \\, s$");     
-          prm.declare_entry ("Minimum viscosity second", "1e17", Patterns::Double (0.),
-                             "Lower cutoff for effective viscosity. Units: $Pa \\, s$");                                  
+          prm.declare_entry ("Minimum viscosity second", "4e19", Patterns::Double (0.),
+                             "Lower cutoff for effective viscosity. Units: $Pa \\, s$");
+          prm.declare_entry ("Minimum viscosity third", "2e18", Patterns::Double (0.),
+                             "Lower cutoff for effective viscosity. Units: $Pa \\, s$");            
           // prm.declare_entry ("Minimum viscosity", "1e17", Patterns::List(Patterns::Double (0.)),
           //                    "Lower cutoff for effective viscosity. Units: $Pa \\, s$");
           prm.declare_entry("Switch minimum viscosity", "false",
                             Patterns::Bool(),
-                            "If you want to switch the minimum viscosity");                        
+                             "If you want to switch the minimum viscosity");   
+          prm.declare_entry("Switch minimum viscosity second", "false",
+                            Patterns::Bool(),
+                            "If you want to switch the minimum viscosity");
+          
           prm.declare_entry ("Time minimum viscosity switch", "1e6", Patterns::Double (0.),
                              "Time to switch the minimum viscosity. Units: $Pa \\, s$");   
-                                                 
+          prm.declare_entry ("Time minimum viscosity switch second", "2e6", Patterns::Double (0.),
+                             "Time to switch the minimum viscosity. Units: $Pa \\, s$");                                                   
 
           prm.declare_entry ("Maximum viscosity", "1e28", Patterns::Double (0.),
                              "Upper cutoff for effective viscosity. Units: \\si{\\pascal\\second}.");
@@ -969,11 +984,14 @@ namespace aspect
           // Allow a vector for the minimum viscosity in order to change it later in time
            min_visc_first = prm.get_double ("Minimum viscosity");
            min_visc_second = prm.get_double ("Minimum viscosity second");
+           min_visc_third = prm.get_double ("Minimum viscosity third");
           //  const std::vector<double> min_visc = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Minimum viscosity"))),                                                                      
           //                                                                  "Minimum viscosity");
                                                                            
-          change_min_visc = prm.get_bool ("Switch minimum viscosity");                
-          time_change_min_visc = prm.get_double("Time minimum viscosity switch");      
+          change_min_visc = prm.get_bool ("Switch minimum viscosity"); 
+//           change_min_visc_second = prm.get_bool ("Switch minimum viscosity second");   
+          time_change_min_visc = prm.get_double("Time minimum viscosity switch"); 
+          time_change_min_visc_second = prm.get_double("Time minimum viscosity switch second"); 
 
           max_visc = prm.get_double ("Maximum viscosity");
           ref_visc = prm.get_double ("Reference viscosity");

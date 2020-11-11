@@ -288,11 +288,14 @@ namespace aspect
 
         double min_visc_first;
         double min_visc_second;
-
+        double min_visc_third;
         // std::vector<double> min_visc;
         bool change_min_visc;
         double time_change_min_visc;
 
+//         bool change_min_visc_second;
+        double time_change_min_visc_second;
+        
         double max_visc;
         double ref_visc;
 

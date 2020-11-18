@@ -70,7 +70,8 @@ namespace aspect
         std::vector<unsigned int> lower_crust_refinement_two;        
         std::vector<unsigned int> continental_mantle_refinement;
         std::vector<unsigned int> craton_refinement;
-        std::vector<unsigned int> weak_zone_refinement;         
+        std::vector<unsigned int> weak_zone_refinement;
+        std::vector<unsigned int> weak_zone_refinement_two;  
         std::vector<unsigned int> oceanic_crust_refinement;         
         std::vector<unsigned int> oceanic_mantle_refinement; 
         std::vector<unsigned int> mantle_refinement;
@@ -194,15 +195,18 @@ namespace aspect
                           {
                             if(vertex(1) > 250000)
                             {
-                              if (vertex(1) > 980000){
-                              weak_zone_present = true;
+                              if(1050000 <=vertex(1) && vertex(1)<=1090000){  
+//                               if (vertex(1) > 1050000){
+                              weak_zone_present_two = true;
                               // if (prelim_composition_values[weak_zone_refinement[0]][p] >= 1.0)
                               // {
                               //   in_center_of_compo = true;
                               // }
                               break;
-                              // }else{
-                              //   weak_zone_present_two = true;                              
+//                               }
+                              }else if (980000 <=vertex(1) && vertex(1)<1050000){  
+                                weak_zone_present = true;
+                                break;
                               // }
                               }
                             }
@@ -376,11 +380,11 @@ namespace aspect
                         minimum_refinement_level = weak_zone_refinement[1];
                         maximum_refinement_level = weak_zone_refinement[2];
                       }    
-                    // else if (weak_zone_present_two)
-                    //   {
-                    //     minimum_refinement_level = weak_zone_refinement[1]-3;
-                    //     maximum_refinement_level = weak_zone_refinement[2]-3;
-                    //   }                                            
+                    else if (weak_zone_present_two)
+                      {
+                        minimum_refinement_level = weak_zone_refinement_two[1];
+                        maximum_refinement_level = weak_zone_refinement_two[2];
+                      }                                            
                     else if (continental_mantle_present)
                       {
                         // std::cout<<"CM"<<std::endl; 
@@ -509,7 +513,11 @@ namespace aspect
           prm.declare_entry("Weak Zone refinement","",
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
-                            "its maximum refinement level.");                                                                                                                                                  
+                            "its maximum refinement level.");  
+          prm.declare_entry("Weak Zone 2 refinement","",
+                            Patterns::List (Patterns::Integer(0)),
+                            "The compositional field number of the crust, its minimum refinement level and "
+                            "its maximum refinement level.");             
           prm.declare_entry("Mantle refinement","",
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
@@ -803,6 +811,30 @@ namespace aspect
           // AssertThrow (weak_zone_refinement[2] <= max_level,
           //              ExcMessage ("The maximum refinement for the crust cannot be "
           //                          "greater than the maximum level of the whole model. "));
+          
+
+          const std::vector<int> weak_zone_two
+            = Utilities::string_to_int(
+                Utilities::split_string_list(prm.get("Weak Zone 2 refinement")));
+
+          weak_zone_refinement_two = std::vector<unsigned int> (weak_zone_two.begin(),weak_zone_two.end());
+
+          AssertThrow (weak_zone_refinement_two.size() == 3,
+                       ExcMessage ("The number of refinement data given here must be "
+                                   "equal to 3 (field number + min level + max level). "));
+
+          AssertThrow (weak_zone_refinement_two[0] < this->n_compositional_fields(),
+                       ExcMessage ("The number of compositional field to refine (starting "
+                                   "from 0) should be smaller than the number of fields. "));
+
+          AssertThrow (weak_zone_refinement_two[1] >= min_level,
+                       ExcMessage ("The minimum refinement for the crust cannot be "
+                                   "smaller than the minimum level of the whole model. "));
+
+          // AssertThrow (weak_zone_refinement_two[2] <= max_level,
+          //              ExcMessage ("The maximum refinement for the crust cannot be "
+          //                          "greater than the maximum level of the whole model. "));
+          
 
 
           const std::vector<int> mantle

@@ -371,7 +371,17 @@ namespace aspect
 
           // Step 3b: calculate weakened friction, cohesion, and pre-yield viscosity
           const double current_cohesion = drucker_prager_parameters.cohesions[j] * weakening_factors[0];
-          const double current_friction = drucker_prager_parameters.angles_internal_friction[j] * weakening_factors[1];
+          
+          //Switch the internal angle of friction a a layer selected
+          double internal_change = drucker_prager_parameters.angles_internal_friction[j];
+          if(switch_layer_friction){
+            if(this->get_time()/ year_in_seconds>=time_switch_layer_friction && j==layer_number ){
+    //               this->introspection().name_for_compositional_index(j) == "Weak_Zone"
+                    internal_change=new_friction*numbers::PI/180.0;
+                }              
+            }
+          
+          const double current_friction = internal_change * weakening_factors[1];
           viscosity_pre_yield *= weakening_factors[2];
 
           // Step 4: plastic yielding
@@ -450,7 +460,15 @@ namespace aspect
               const std::array<double, 3> weakening_factors = strain_rheology.compute_strain_weakening_factors(j, in.composition[i]);
               plastic_out->cohesions[i]   += volume_fractions[j] * (drucker_prager_parameters.cohesions[j] * weakening_factors[0]);
               // Also convert radians to degrees
-              plastic_out->friction_angles[i] += 180.0/numbers::PI * volume_fractions[j] * (drucker_prager_parameters.angles_internal_friction[j] * weakening_factors[1]);
+          
+              double internal_change = drucker_prager_parameters.angles_internal_friction[j];
+          if(switch_layer_friction){
+            if(this->get_time()/ year_in_seconds>=time_switch_layer_friction && j==layer_number ){
+    //               this->introspection().name_for_compositional_index(j) == "Weak_Zone"
+                    internal_change=new_friction*numbers::PI/180.0;
+                }              
+            }
+              plastic_out->friction_angles[i] += 180.0/numbers::PI * volume_fractions[j] * (internal_change * weakening_factors[1]);
             }
         }
     }
@@ -794,6 +812,15 @@ namespace aspect
           prm.declare_entry ("Reference strain rate","1.0e-15",Patterns::Double (0.),
                              "Reference strain rate for first time step. Units: $1 / s$");
 
+          prm.declare_entry("Switch layer friction", "false",
+                            Patterns::Bool(),
+                             "Change for a new internal angle of friction"); 
+          prm.declare_entry ("Time to swtich layer friction", "2e6", Patterns::Double (0.),
+                             "Change for a new internal angle of friction. Units:degrees");          
+          prm.declare_entry ("Layer number", "3", Patterns::Double (0.),
+                             "Change for a new internal angle of friction. Units:degrees");
+          prm.declare_entry ("New internal friction angle", "3", Patterns::Double (0.),
+                             "Change for a new internal angle of friction. Units:degrees");
           // We want to change the minimum viscosity depending on time so we need a vector with at 
           // least 2 entries
           // prm.declare_entry ("Minimum viscosity", "1e17", Patterns::Double (0.),
@@ -968,6 +995,11 @@ namespace aspect
               elastic_rheology.initialize_simulator (this->get_simulator());
               elastic_rheology.parse_parameters(prm);
             }
+            
+          switch_layer_friction=prm.get_bool("Switch layer friction");
+          time_switch_layer_friction=prm.get_double ("Time to swtich layer friction");
+          layer_number= prm.get_double ("Layer number");
+          new_friction=prm.get_double ("New internal friction angle");
 
           // Reference and minimum/maximum values
           min_strain_rate = prm.get_double("Minimum strain rate");

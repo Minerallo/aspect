@@ -149,7 +149,7 @@ namespace aspect
                     for (unsigned int p=0; p<quadrature.size(); ++p)
                       {
 
-                        if (vertex(1) > 980000){                        
+                        if (1050000 <=vertex(1) && vertex(1)<=1095000){                        
                           if(use_superior){
                             if (strain_rate_cut<= strain_rates[0].norm()){
                                 smaller_strain_rate = true;

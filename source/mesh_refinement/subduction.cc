@@ -191,7 +191,7 @@ namespace aspect
 
                         //   }     
                         // std::cout<<prelim_composition_values[upper_crust_refinement[0]][p]<<std::endl;  
-                        if (prelim_composition_values[weak_zone_refinement[0]][p] >= 0.005)
+                        if (prelim_composition_values[weak_zone_refinement[0]][p] >= 0.60)
                           {
                             if(vertex(1) > 250000)
                             {

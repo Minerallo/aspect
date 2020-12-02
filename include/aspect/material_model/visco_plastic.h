@@ -285,6 +285,11 @@ namespace aspect
         double Ptrench; 
         double min_strain_rate;
         double ref_strain_rate;
+        
+        bool switch_layer_friction;
+        double time_switch_layer_friction;
+        double layer_number;
+        double new_friction;
 
         double min_visc_first;
         double min_visc_second;

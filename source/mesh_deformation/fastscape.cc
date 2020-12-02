@@ -89,6 +89,11 @@ namespace aspect
       //Determine array size to send to fastscape
       array_size = nx * ny - 1;
       std::cout << "nx: " << nx << "ny: " << ny << "y_extent: " << y_extent << "x_extent: " << x_extent << "x repetition: "<<x_repetitions << " dy " << dy << "  " << std::endl;
+      
+            // Create a folder for the FastScape visualization files.
+      Utilities::create_directory (this->get_output_directory() + "VTK/",
+                                   this->get_mpi_communicator(),
+                                   false);
     }
 
 

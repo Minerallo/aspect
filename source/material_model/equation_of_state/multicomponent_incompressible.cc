@@ -39,24 +39,37 @@ namespace aspect
 
         const double pressure = in.pressure[q];
         const double temperature = std::max(in.temperature[q], 1.); // temperature can't be zero for correct evaluation
+        
+        if(use_compressibility)
+        {
+            for (unsigned int c=0; c < out.densities.size(); ++c)
+            {
+                const double ak = reference_thermal_expansivities[c]/reference_isothermal_compressibilities[c];
+                const double f = (1. + (pressure - ak*(temperature - reference_temperatures[c])) *
+                                isothermal_bulk_modulus_pressure_derivatives[c] *
+                                reference_isothermal_compressibilities[c]);
 
-        for (unsigned int c=0; c < out.densities.size(); ++c)
-          {
-            const double ak = reference_thermal_expansivities[c]/reference_isothermal_compressibilities[c];
-            const double f = (1. + (pressure - ak*(temperature - reference_temperatures[c])) *
-                              isothermal_bulk_modulus_pressure_derivatives[c] *
-                              reference_isothermal_compressibilities[c]);
-
-            out.densities[c] = reference_densities[c]*std::pow(f, 1./isothermal_bulk_modulus_pressure_derivatives[c]);
-            out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c] / f;
-            out.specific_heat_capacities[c] = (isochoric_specific_heats[c] +
-                                               (temperature*reference_thermal_expansivities[c] *
-                                                ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
-                                                / reference_densities[c]));
-            out.compressibilities[c] = reference_isothermal_compressibilities[c]/f;
-            out.entropy_derivative_pressure[c] = 0.;
-            out.entropy_derivative_temperature[c] = 0.;
-          }
+                out.densities[c] = reference_densities[c]*std::pow(f, 1./isothermal_bulk_modulus_pressure_derivatives[c]);
+                out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c] / f;
+                out.specific_heat_capacities[c] = (isochoric_specific_heats[c] +
+                                                (temperature*reference_thermal_expansivities[c] *
+                                                    ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
+                                                    / reference_densities[c]));
+                out.compressibilities[c] = reference_isothermal_compressibilities[c]/f;
+                out.entropy_derivative_pressure[c] = 0.;
+                out.entropy_derivative_temperature[c] = 0.;
+            }
+        }else{
+            for (unsigned int c=0; c < out.densities.size(); ++c)
+            {
+                out.densities[c] = reference_densities[c] * (1 - reference_thermal_expansivities[c] * (temperature - 274));
+                out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c];
+                out.specific_heat_capacities[c] = isochoric_specific_heats[c];
+                out.compressibilities[c] = 0.0;
+                out.entropy_derivative_pressure[c] = 0.0;
+                out.entropy_derivative_temperature[c] = 0.0;
+            }
+        }
       }
 
 
@@ -66,7 +79,12 @@ namespace aspect
       MulticomponentIncompressible<dim>::
       is_compressible () const
       {
-        return true;
+        if(use_compressibility)
+        {
+            return true;
+        }else{
+            return false;
+        }
       }
 
 
@@ -110,6 +128,10 @@ namespace aspect
                            "for a total of N+1 values, where N is the number of compositional fields."
                            "If only one value is given, then all use the same value. "
                            "Units: \\si{\\joule\\per\\kelvin\\per\\kilogram}.");
+        prm.declare_entry("Use compressibility", "false",
+                            Patterns::Bool(),
+                             "If you want to switch the minimum viscosity");           
+        
       }
 
 
@@ -171,6 +193,7 @@ namespace aspect
                                                                          "Heat capacities",
                                                                          true,
                                                                          expected_n_phases_per_composition);
+        use_compressibility = prm.get_bool ("Use compressibility");
 
       }
     }

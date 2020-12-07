@@ -132,6 +132,8 @@ namespace aspect
            * and one more composition that has 2 phase transitions this vector would store {1,3}.
            */
           std::shared_ptr<std::vector<unsigned int> > n_phases_per_composition;
+          
+          bool use_compressibility;
 
       };
     }

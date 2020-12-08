@@ -133,7 +133,9 @@ namespace aspect
            */
           std::shared_ptr<std::vector<unsigned int> > n_phases_per_composition;
           
-          bool use_compressibility;
+          bool use_full_compressibility;
+          bool use_compressible_density_only;
+          bool use_incompressibility;
 
       };
     }

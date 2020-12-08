@@ -40,7 +40,7 @@ namespace aspect
         const double pressure = in.pressure[q];
         const double temperature = std::max(in.temperature[q], 1.); // temperature can't be zero for correct evaluation
         
-        if(use_compressibility)
+        if(use_full_compressibility)
         {
             for (unsigned int c=0; c < out.densities.size(); ++c)
             {
@@ -59,7 +59,28 @@ namespace aspect
                 out.entropy_derivative_pressure[c] = 0.;
                 out.entropy_derivative_temperature[c] = 0.;
             }
-        }else{
+        }else if(use_compressible_density_only)
+        {
+            for (unsigned int c=0; c < out.densities.size(); ++c)
+            {
+                const double ak = reference_thermal_expansivities[c]/reference_isothermal_compressibilities[c];
+                const double f = (1. + (pressure - ak*(temperature - reference_temperatures[c])) *
+                                isothermal_bulk_modulus_pressure_derivatives[c] *
+                                reference_isothermal_compressibilities[c]);
+
+                out.densities[c] = reference_densities[c]*std::pow(f, 1./isothermal_bulk_modulus_pressure_derivatives[c]);
+                out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c] / f;
+                out.specific_heat_capacities[c] = (isochoric_specific_heats[c] +
+                                                (temperature*reference_thermal_expansivities[c] *
+                                                    ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
+                                                    / reference_densities[c]));
+                //we send back that the model is incompressible, the mass will be balanced with the lithostatic pressure
+                out.compressibilities[c] = 0;
+                out.entropy_derivative_pressure[c] = 0.;
+                out.entropy_derivative_temperature[c] = 0.;
+            }
+        
+        }else if(use_incompressibility){
             for (unsigned int c=0; c < out.densities.size(); ++c)
             {
                 out.densities[c] = reference_densities[c] * (1 - reference_thermal_expansivities[c] * (temperature - 274));
@@ -79,7 +100,7 @@ namespace aspect
       MulticomponentIncompressible<dim>::
       is_compressible () const
       {
-        if(use_compressibility)
+        if(use_full_compressibility)
         {
             return true;
         }else{
@@ -128,9 +149,15 @@ namespace aspect
                            "for a total of N+1 values, where N is the number of compositional fields."
                            "If only one value is given, then all use the same value. "
                            "Units: \\si{\\joule\\per\\kelvin\\per\\kilogram}.");
-        prm.declare_entry("Use compressibility", "false",
+        prm.declare_entry("Use full compressibility", "false",
                             Patterns::Bool(),
-                             "If you want to switch the minimum viscosity");           
+                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation"); 
+        prm.declare_entry("Use compressible density only", "false",
+                            Patterns::Bool(),
+                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");  
+        prm.declare_entry("Use incompressibility", "false",
+                            Patterns::Bool(),
+                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");        
         
       }
 
@@ -193,7 +220,9 @@ namespace aspect
                                                                          "Heat capacities",
                                                                          true,
                                                                          expected_n_phases_per_composition);
-        use_compressibility = prm.get_bool ("Use compressibility");
+        use_full_compressibility = prm.get_bool ("Use full compressibility");
+        use_compressible_density_only = prm.get_bool ("Use compressible density only");
+        use_incompressibility = prm.get_bool ("Use incompressibility");
 
       }
     }

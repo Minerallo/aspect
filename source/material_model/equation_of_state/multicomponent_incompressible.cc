@@ -53,7 +53,8 @@ namespace aspect
                                                (temperature*reference_thermal_expansivities[c] *
                                                 ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
                                                 / reference_densities[c]));
-            out.compressibilities[c] = reference_isothermal_compressibilities[c]/f;
+            out.compressibilities[c] = 0; 
+//             reference_isothermal_compressibilities[c]/f;
             out.entropy_derivative_pressure[c] = 0.;
             out.entropy_derivative_temperature[c] = 0.;
           }
@@ -66,7 +67,8 @@ namespace aspect
       MulticomponentIncompressible<dim>::
       is_compressible () const
       {
-        return true;
+        return false;
+//         true;
       }
 
 

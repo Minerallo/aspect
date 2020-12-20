@@ -39,9 +39,14 @@ namespace aspect
         names.emplace_back("current_cohesions");
         names.emplace_back("current_friction_angles"); 
         names.emplace_back("plastic_yielding");
+        names.emplace_back("phase");
+        names.emplace_back("diffusion");
+        names.emplace_back("dislocation");
+        names.emplace_back("viscosity_ratio");        
         return names;
       }
     }
+
 
     template <int dim>
     bool
@@ -136,6 +141,33 @@ namespace aspect
     }
 
 
+   
+//    template <int dim>
+//    std::vector<double>
+//    PhaseAdditionalOutputs<dim>::get_nth_output2(const unsigned int idx2) const
+//    {
+//      (void)idx2; // suppress warning in release mode  
+//      AssertIndexRange (idx2, 4);
+//      switch (idx2)
+//        {
+//          case 0:
+//     	   return phase;
+// 
+//          case 1:
+//            return diffusion;
+// 
+//          case 2:
+//            return dislocation;
+// 
+//          case 3:
+//            return viscosity_ratio;
+// 
+//          default:
+//            AssertThrow(false, ExcInternalError());
+//        }
+//      // We will never get here, so just return something
+//      return phase;
+//    }   
 
     template <int dim>
     PlasticAdditionalOutputs<dim>::PlasticAdditionalOutputs (const unsigned int n_points)
@@ -143,14 +175,18 @@ namespace aspect
       NamedAdditionalMaterialOutputs<dim>(make_plastic_additional_outputs_names()),
       cohesions(n_points, numbers::signaling_nan<double>()),
       friction_angles(n_points, numbers::signaling_nan<double>()),
-      yielding(n_points, numbers::signaling_nan<double>())
+      yielding(n_points, numbers::signaling_nan<double>()),
+      phase(n_points, numbers::signaling_nan<double>()),
+      diffusion(n_points, numbers::signaling_nan<double>()),
+      dislocation(n_points, numbers::signaling_nan<double>()),
+      viscosity_ratio(n_points, numbers::signaling_nan<double>())
     {}
 
     template <int dim>
     std::vector<double>
     PlasticAdditionalOutputs<dim>::get_nth_output(const unsigned int idx) const
     {
-      AssertIndexRange (idx, 3);
+      AssertIndexRange (idx, 7);
       switch (idx)
         {
           case 0:
@@ -161,6 +197,18 @@ namespace aspect
 
           case 2:
             return yielding;
+
+          case 3:
+    	    return phase;
+
+          case 4:
+            return diffusion;
+
+          case 5:
+            return dislocation;
+
+          case 6:
+            return viscosity_ratio;            
 
           default:
             AssertThrow(false, ExcInternalError());
@@ -280,6 +328,7 @@ namespace aspect
           const double viscosity_dislocation = dislocation_creep.compute_viscosity(edot_ii, in.pressure[i], temperature_for_viscosity, j,
                                                                                    phase_function_values,
                                                                                    phase_function.n_phase_transitions_for_each_composition());
+
 
           // Step 1c: select what form of viscosity to use (diffusion, dislocation, fk, or composite)
           double viscosity_pre_yield = 0.0;
@@ -452,10 +501,127 @@ namespace aspect
           plastic_out->cohesions[i] = 0;
           plastic_out->friction_angles[i] = 0;
           plastic_out->yielding[i] = plastic_yielding ? 1 : 0;
+          plastic_out->phase[i] = 0;
+          plastic_out->dislocation[i] = 0;
+          plastic_out->diffusion[i] = 0;          
 
+          EquationOfStateOutputs<dim> eos_outputs (this->n_compositional_fields()+1);
+          EquationOfStateOutputs<dim> eos_outputs_all_phases (this->n_compositional_fields()+1+phase_function.n_phase_transitions());
+          
+          std::vector<double> phase_function_values(phase_function.n_phase_transitions(), 0.0);
+
+          // Store value of phase function for each phase and composition
+          // While the number of phases is fixed, the value of the phase function is updated for every point
+//           std::vector<double> phase_function_values(phase_function.n_phase_transitions(), 0.0);
+      
+          unsigned int ol_index = 0;
+
+
+/*          for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
+              {
+                const double gravity_norm = this->get_gravity_model().gravity_vector(in.position[i]).norm();
+                const double reference_density = (this->get_adiabatic_conditions().is_initialized())
+                                                ?
+                                                this->get_adiabatic_conditions().density(in.position[i])
+                                                :
+                                                eos_outputs_all_phases.densities[0];
+                                                
+                // The phase index is set to invalid_unsigned_int, because it is only used internally
+                // in phase_average_equation_of_state_outputs to loop over all existing phases
+                MaterialUtilities::PhaseFunctionInputs<dim> phase_inputs(in.temperature[i],
+                                                                        in.pressure[i],
+                                                                        this->get_geometry_model().depth(in.position[i]),
+                                                                        gravity_norm*reference_density,
+                                                                        numbers::invalid_unsigned_int); */                 
+//                 double init_phase_fraction=0; 
+//                 unsigned int number_of_phases =this->n_compositional_fields()+1+phase_function.n_phase_transitions(); 
+
+                // Compute value of phase functions
+//                 for (unsigned int j=1; j < this->n_compositional_fields()+1+phase_function.n_phase_transitions(); j++)
+//                     {
+//                     phase_inputs.phase_index = j-1;
+//                     if(phase_function.compute_value(phase_inputs)>=0.5)
+//                         ol_index = j;
+//                     
+//                     if(this->n_compositional_fields()+1+phase_function.n_phase_transitions()>0)
+//                         if(phase_function.compute_value(this->n_compositional_fields()+1+phase_function.n_phase_transitions())>=0.5)
+//                             ol_index = this->n_compositional_fields()+1+phase_function.n_phase_transitions();
+                /////////////////////////////////////////////////////////////////////
+//                 //send something back but ot what I want
+//                 for (unsigned int j=0; j < phase_function.n_phase_transitions(); j++)
+//                     {
+//                     phase_inputs.phase_index = j;
+//                     if(phase_function.compute_value(phase_inputs)>=0.5)
+//                     {
+// //                         init_phase_fraction=phase_function.compute_value(phase_inputs);
+//                         ol_index = j;
+//                     }
+//                     
+// //                         this->get_pcout() <<"number of phases : "<<phase_function.n_phase_transitions()<<"  , "<<"j= "<<j<<"  , "<<"phase function value : "<<phase_function.compute_value(phase_inputs)<<std::endl;
+//                     }
+//                     plastic_out->phase[i] = ol_index;
+//                }
+               ///////////////////////////////////////////////////////////////////////////
+               
+//               std::cout<<"densities number : "<<out.densities.size()<<"  , "<<std::endl;
+
+//             //Calculates for other phase transitions
+//             for(unsigned int j=1;j<phase_function.n_phase_transitions();++j)
+//                 if(phase_function(in.temperature[i],
+//                                   in.pressure[i],
+//                                   this->get_geometry_model().depth(in.position[i]),
+//                                   gravity_norm*reference_density,j-1) >= 0.5 )
+//                 ol_index = j;
+// 
+//             //check to see if material has passed final phase transition
+//             if(phase_function.n_phase_transitions()>0)
+//                 if(phase_function(in.temperature[i],
+//                                   in.pressure[i],
+//                                   this->get_geometry_model().depth(in.position[i]),
+//                                   gravity_norm*reference_density, phase_function.n_phase_transitions()-1) >= 0.5)
+//                 ol_index = phase_function.n_phase_transitions();
+// 
+            // The first time this function is called (first iteration of first time step)
+            // a specified "reference" strain rate is used as the returned value would
+            // otherwise be zero.
+            const bool use_reference_strainrate = (this->get_timestep_number() == 0) &&
+                                                    (in.strain_rate[i].norm() <= std::numeric_limits<double>::min());
+            double edot_ii;
+            if (use_reference_strainrate)
+                edot_ii = ref_strain_rate;
+            else
+                // Calculate the square root of the second moment invariant for the deviatoric strain rate tensor.
+                edot_ii = std::max(std::sqrt(std::fabs(second_invariant(deviator(in.strain_rate[i])))),
+                                min_strain_rate);   
+                
           // set to weakened values, or unweakened values when strain weakening is not used
           for (unsigned int j=0; j < volume_fractions.size(); ++j)
             {
+                
+/*          // Extract viscosity creep mechanism
+
+          // Choice of activation volume depends on whether there is an adiabatic temperature
+          // gradient used when calculating the viscosity. This allows the same activation volume
+          // to be used in incompressible and compressible models.
+          const double temperature_for_viscosity = in.temperature[i] + adiabatic_temperature_gradient_for_viscosity*in.pressure[i];
+          AssertThrow(temperature_for_viscosity != 0, ExcMessage(
+                        "The temperature used in the calculation of the visco-plastic rheology is zero. "
+                        "This is not allowed, because this value is used to divide through. It is probably "
+                        "being caused by the temperature being zero somewhere in the model. The relevant "
+                        "values for debugging are: temperature (" + Utilities::to_string(in.temperature[i]) +
+                        "), adiabatic_temperature_gradient_for_viscosity ("
+                        + Utilities::to_string(adiabatic_temperature_gradient_for_viscosity) + ") and pressure ("
+                        + Utilities::to_string(in.pressure[i]) + ")."));
+
+          // Step 1a: compute viscosity from diffusion creep law
+          plastic_out->diffusion[i] = diffusion_creep.compute_viscosity(in.pressure[i], temperature_for_viscosity, j,
+                                                                               phase_function_values,
+                                                                               phase_function.n_phase_transitions_for_each_composition());
+
+          // Step 1b: compute viscosity from dislocation creep law
+          plastic_out->dislocation[i] = dislocation_creep.compute_viscosity(edot_ii, in.pressure[i], temperature_for_viscosity, j,
+                                                                                   phase_function_values,
+                                                                                   phase_function.n_phase_transitions_for_each_composition());  */              
               // Calculate the strain weakening factors and weakened values
               const std::array<double, 3> weakening_factors = strain_rheology.compute_strain_weakening_factors(j, in.composition[i]);
               plastic_out->cohesions[i]   += volume_fractions[j] * (drucker_prager_parameters.cohesions[j] * weakening_factors[0]);
@@ -609,7 +775,29 @@ namespace aspect
       return composition_mask;
     }
 
-
+//     template <int dim>
+//     unsigned int
+//     ViscoPlastic<dim>::
+//     get_phase_index (const Point<dim> &position,
+//                      const double temperature,
+//                      const double pressure) const
+//     {
+//       unsigned int phase_index = 0;
+// 
+//       //Calculates for other phase transitions
+//       for(unsigned int j=1;j<phase_function.n_phase_transitions();++j)
+//         if(phase_function(position, temperature, pressure, j-1) >= 0.5 )
+//           phase_index = j;
+// 
+//       //check to see if material has passed final phase transition
+//       if(phase_function.n_phase_transitions()>0)
+//         if(phase_function(position, temperature, pressure, phase_function.n_phase_transitions()-1) >= 0.5)
+//           phase_index = phase_function.n_phase_transitions();
+// 
+// 
+//        //return which phase the material is in
+//        return phase_index;
+//     }
 
     template <int dim>
     void
@@ -632,6 +820,21 @@ namespace aspect
       // Loop through all requested points
       for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
         {
+
+//             // The first time this function is called (first iteration of first time step)
+//             // a specified "reference" strain rate is used as the returned value would
+//             // otherwise be zero.
+//             const bool use_reference_strainrate = (this->get_timestep_number() == 0) &&
+//                                                     (in.strain_rate[i].norm() <= std::numeric_limits<double>::min());
+
+/*            double edot_ii;
+            if (use_reference_strainrate)
+                edot_ii = ref_strain_rate;
+            else
+                // Calculate the square root of the second moment invariant for the deviatoric strain rate tensor.
+                edot_ii = std::max(std::sqrt(std::fabs(second_invariant(deviator(in.strain_rate[i])))),
+                                min_strain_rate);       */   
+          
           // First compute the equation of state variables and thermodynamic properties
           equation_of_state.evaluate(in, i, eos_outputs_all_phases);
 
@@ -654,7 +857,7 @@ namespace aspect
           for (unsigned int j=0; j < phase_function.n_phase_transitions(); j++)
             {
               phase_inputs.phase_index = j;
-              phase_function_values[j] = phase_function.compute_value(phase_inputs);
+              phase_function_values[j] = phase_function.compute_value(phase_inputs);              
             }
 
           // Average by value of gamma function to get value of compositions
@@ -735,7 +938,8 @@ namespace aspect
           // Now compute changes in the compositional fields (i.e. the accumulated strain).
           for (unsigned int c=0; c<in.composition[i].size(); ++c)
             out.reaction_terms[i][c] = 0.0;
-
+            
+            
           // Calculate changes in strain invariants and update the reaction terms
           strain_rheology.fill_reaction_outputs(in, i, min_strain_rate, plastic_yielding, out);
 
@@ -1128,7 +1332,8 @@ namespace aspect
       this->model_dependence.specific_heat = NonlinearDependence::none;
       this->model_dependence.thermal_conductivity = NonlinearDependence::temperature | NonlinearDependence::pressure | NonlinearDependence::compositional_fields;
     }
-
+    
+      
     template <int dim>
     void
     ViscoPlastic<dim>::create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const
@@ -1137,10 +1342,11 @@ namespace aspect
         {
           const unsigned int n_points = out.n_evaluation_points();
           out.additional_outputs.push_back(
-            std_cxx14::make_unique<MaterialModel::PlasticAdditionalOutputs<dim>> (n_points));
+          std_cxx14::make_unique<MaterialModel::PlasticAdditionalOutputs<dim>> (n_points));
         }
       if (use_elasticity)
         elastic_rheology.create_elastic_outputs(out);
+
     }
 
   }

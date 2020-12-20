@@ -47,6 +47,20 @@ namespace aspect
      * by strain to be added to the MaterialModel::MaterialModelOutputs structure
      * and filled in the MaterialModel::Interface::evaluate() function.
      */
+    
+//     template <int dim>
+//     class PhaseAdditionalOutputs : public NamedAdditionalMaterialOutputs<dim>
+//     {
+//       public:
+//         PhaseAdditionalOutputs(const unsigned int n_points);
+// 
+//         virtual std::vector<double> get_nth_output2(const unsigned int idx2) const;
+//         std::vector<double> phase;
+//         std::vector<double> diffusion;
+//         std::vector<double> dislocation;
+//         std::vector<double> viscosity_ratio;
+//      };
+     
     template <int dim>
     class PlasticAdditionalOutputs : public NamedAdditionalMaterialOutputs<dim>
     {
@@ -55,6 +69,7 @@ namespace aspect
         PlasticAdditionalOutputs(const unsigned int n_points);
 
         std::vector<double> get_nth_output(const unsigned int idx) const override;
+
 
         /**
          * Cohesions at the evaluation points passed to
@@ -75,6 +90,11 @@ namespace aspect
          * and viscosity is rescaled back to the yield envelope.
          */
         std::vector<double> yielding;
+        
+        std::vector<double> phase;
+        std::vector<double> diffusion;
+        std::vector<double> dislocation;
+        std::vector<double> viscosity_ratio;        
     };
 
     /**
@@ -451,6 +471,12 @@ namespace aspect
          * Whether to include viscoelasticity in the constitutive formulation.
          */
         bool use_elasticity;
+        
+/*        virtual
+        unsigned int
+        get_phase_index (const Point<dim> &position,
+                         const double temperature,
+                         const double pressure) const; */       
     };
 
   }

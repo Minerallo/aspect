@@ -136,6 +136,7 @@ namespace aspect
           bool use_full_compressibility;
           bool use_compressible_density_only;
           bool use_incompressibility;
+          bool use_incompressibility_adiabat;
 
       };
     }

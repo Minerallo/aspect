@@ -90,6 +90,23 @@ namespace aspect
                 out.entropy_derivative_pressure[c] = 0.0;
                 out.entropy_derivative_temperature[c] = 0.0;
             }
+        }else if(use_incompressibility_adiabat){    
+        for (unsigned int c=0; c < out.densities.size(); ++c)
+          {
+                // If adiabatic heating is used, the reference temperature used to calculate density should be the adiabatic
+        // temperature at the current position. This definition is consistent with the Extended Boussinesq Approximation.
+        const double reference_temperature = (this->include_adiabatic_heating()
+                                              ?
+                                              this->get_adiabatic_conditions().temperature(in.position[q])
+                                              :
+                                              reference_temperatures[c]);              
+            out.densities[c] = reference_densities[c] * (1 - reference_thermal_expansivities[c] * (in.temperature[q] - reference_temperature));
+            out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c];
+            out.specific_heat_capacities[c] = isochoric_specific_heats[c];
+            out.compressibilities[c] = 0.0;
+            out.entropy_derivative_pressure[c] = 0.0;
+            out.entropy_derivative_temperature[c] = 0.0;
+          }            
         }
       }
 
@@ -157,7 +174,10 @@ namespace aspect
                              "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");  
         prm.declare_entry("Use incompressibility", "false",
                             Patterns::Bool(),
-                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");        
+                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");
+        prm.declare_entry("Use incompressibility with adiabat", "false",
+                            Patterns::Bool(),
+                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");          
         
       }
 
@@ -223,6 +243,7 @@ namespace aspect
         use_full_compressibility = prm.get_bool ("Use full compressibility");
         use_compressible_density_only = prm.get_bool ("Use compressible density only");
         use_incompressibility = prm.get_bool ("Use incompressibility");
+        use_incompressibility_adiabat=prm.get_bool ("Use incompressibility with adiabat");
 
       }
     }

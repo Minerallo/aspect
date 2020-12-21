@@ -21,7 +21,7 @@
 
 #include <aspect/material_model/equation_of_state/multicomponent_incompressible.h>
 #include <aspect/utilities.h>
-
+#include <aspect/adiabatic_conditions/interface.h>
 
 namespace aspect
 {
@@ -40,24 +40,47 @@ namespace aspect
         const double pressure = in.pressure[q];
         const double temperature = std::max(in.temperature[q], 1.); // temperature can't be zero for correct evaluation
 
+//         for (unsigned int c=0; c < out.densities.size(); ++c)
+//           {
+//             const double ak = reference_thermal_expansivities[c]/reference_isothermal_compressibilities[c];
+//             const double f = (1. + (pressure - ak*(temperature - reference_temperatures[c])) *
+//                               isothermal_bulk_modulus_pressure_derivatives[c] *
+//                               reference_isothermal_compressibilities[c]);
+// 
+//             out.densities[c] = reference_densities[c]*std::pow(f, 1./isothermal_bulk_modulus_pressure_derivatives[c]);
+//             out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c] / f;
+//             out.specific_heat_capacities[c] = (isochoric_specific_heats[c] +
+//                                                (temperature*reference_thermal_expansivities[c] *
+//                                                 ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
+//                                                 / reference_densities[c]));
+//             out.compressibilities[c] = 0; 
+// //             reference_isothermal_compressibilities[c]/f;
+//             out.entropy_derivative_pressure[c] = 0.;
+//             out.entropy_derivative_temperature[c] = 0.;
+        
+        
+//            }
+        
+
+
         for (unsigned int c=0; c < out.densities.size(); ++c)
           {
-            const double ak = reference_thermal_expansivities[c]/reference_isothermal_compressibilities[c];
-            const double f = (1. + (pressure - ak*(temperature - reference_temperatures[c])) *
-                              isothermal_bulk_modulus_pressure_derivatives[c] *
-                              reference_isothermal_compressibilities[c]);
-
-            out.densities[c] = reference_densities[c]*std::pow(f, 1./isothermal_bulk_modulus_pressure_derivatives[c]);
-            out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c] / f;
-            out.specific_heat_capacities[c] = (isochoric_specific_heats[c] +
-                                               (temperature*reference_thermal_expansivities[c] *
-                                                ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
-                                                / reference_densities[c]));
-            out.compressibilities[c] = 0; 
-//             reference_isothermal_compressibilities[c]/f;
-            out.entropy_derivative_pressure[c] = 0.;
-            out.entropy_derivative_temperature[c] = 0.;
+                // If adiabatic heating is used, the reference temperature used to calculate density should be the adiabatic
+        // temperature at the current position. This definition is consistent with the Extended Boussinesq Approximation.
+        const double reference_temperature = (this->include_adiabatic_heating()
+                                              ?
+                                              this->get_adiabatic_conditions().temperature(in.position[q])
+                                              :
+                                              reference_temperatures[c]);              
+            out.densities[c] = reference_densities[c] * (1 - reference_thermal_expansivities[c] * (in.temperature[q] - reference_temperature));
+            out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c];
+            out.specific_heat_capacities[c] = isochoric_specific_heats[c];
+            out.compressibilities[c] = 0.0;
+            out.entropy_derivative_pressure[c] = 0.0;
+            out.entropy_derivative_temperature[c] = 0.0;
           }
+          
+       
       }
 
 
@@ -68,7 +91,7 @@ namespace aspect
       is_compressible () const
       {
         return false;
-//         true;
+//         return true;
       }
 
 
@@ -78,7 +101,7 @@ namespace aspect
       MulticomponentIncompressible<dim>::declare_parameters (ParameterHandler &prm,
                                                              const double default_thermal_expansion)
       {
-        prm.declare_entry ("Reference temperatures", "298.15",
+        prm.declare_entry ("Reference temperatures", "274",
                            Patterns::Anything(),
                            "List of reference temperatures $T_0$ for background mantle and compositional fields,"
                            "for a total of N+1 values, where N is the number of compositional fields."

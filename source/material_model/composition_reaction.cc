@@ -1,18 +1,14 @@
 /*
   Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
-
   This file is part of ASPECT.
-
   ASPECT is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation; either version 2, or (at your option)
   any later version.
-
   ASPECT is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU General Public License for more details.
-
   You should have received a copy of the GNU General Public License
   along with ASPECT; see the file LICENSE.  If not see
   <http://www.gnu.org/licenses/>.
@@ -80,18 +76,48 @@ namespace aspect
 
           out.densities[i] = MaterialUtilities::average_value(volume_fractions, eos_outputs.densities, MaterialUtilities::arithmetic);
 
-
           const double depth = this->get_geometry_model().depth(in.position[i]);
           for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
             {
               double delta_C = 0.0;
+              //
+              const double func = 0.5 * (1. + std::tanh((depth - reaction_depth) / reaction_width)); //
+              //std::cout << "small test";
               switch (c)
                 {
                   case 0:
-                    if (depth < reaction_depth) delta_C = -composition[0];
+                    //if (depth < reaction_depth) delta_C = -composition[0];
+                    //break;
+                    if (smooth_reaction)
+                    {
+                      if (func < 0.5) 
+                        delta_C = -(composition[0]-func) ;
+                      else
+                        delta_C = (composition[1]-1.+func);
+//                      std::cout << "Depth, c0, func, deltaC " << depth/1000. << ", " << composition[0] << ", " << func << ", " << delta_C << std::endl;
+                    }
+                    else
+                    { 
+                      if (depth < reaction_depth) delta_C = -composition[0];
+                      if (depth >= reaction_depth) delta_C = composition[1];
+                    }
                     break;
                   case 1:
-                    if (depth < reaction_depth) delta_C = composition[0];
+                    //if (depth < reaction_depth) delta_C = composition[0];
+                    //break;
+                    if (smooth_reaction)
+                    {
+                      if (func < 0.5) 
+                        delta_C = (composition[0]-func);
+                      else
+                        delta_C = -(composition[1]-1.+func);
+//                      std::cout << "Depth, c1, func, deltaC " << depth/1000. << ", " << composition[1] << ", " << func << ", " << delta_C << std::endl;
+                    }
+                    else
+                    {
+                      if (depth < reaction_depth) delta_C = composition[0];
+                      if (depth >= reaction_depth) delta_C = -composition[1];
+                    }
                     break;
                   default:
                     delta_C = 0.0;
@@ -178,6 +204,16 @@ namespace aspect
                              "Above this depth the compositional fields react: "
                              "The first field gets converted to the second field. "
                              "Units: \\si{\\meter}.");
+          prm.declare_entry ("Reaction width", "0.",
+                             Patterns::Double (0.),
+                             "Over this width the compositional fields react: "
+                             "The first field gets converted to the second field. "
+                             "Units: \\si{\\meter}.");
+          prm.declare_entry ("Smooth reaction", "false",
+                             Patterns::Bool (),
+                             "Whether or not to smooth the reaction over the interval "
+                             "specified with Reaction width. "
+                             "Units: -.");
         }
         prm.leave_subsection();
       }
@@ -203,6 +239,8 @@ namespace aspect
           thermal_viscosity_exponent = prm.get_double ("Thermal viscosity exponent");
           k_value                    = prm.get_double ("Thermal conductivity");
           reaction_depth             = prm.get_double ("Reaction depth");
+          reaction_width             = prm.get_double ("Reaction width");
+          smooth_reaction            = prm.get_bool ("Smooth reaction");
 
           if (thermal_viscosity_exponent!=0.0 && reference_T == 0.0)
             AssertThrow(false, ExcMessage("Error: Material model composition reaction with Thermal viscosity exponent can not have reference_T=0."));
@@ -248,7 +286,7 @@ namespace aspect
   namespace MaterialModel
   {
     ASPECT_REGISTER_MATERIAL_MODEL(CompositionReaction,
-                                   "composition reaction",
+                                   "composition reaction acg",
                                    "A material model that behaves in the same way as "
                                    "the simple material model, but includes two compositional "
                                    "fields and a reaction between them. Above a depth given "

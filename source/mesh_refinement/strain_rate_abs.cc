@@ -64,7 +64,9 @@ namespace aspect
       private:
           bool use_superior;
           double strain_rate_cut;              
-          double strain_rate_level; 
+          double strain_rate_level;
+          double lim_inf;
+          double lim_sup;
         /**
          * The absolute minimum refinement level
          */
@@ -149,7 +151,7 @@ namespace aspect
                     for (unsigned int p=0; p<quadrature.size(); ++p)
                       {
 
-                        if (1050000 <=vertex(1) && vertex(1)<=1095000){                        
+                        if (lim_inf <=vertex(1) && vertex(1)<=lim_sup){                        
                           if(use_superior){
                             if (strain_rate_cut<= strain_rates[0].norm()){
                                 smaller_strain_rate = true;
@@ -244,7 +246,11 @@ namespace aspect
           prm.declare_entry ("Strain rate threshold", "3e-13", Patterns::Double(0),
                              "the strain rate at which the mesh should start to be refined. Units: $1 / s$");          
           prm.declare_entry ("Strain rate minimum refinement level", "4", Patterns::Integer(0),
-                             "The level of refinement of the mesh, cannot be more than the maximum level of refinement of the model");          
+                             "The level of refinement of the mesh, cannot be more than the maximum level of refinement of the model");  
+          prm.declare_entry ("Interval min", "1050", Patterns::Double(0),
+                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");
+          prm.declare_entry ("Interval max", "1095", Patterns::Double(0),
+                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");              
         }
         prm.leave_subsection();
       }
@@ -265,7 +271,9 @@ namespace aspect
           // start_strain_refinement *= year_in_seconds;
           use_superior = prm.get_bool("Refine strain superior");          
           strain_rate_cut = prm.get_double("Strain rate threshold");              
-          strain_rate_level = prm.get_integer("Strain rate minimum refinement level");  
+          strain_rate_level = prm.get_integer("Strain rate minimum refinement level");
+          lim_inf = prm.get_double("Interval min");  
+          lim_sup = prm.get_double("Interval max");  
           AssertThrow (strain_rate_level >= min_level,
                        ExcMessage ("The minimum refinement for the crust cannot be "
                                    "smaller than the minimum level of the whole model. "));

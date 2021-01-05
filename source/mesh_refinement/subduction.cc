@@ -58,6 +58,13 @@ namespace aspect
         parse_parameters (ParameterHandler &prm);
 
       private:
+        double lithosphere_zone_refined;
+        double weakzone_two_upper_depth;
+        double weakzone_two_lower_depth;
+        double weakzone_one_lower_depth;
+        double crust_zone_refined;
+        double oceanic_domain_refined;
+        double continental_mantle_refined;
         /**
          * The compositional field number, min ref level and max ref level
          * for the crust, mantle part of the slab lithosphere and the
@@ -193,9 +200,9 @@ namespace aspect
                         // std::cout<<prelim_composition_values[upper_crust_refinement[0]][p]<<std::endl;  
                         if (prelim_composition_values[weak_zone_refinement[0]][p] >= 0.60)
                           {
-                            if(vertex(1) > 250000)
+                            if(vertex(1) > lithosphere_zone_refined)
                             {
-                              if(1050000 <=vertex(1) && vertex(1)<=1090000){  
+                              if(weakzone_two_lower_depth <=vertex(1) && vertex(1)<=weakzone_two_upper_depth){  
 //                               if (vertex(1) > 1050000){
                               weak_zone_present_two = true;
                               // if (prelim_composition_values[weak_zone_refinement[0]][p] >= 1.0)
@@ -204,7 +211,7 @@ namespace aspect
                               // }
                               break;
 //                               }
-                              }else if (980000 <=vertex(1) && vertex(1)<1050000){  
+                              }else if (weakzone_one_lower_depth <=vertex(1) && vertex(1)<weakzone_two_lower_depth){  
                                 weak_zone_present = true;
                                 break;
                               // }
@@ -213,9 +220,9 @@ namespace aspect
                           }                                      
                         if (prelim_composition_values[upper_crust_refinement[0]][p] > 0.01)
                           {
-                            if(vertex(1) > 250000)
+                            if(vertex(1) > lithosphere_zone_refined)
                             {                            
-                              if (vertex(0) < 1670000){
+                              if (vertex(0) < crust_zone_refined){
                               upper_crust_present = true;
                               // //Crust will have smallest res, so not interested in other fields
                               // break;
@@ -226,9 +233,9 @@ namespace aspect
                           }
                         if (prelim_composition_values[lower_crust_refinement[0]][p] > 0.01)
                           {
-                            if(vertex(1) > 250000)
+                            if(vertex(1) > lithosphere_zone_refined)
                             {                                   
-                            if (vertex(0) < 1670000){
+                            if (vertex(0) < crust_zone_refined){
                             lower_crust_present = true;
                             // break;
                             }else{
@@ -238,7 +245,7 @@ namespace aspect
                           }
                         if (prelim_composition_values[sediments_refinement[0]][p] > 0.01)
                           {
-                            if(vertex(1) > 250000)
+                            if(vertex(1) > lithosphere_zone_refined)
                             {                                   
                             sediments_present = true;
                             // break;
@@ -246,9 +253,9 @@ namespace aspect
                           }
                         if (prelim_composition_values[oceanic_crust_refinement[0]][p] > 0.1)
                           {
-                            if(vertex(1) > 250000)
+                            if(vertex(1) > lithosphere_zone_refined)
                             {                                   
-                              if (vertex(0) > 350000){                            
+                              if (vertex(0) > oceanic_domain_refined){                            
                               oceanic_crust_present = true;
                               break;                           
                               }else{
@@ -258,7 +265,7 @@ namespace aspect
                           }                                                                             
                         if (prelim_composition_values[oceanic_mantle_refinement[0]][p] > 0.1)
                         {
-                            if(vertex(1) > 250000)
+                            if(vertex(1) > lithosphere_zone_refined)
                             {                                 
                             oceanic_mantle_present = true;
                             break; 
@@ -275,9 +282,9 @@ namespace aspect
                         }                                                          
                         if (prelim_composition_values[continental_mantle_refinement[0]][p] > 0.5)
                           {
-                            if(vertex(1) > 250000)
+                            if(vertex(1) > lithosphere_zone_refined)
                             {                                   
-                              if (vertex(1) > 800000){                            
+                              if (vertex(1) > continental_mantle_refined){                            
                               continental_mantle_present = true;
                               // if (prelim_composition_values[continental_mantle_refinement[0]][p] >= 1.0)
                               // {
@@ -288,7 +295,7 @@ namespace aspect
                           }
                         if (prelim_composition_values[craton_refinement[0]][p] > 0.1)
                           {
-                            if(vertex(1) > 250000)
+                            if(vertex(1) > lithosphere_zone_refined)
                             {                                   
                             craton_present = true;
                             if (prelim_composition_values[craton_refinement[0]][p] >= 1.0)
@@ -528,6 +535,21 @@ namespace aspect
           prm.declare_entry("Refine border level","",
                             Patterns::List (Patterns::Integer(0)),
                             "The refinement level for border should be only 1 value for now.");
+         prm.declare_entry ("Apply refinements if on top of", "250000", Patterns::Double(0),
+                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");
+         prm.declare_entry ("Refine weak zone 2 if under", "1090000", Patterns::Double(0),
+                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");
+         prm.declare_entry ("Refine weak zone 2 if on top of", "1050000", Patterns::Double(0),
+                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");
+         prm.declare_entry ("Refine weak zone 1 if on top of", "980000", Patterns::Double(0),
+                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");          
+         prm.declare_entry ("Refine continental domain if x inferior at", "1670000", Patterns::Double(0),
+                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$"); 
+         prm.declare_entry ("Refine oceanic domain if x superior at", "350000", Patterns::Double(0),
+                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");
+         prm.declare_entry ("Refine continental mantle if on top of", "800000", Patterns::Double(0),
+                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");         
+         
         }
         prm.leave_subsection();
       }
@@ -544,6 +566,14 @@ namespace aspect
         max_level = prm.get_integer("Initial adaptive refinement") + prm.get_integer("Initial global refinement");
         prm.enter_subsection("Subduction");
         {
+        lithosphere_zone_refined = prm.get_double("Apply refinements if on top of"); 
+        weakzone_two_upper_depth = prm.get_double("Refine weak zone 2 if under"); 
+        weakzone_two_lower_depth = prm.get_double("Refine weak zone 2 if on top of"); 
+        weakzone_one_lower_depth = prm.get_double("Refine weak zone 1 if on top of");
+        crust_zone_refined = prm.get_double("Refine continental domain if x inferior at");
+        oceanic_domain_refined = prm.get_double("Refine oceanic domain if x superior at");
+        continental_mantle_refined = prm.get_double("Refine continental mantle if on top of");
+        
           const std::vector<double> refine_border
             = Utilities::string_to_double(
                 Utilities::split_string_list(prm.get("Refine border")));

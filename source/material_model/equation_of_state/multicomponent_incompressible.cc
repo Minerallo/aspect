@@ -20,6 +20,7 @@
 
 
 #include <aspect/material_model/equation_of_state/multicomponent_incompressible.h>
+#include <aspect/adiabatic_conditions/interface.h>
 #include <aspect/utilities.h>
 
 
@@ -109,6 +110,7 @@ namespace aspect
           }            
         }
       }
+    
 
 
 

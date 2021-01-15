@@ -19,6 +19,8 @@
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/fe/fe_values.h>
 #include <deal.II/numerics/derivative_approximation.h>
+#include <aspect/mesh_refinement/interface.h>
+#include <aspect/simulator_access.h>
 
 namespace aspect
 {
@@ -36,6 +38,15 @@ namespace aspect
                                this->get_fe(),
                                quadrature,
                                update_quadrature_points | update_values | update_gradients);
+
+      QTrapez<dim-1> face_corners;
+
+      // const Quadrature<dim> quadrature(this->get_fe().base_element(this->introspection().base_elements.compositional_fields).get_unit_support_points());
+        FEFaceValues<dim> fe_face_values(this->get_mapping(),
+                                         this->get_fe(),
+                                         face_corners,
+                                         update_values |
+                                             update_quadrature_points);        
 
       MaterialModel::MaterialModelInputs<dim> in(quadrature.size(), this->n_compositional_fields());
       MaterialModel::MaterialModelOutputs<dim> out(quadrature.size(), this->n_compositional_fields());
@@ -55,8 +66,18 @@ namespace aspect
               in.reinit(fe_values, cell, this->introspection(), this->get_solution(), true);
               this->get_material_model().evaluate(in, out);
 
+              for (unsigned int face_no = 0; face_no < GeometryInfo<dim>::faces_per_cell; ++face_no)
+                {
+                  fe_face_values.reinit(cell, face_no);
+
+                  for (unsigned int corner = 0; corner < face_corners.size(); ++corner)
+                    {
+                    const Point<dim> vertex = fe_face_values.quadrature_point(corner); 
+                  
               for (unsigned int i=0; i<quadrature.size(); ++i)
                 {
+                    if(x_upper_lim <=vertex(0) && vertex(0)>=x_lower_lim)
+                    {
                   for ( unsigned int isotherm_line = 0; isotherm_line != isotherms.size(); ++isotherm_line )
                     {
 
@@ -123,7 +144,50 @@ namespace aspect
                             }
                         }
                     }
+                }else if(x_upper_lim >vertex(0) || vertex(0)<x_lower_lim)
+                {
+                    for ( unsigned int isotherm_line = 0; isotherm_line != isotherms.size(); ++isotherm_line )
+                    {                  
+                      /// determine if cell should be refined or coarsened
+                      if (exclude_composition > 0 && exclude_composition <= static_cast <signed int> (this->n_compositional_fields()))  // static cast to prevent compiler warnings. Will only go wrong when there are more compositional fields then a the positive part of an int can handle ;)
+                        {
+                          // there is a exclude compostion (>0) and  exclude composition is smaller or equal to the current composition
+                          if (in.temperature[i] <= isotherms[isotherm_line].second && in.temperature[i] >= isotherms[isotherm_line].first && in.composition[isotherm_line][exclude_composition]<0.5)
+                            {
+                              // the temperature is between the isotherms and the exclude composition is smaller then 0.5 at this location
+
+                              // If the current refinement level is smaller or equal to the refinement minimum level, any coarsening flags should be cleared.
+                              if (cell->level() <= maximum_refinement_level_outside_interval)
+                                {
+                                  clear_coarsen = true;
+                                }
+                              // If the current refinement level is smaller then the minimum level, a refinment flag should be placed.
+                              if (cell->level() <  maximum_refinement_level_outside_interval)
+                                {
+                                  refine = true;
+                                }
+
+                              // If the current refinement level is larger or equal to the maximum refinement level, any refinement flag should be cleared.
+                              if (cell->level() >= maximum_refinement_level_outside_interval)
+                                {
+                                  clear_refine = false;
+                                }
+                              // If the current refinement level is larger then the maximum level, a coarsening flag should be placed.
+                              if (cell->level() >  maximum_refinement_level_outside_interval)
+                                {
+                                  coarsen = true;
+                                }
+
+                            }
+                        }                    
+                    
+                }  
                 }
+                }
+                }
+                 
+                }
+                      
 
               // if both coarsen and refine are true, give preference to refinement
               if (coarsen == true && refine == true)
@@ -180,6 +244,12 @@ namespace aspect
                              "last two values are the mimum and maximum temperature respectively between which the "
                              "mimumun and maximum refinement are enforced."
                             );
+         prm.declare_entry ("Lower x limit", "4000000", Patterns::Double(0),
+                             "Define the interval lower X limit. Units: m");  
+         prm.declare_entry ("Upper x limit", "6000000", Patterns::Double(0),
+                             "Define the interval lower X limit. Units: m");
+         prm.declare_entry ("Maximum level outside area", "3", Patterns::Double(0),
+                             "Define the interval lower X limit. Units: m");         
 
         }
         prm.leave_subsection();
@@ -198,6 +268,9 @@ namespace aspect
         maximum_refinement_level = Utilities::string_to_int(prm.get("Initial global refinement")) + Utilities::string_to_int(prm.get("Initial adaptive refinement"));
         prm.enter_subsection("Isotherms");
         {
+          x_lower_lim = prm.get_double("Lower x limit"); 
+          x_upper_lim = prm.get_double("Upper x limit");
+          maximum_refinement_level_outside_interval = prm.get_double("Maximum level outside area");
           exclude_composition = Utilities::string_to_int(prm.get("Exclude composition"));
           std::vector<std::string> isotherms_outer_loop = Utilities::split_string_list(prm.get ("List of isotherms"),';');
           // process the List of isotherms to get all data out of the structure

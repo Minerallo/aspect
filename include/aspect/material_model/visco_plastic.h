@@ -310,6 +310,7 @@ namespace aspect
         double time_switch_layer_friction;
         double layer_number;
         double new_friction;
+        double friction_switch_interval;
 
         double min_visc_first;
         double min_visc_second;

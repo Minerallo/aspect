@@ -414,11 +414,15 @@ namespace aspect
           //Switch the internal angle of friction a a layer selected
           double internal_change = drucker_prager_parameters.angles_internal_friction[j];
           if(switch_layer_friction){
-            if(this->get_time()/ year_in_seconds>=time_switch_layer_friction && j==layer_number ){
+            if(this->get_time()/ year_in_seconds>time_switch_layer_friction && this->get_time()/ year_in_seconds<=time_switch_layer_friction + friction_switch_interval  && j==layer_number ){
+                
+                    internal_change=drucker_prager_parameters.angles_internal_friction[layer_number]*numbers::PI/180.0+((this->get_time()/ year_in_seconds - time_switch_layer_friction) * ((new_friction*numbers::PI/180.0)/friction_switch_interval));
+                    
+            }else if(this->get_time()/ year_in_seconds>time_switch_layer_friction + friction_switch_interval  && j==layer_number){
     //               this->introspection().name_for_compositional_index(j) == "Weak_Zone"
                     internal_change=new_friction*numbers::PI/180.0;
                 }              
-            }
+        }
           
           const double current_friction = internal_change * weakening_factors[1];
           viscosity_pre_yield *= weakening_factors[2];
@@ -629,11 +633,15 @@ namespace aspect
           
               double internal_change = drucker_prager_parameters.angles_internal_friction[j];
           if(switch_layer_friction){
-            if(this->get_time()/ year_in_seconds>=time_switch_layer_friction && j==layer_number ){
+            if(this->get_time()/ year_in_seconds>time_switch_layer_friction && this->get_time()/ year_in_seconds<=time_switch_layer_friction + friction_switch_interval  && j==layer_number ){
+                
+                    internal_change=drucker_prager_parameters.angles_internal_friction[layer_number]*numbers::PI/180.0+((this->get_time()/ year_in_seconds - time_switch_layer_friction) * ((new_friction*numbers::PI/180.0)/friction_switch_interval));
+                    
+            }else if(this->get_time()/ year_in_seconds>time_switch_layer_friction + friction_switch_interval  && j==layer_number){
     //               this->introspection().name_for_compositional_index(j) == "Weak_Zone"
                     internal_change=new_friction*numbers::PI/180.0;
-                }              
-            }
+                }
+          }
               plastic_out->friction_angles[i] += 180.0/numbers::PI * volume_fractions[j] * (internal_change * weakening_factors[1]);
             }
         }
@@ -1025,6 +1033,8 @@ namespace aspect
                              "Change for a new internal angle of friction. Units:degrees");
           prm.declare_entry ("New internal friction angle", "3", Patterns::Double (0.),
                              "Change for a new internal angle of friction. Units:degrees");
+          prm.declare_entry ("Switch friction time interval", "2e5", Patterns::Double (0.),
+                             "Interval of time to switch linearly the friction angle. Units: yr");           
           // We want to change the minimum viscosity depending on time so we need a vector with at 
           // least 2 entries
           // prm.declare_entry ("Minimum viscosity", "1e17", Patterns::Double (0.),
@@ -1047,7 +1057,7 @@ namespace aspect
           prm.declare_entry ("Time minimum viscosity switch", "1e6", Patterns::Double (0.),
                              "Time to switch the minimum viscosity. Units: $Pa \\, s$");   
           prm.declare_entry ("Time minimum viscosity switch second", "2e6", Patterns::Double (0.),
-                             "Time to switch the minimum viscosity. Units: $Pa \\, s$");                                                   
+                             "Time to switch the minimum viscosity. Units: $Pa \\, s$");           
 
           prm.declare_entry ("Maximum viscosity", "1e28", Patterns::Double (0.),
                              "Upper cutoff for effective viscosity. Units: \\si{\\pascal\\second}.");
@@ -1212,6 +1222,7 @@ namespace aspect
           time_switch_layer_friction=prm.get_double ("Time to swtich layer friction");
           layer_number= prm.get_double ("Layer number");
           new_friction=prm.get_double ("New internal friction angle");
+          friction_switch_interval=prm.get_double ("Switch friction time interval");
 
           // Reference and minimum/maximum values
           min_strain_rate = prm.get_double("Minimum strain rate");

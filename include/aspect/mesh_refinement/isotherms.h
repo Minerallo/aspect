@@ -20,6 +20,7 @@
 
 #include <aspect/mesh_refinement/interface.h>
 #include <aspect/simulator_access.h>
+#include <deal.II/fe/fe_values.h>
 
 namespace aspect
 {
@@ -84,6 +85,9 @@ namespace aspect
          */
         unsigned int minimum_refinement_level;
         unsigned int maximum_refinement_level;
+        double x_upper_lim;
+        double x_lower_lim;
+        double maximum_refinement_level_outside_interval;
 
     };
   }

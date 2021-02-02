@@ -1,18 +1,14 @@
 /*
   Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
-
   This file is part of ASPECT.
-
   ASPECT is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation; either version 2, or (at your option)
   any later version.
-
   ASPECT is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU General Public License for more details.
-
   You should have received a copy of the GNU General Public License
   along with ASPECT; see the file LICENSE.  If not see
   <http://www.gnu.org/licenses/>.
@@ -23,6 +19,7 @@
 #include <aspect/adiabatic_conditions/interface.h>
 #include <aspect/utilities.h>
 
+#include <aspect/simulator_access.h>
 
 namespace aspect
 {
@@ -34,83 +31,30 @@ namespace aspect
       void
       MulticomponentIncompressible<dim>::
       evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
-               const unsigned int q,
+               const unsigned int input_index,
                MaterialModel::EquationOfStateOutputs<dim> &out) const
       {
 
-        const double pressure = in.pressure[q];
-        const double temperature = std::max(in.temperature[q], 1.); // temperature can't be zero for correct evaluation
-        
-        if(use_full_compressibility)
-        {
-            for (unsigned int c=0; c < out.densities.size(); ++c)
-            {
-                const double ak = reference_thermal_expansivities[c]/reference_isothermal_compressibilities[c];
-                const double f = (1. + (pressure - ak*(temperature - reference_temperatures[c])) *
-                                isothermal_bulk_modulus_pressure_derivatives[c] *
-                                reference_isothermal_compressibilities[c]);
-
-                out.densities[c] = reference_densities[c]*std::pow(f, 1./isothermal_bulk_modulus_pressure_derivatives[c]);
-                out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c] / f;
-                out.specific_heat_capacities[c] = (isochoric_specific_heats[c] +
-                                                (temperature*reference_thermal_expansivities[c] *
-                                                    ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
-                                                    / reference_densities[c]));
-                out.compressibilities[c] = reference_isothermal_compressibilities[c]/f;
-                out.entropy_derivative_pressure[c] = 0.;
-                out.entropy_derivative_temperature[c] = 0.;
-            }
-        }else if(use_compressible_density_only)
-        {
-            for (unsigned int c=0; c < out.densities.size(); ++c)
-            {
-                const double ak = reference_thermal_expansivities[c]/reference_isothermal_compressibilities[c];
-                const double f = (1. + (pressure - ak*(temperature - reference_temperatures[c])) *
-                                isothermal_bulk_modulus_pressure_derivatives[c] *
-                                reference_isothermal_compressibilities[c]);
-
-                out.densities[c] = reference_densities[c]*std::pow(f, 1./isothermal_bulk_modulus_pressure_derivatives[c]);
-                out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c] / f;
-                out.specific_heat_capacities[c] = (isochoric_specific_heats[c] +
-                                                (temperature*reference_thermal_expansivities[c] *
-                                                    ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
-                                                    / reference_densities[c]));
-                //we send back that the model is incompressible, the mass will be balanced with the lithostatic pressure
-                out.compressibilities[c] = 0;
-                out.entropy_derivative_pressure[c] = 0.;
-                out.entropy_derivative_temperature[c] = 0.;
-            }
-        
-        }else if(use_incompressibility){
-            for (unsigned int c=0; c < out.densities.size(); ++c)
-            {
-                out.densities[c] = reference_densities[c] * (1 - reference_thermal_expansivities[c] * (temperature - 274));
-                out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c];
-                out.specific_heat_capacities[c] = isochoric_specific_heats[c];
-                out.compressibilities[c] = 0.0;
-                out.entropy_derivative_pressure[c] = 0.0;
-                out.entropy_derivative_temperature[c] = 0.0;
-            }
-        }else if(use_incompressibility_adiabat){    
-        for (unsigned int c=0; c < out.densities.size(); ++c)
-          {
-                // If adiabatic heating is used, the reference temperature used to calculate density should be the adiabatic
+        const double depth = this->get_geometry_model().depth(in.position[input_index]);
+        const double alpha = 3e-5*std::exp(-0.00046*(depth/1000));
+        // If adiabatic heating is used, the reference temperature used to calculate density should be the adiabatic
         // temperature at the current position. This definition is consistent with the Extended Boussinesq Approximation.
         const double reference_temperature = (this->include_adiabatic_heating()
                                               ?
-                                              this->get_adiabatic_conditions().temperature(in.position[q])
+                                              this->get_adiabatic_conditions().temperature(in.position[input_index])
                                               :
-                                              reference_temperatures[c]);              
-            out.densities[c] = reference_densities[c] * (1 - reference_thermal_expansivities[c] * (in.temperature[q] - reference_temperature));
-            out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c];
-            out.specific_heat_capacities[c] = isochoric_specific_heats[c];
+                                              reference_T);
+
+        for (unsigned int c=0; c < out.densities.size(); ++c)
+          {
+            out.densities[c] = densities[c] * (1 - alpha * (in.temperature[input_index] - reference_temperature));
+            out.thermal_expansion_coefficients[c] = alpha;
+            out.specific_heat_capacities[c] = specific_heats[c];
             out.compressibilities[c] = 0.0;
             out.entropy_derivative_pressure[c] = 0.0;
             out.entropy_derivative_temperature[c] = 0.0;
-          }            
-        }
+          }
       }
-    
 
 
 
@@ -119,12 +63,7 @@ namespace aspect
       MulticomponentIncompressible<dim>::
       is_compressible () const
       {
-        if(use_full_compressibility)
-        {
-            return true;
-        }else{
-            return false;
-        }
+        return false;
       }
 
 
@@ -134,53 +73,27 @@ namespace aspect
       MulticomponentIncompressible<dim>::declare_parameters (ParameterHandler &prm,
                                                              const double default_thermal_expansion)
       {
-        prm.declare_entry ("Reference temperatures", "298.15",
-                           Patterns::Anything(),
-                           "List of reference temperatures $T_0$ for background mantle and compositional fields,"
-                           "for a total of N+1 values, where N is the number of compositional fields."
-                           "If only one value is given, then all use the same value. Units: \\si{\\kelvin}.");
+        prm.declare_entry ("Reference temperature", "293.",
+                           Patterns::Double (0.),
+                           "The reference temperature $T_0$. Units: \\si{\\kelvin}.");
         prm.declare_entry ("Densities", "3300.",
                            Patterns::Anything(),
                            "List of densities for background mantle and compositional fields,"
-                           "for a total of N+1 values, where N is the number of compositional fields."
+                           "for a total of N+M+1 values, where N is the number of compositional fields and M is the number of phases. "
                            "If only one value is given, then all use the same value. "
                            "Units: \\si{\\kilogram\\per\\meter\\cubed}.");
-        prm.declare_entry ("Reference isothermal compressibilities", "4e-12",
-                           Patterns::Anything(),
-                           "List of isothermal compressibilities for background mantle and compositional fields,"
-                           "for a total of N+1 values, where N is the number of compositional fields."
-                           "If only one value is given, then all use the same value. "
-                           "Units: \\si{\\per\\pascal}.");
-        prm.declare_entry ("Isothermal bulk modulus pressure derivatives", "4.",
-                           Patterns::Anything(),
-                           "List of isothermal pressure derivatives of the bulk moduli for background mantle and compositional fields,"
-                           "for a total of N+1 values, where N is the number of compositional fields."
-                           "If only one value is given, then all use the same value. "
-                           "Units: [].");
         prm.declare_entry ("Thermal expansivities", std::to_string(default_thermal_expansion),
                            Patterns::Anything(),
                            "List of thermal expansivities for background mantle and compositional fields,"
-                           "for a total of N+1 values, where N is the number of compositional fields."
+                           "for a total of N+M+1 values, where N is the number of compositional fields and M is the number of phases. "
                            "If only one value is given, then all use the same value. Units: \\si{\\per\\kelvin}.");
         prm.declare_entry ("Heat capacities", "1250.",
                            Patterns::Anything(),
-                           "List of isochoric specific heats $C_v$ for background mantle and compositional fields,"
-                           "for a total of N+1 values, where N is the number of compositional fields."
+                           "List of specific heats $C_p$ for background mantle and compositional fields,"
+                           "for a total of N+M+1 values, where N is the number of compositional fields and M is the number of phases. "
                            "If only one value is given, then all use the same value. "
                            "Units: \\si{\\joule\\per\\kelvin\\per\\kilogram}.");
-        prm.declare_entry("Use full compressibility", "false",
-                            Patterns::Bool(),
-                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation"); 
-        prm.declare_entry("Use compressible density only", "false",
-                            Patterns::Bool(),
-                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");  
-        prm.declare_entry("Use incompressibility", "false",
-                            Patterns::Bool(),
-                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");
-        prm.declare_entry("Use incompressibility with adiabat", "false",
-                            Patterns::Bool(),
-                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");          
-        
+        prm.declare_alias ("Heat capacities", "Specific heats");
       }
 
 
@@ -190,6 +103,8 @@ namespace aspect
       MulticomponentIncompressible<dim>::parse_parameters (ParameterHandler &prm,
                                                            const std::shared_ptr<std::vector<unsigned int>> &expected_n_phases_per_composition)
       {
+        reference_T = prm.get_double ("Reference temperature");
+
         // Establish that a background field is required here
         const bool has_background_field = true;
 
@@ -197,56 +112,26 @@ namespace aspect
         const std::vector<std::string> list_of_composition_names = this->introspection().get_composition_names();
 
         // Parse multicomponent properties
-        reference_temperatures = Utilities::parse_map_to_double_array (prm.get("Reference temperatures"),
-                                                                       list_of_composition_names,
-                                                                       has_background_field,
-                                                                       "Reference temperatures",
-                                                                       true,
-                                                                       expected_n_phases_per_composition);
+        densities = Utilities::parse_map_to_double_array (prm.get("Densities"),
+                                                          list_of_composition_names,
+                                                          has_background_field,
+                                                          "Densities",
+                                                          true,
+                                                          expected_n_phases_per_composition);
 
-        reference_densities = Utilities::parse_map_to_double_array (prm.get("Densities"),
-                                                                    list_of_composition_names,
-                                                                    has_background_field,
-                                                                    "Densities",
-                                                                    true,
-                                                                    expected_n_phases_per_composition);
+        thermal_expansivities = Utilities::parse_map_to_double_array (prm.get("Thermal expansivities"),
+                                                                      list_of_composition_names,
+                                                                      has_background_field,
+                                                                      "Thermal expansivities",
+                                                                      true,
+                                                                      expected_n_phases_per_composition);
 
-
-        reference_isothermal_compressibilities = Utilities::parse_map_to_double_array (prm.get("Reference isothermal compressibilities"),
-                                                                                       list_of_composition_names,
-                                                                                       has_background_field,
-                                                                                       "Reference isothermal compressibilities",
-                                                                                       true,
-                                                                                       expected_n_phases_per_composition);
-
-
-        isothermal_bulk_modulus_pressure_derivatives = Utilities::parse_map_to_double_array (prm.get("Isothermal bulk modulus pressure derivatives"),
-                                                       list_of_composition_names,
-                                                       has_background_field,
-                                                       "Isothermal bulk modulus pressure derivatives",
-                                                       true,
-                                                       expected_n_phases_per_composition);
-
-
-        reference_thermal_expansivities = Utilities::parse_map_to_double_array (prm.get("Thermal expansivities"),
-                                                                                list_of_composition_names,
-                                                                                has_background_field,
-                                                                                "Thermal expansivities",
-                                                                                true,
-                                                                                expected_n_phases_per_composition);
-
-
-        isochoric_specific_heats = Utilities::parse_map_to_double_array (prm.get("Heat capacities"),
-                                                                         list_of_composition_names,
-                                                                         has_background_field,
-                                                                         "Heat capacities",
-                                                                         true,
-                                                                         expected_n_phases_per_composition);
-        use_full_compressibility = prm.get_bool ("Use full compressibility");
-        use_compressible_density_only = prm.get_bool ("Use compressible density only");
-        use_incompressibility = prm.get_bool ("Use incompressibility");
-        use_incompressibility_adiabat=prm.get_bool ("Use incompressibility with adiabat");
-
+        specific_heats = Utilities::parse_map_to_double_array (prm.get("Heat capacities"),
+                                                               list_of_composition_names,
+                                                               has_background_field,
+                                                               "Specific heats",
+                                                               true,
+                                                               expected_n_phases_per_composition);
       }
     }
   }

@@ -759,7 +759,7 @@ namespace aspect
               if (use_strat && current_timestep == 1)
                 fastscape_strati_(&nstepp, &nreflectorp, &steps, &vexp);
               else if (!use_strat)
-                fastscape_named_vtk_(h.get(), &vexp, &visualization_step, c, &length);
+//                 fastscape_named_vtk_(h.get(), &vexp, &visualization_step, c, &length);
 
               do
               {
@@ -787,7 +787,7 @@ namespace aspect
                 visualization_step = visualization_step + 1;
 
                 if (!use_strat)
-                  fastscape_named_vtk_(h.get(), &vexp, &visualization_step, c, &length);
+//                   fastscape_named_vtk_(h.get(), &vexp, &visualization_step, c, &length);
 
                 fastscape_destroy_();
               }

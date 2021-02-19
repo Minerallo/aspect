@@ -62,6 +62,9 @@ namespace aspect
         double weakzone_two_upper_depth;
         double weakzone_two_lower_depth;
         double weakzone_one_lower_depth;
+        double ridge_two_upper_depth;
+        double ridge_two_lower_depth;
+        double ridge_one_lower_depth;       
         double crust_zone_refined;
         double oceanic_domain_refined;
         double continental_mantle_refined;
@@ -78,7 +81,9 @@ namespace aspect
         std::vector<unsigned int> continental_mantle_refinement;
         std::vector<unsigned int> craton_refinement;
         std::vector<unsigned int> weak_zone_refinement;
-        std::vector<unsigned int> weak_zone_refinement_two;  
+        std::vector<unsigned int> weak_zone_refinement_two;
+        std::vector<unsigned int> ridge_refinement;
+        std::vector<unsigned int> ridge_refinement_two;        
         std::vector<unsigned int> oceanic_crust_refinement;         
         std::vector<unsigned int> oceanic_mantle_refinement; 
         std::vector<unsigned int> mantle_refinement;
@@ -145,6 +150,8 @@ namespace aspect
                 bool continental_mantle_present = false;
                 bool craton_present = false;
                 // bool oceanic_mantle_border_present = false;
+                bool ridge_present = false;
+                bool ridge_present_two = false;
                 bool oceanic_crust_present = false;
                 bool oceanic_crust_present_one = false;                
                 bool oceanic_mantle_present = false;                
@@ -198,6 +205,27 @@ namespace aspect
 
                         //   }     
                         // std::cout<<prelim_composition_values[upper_crust_refinement[0]][p]<<std::endl;  
+
+                         if (prelim_composition_values[ridge_refinement[0]][p] >= 0.60)
+                          {
+                            if(vertex(1) > lithosphere_zone_refined)
+                            {
+                              if(ridge_two_lower_depth <=vertex(1) && vertex(1)<=ridge_two_upper_depth){  
+//                               if (vertex(1) > 1050000){
+                              ridge_present_two = true;
+                              // if (prelim_composition_values[weak_zone_refinement[0]][p] >= 1.0)
+                              // {
+                              //   in_center_of_compo = true;
+                              // }
+                              break;
+//                               }
+                              }else if (ridge_one_lower_depth <=vertex(1) && vertex(1)<ridge_two_lower_depth){  
+                                ridge_present = true;
+                                break;
+                              // }
+                              }
+                            }
+                          }
                         if (prelim_composition_values[weak_zone_refinement[0]][p] >= 0.60)
                           {
                             if(vertex(1) > lithosphere_zone_refined)
@@ -217,7 +245,7 @@ namespace aspect
                               // }
                               }
                             }
-                          }                                      
+                          }                          
                         if (prelim_composition_values[upper_crust_refinement[0]][p] > 0.01)
                           {
                             if(vertex(1) > lithosphere_zone_refined)
@@ -391,7 +419,17 @@ namespace aspect
                       {
                         minimum_refinement_level = weak_zone_refinement_two[1];
                         maximum_refinement_level = weak_zone_refinement_two[2];
-                      }                                            
+                      }
+                    else if (ridge_present)
+                      {
+                        minimum_refinement_level = ridge_refinement[1];
+                        maximum_refinement_level = ridge_refinement[2];
+                      }    
+                    else if (ridge_present_two)
+                      {
+                        minimum_refinement_level = ridge_refinement_two[1];
+                        maximum_refinement_level = ridge_refinement_two[2];
+                      }                       
                     else if (continental_mantle_present)
                       {
                         // std::cout<<"CM"<<std::endl; 
@@ -524,7 +562,15 @@ namespace aspect
           prm.declare_entry("Weak Zone 2 refinement","",
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
-                            "its maximum refinement level.");             
+                            "its maximum refinement level.");
+          prm.declare_entry("Ridge refinement","",
+                            Patterns::List (Patterns::Integer(0)),
+                            "The compositional field number of the crust, its minimum refinement level and "
+                            "its maximum refinement level.");  
+          prm.declare_entry("Ridge 2 refinement","",
+                            Patterns::List (Patterns::Integer(0)),
+                            "The compositional field number of the crust, its minimum refinement level and "
+                            "its maximum refinement level.");          
           prm.declare_entry("Mantle refinement","",
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
@@ -542,7 +588,13 @@ namespace aspect
          prm.declare_entry ("Refine weak zone 2 if on top of", "1050000", Patterns::Double(0),
                              "the strain rate at which the mesh should start to be refined. Units: $1 / s$");
          prm.declare_entry ("Refine weak zone 1 if on top of", "980000", Patterns::Double(0),
-                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");          
+                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$"); 
+         prm.declare_entry ("Refine ridge 2 if under", "1090000", Patterns::Double(0),
+                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");
+         prm.declare_entry ("Refine ridge 2 if on top of", "1050000", Patterns::Double(0),
+                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");
+         prm.declare_entry ("Refine ridge 1 if on top of", "980000", Patterns::Double(0),
+                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");         
          prm.declare_entry ("Refine continental domain if x inferior at", "1670000", Patterns::Double(0),
                              "the strain rate at which the mesh should start to be refined. Units: $1 / s$"); 
          prm.declare_entry ("Refine oceanic domain if x superior at", "350000", Patterns::Double(0),
@@ -570,6 +622,9 @@ namespace aspect
         weakzone_two_upper_depth = prm.get_double("Refine weak zone 2 if under"); 
         weakzone_two_lower_depth = prm.get_double("Refine weak zone 2 if on top of"); 
         weakzone_one_lower_depth = prm.get_double("Refine weak zone 1 if on top of");
+        ridge_two_upper_depth = prm.get_double("Refine ridge 2 if under"); 
+        ridge_two_lower_depth = prm.get_double("Refine ridge 2 if on top of"); 
+        ridge_one_lower_depth = prm.get_double("Refine ridge 1 if on top of");        
         crust_zone_refined = prm.get_double("Refine continental domain if x inferior at");
         oceanic_domain_refined = prm.get_double("Refine oceanic domain if x superior at");
         continental_mantle_refined = prm.get_double("Refine continental mantle if on top of");
@@ -819,7 +874,51 @@ namespace aspect
                        ExcMessage ("The maximum refinement for the crust cannot be "
                                    "greater than the maximum level of the whole model. "));
 
+          const std::vector<int> ridge
+            = Utilities::string_to_int(
+                Utilities::split_string_list(prm.get("Ridge refinement")));
 
+          ridge_refinement = std::vector<unsigned int> (ridge.begin(),ridge.end());
+
+          AssertThrow (ridge_refinement.size() == 3,
+                       ExcMessage ("The number of refinement data given here must be "
+                                   "equal to 3 (field number + min level + max level). "));
+
+          AssertThrow (ridge_refinement[0] < this->n_compositional_fields(),
+                       ExcMessage ("The number of compositional field to refine (starting "
+                                   "from 0) should be smaller than the number of fields. "));
+
+          AssertThrow (ridge_refinement[1] >= min_level,
+                       ExcMessage ("The minimum refinement for the crust cannot be "
+                                   "smaller than the minimum level of the whole model. "));
+
+          // AssertThrow (weak_zone_refinement[2] <= max_level,
+          //              ExcMessage ("The maximum refinement for the crust cannot be "
+          //                          "greater than the maximum level of the whole model. "));
+          
+
+          const std::vector<int> ridge_two
+            = Utilities::string_to_int(
+                Utilities::split_string_list(prm.get("Ridge 2 refinement")));
+
+          ridge_refinement_two = std::vector<unsigned int> (ridge_two.begin(),ridge_two.end());
+
+          AssertThrow (ridge_refinement_two.size() == 3,
+                       ExcMessage ("The number of refinement data given here must be "
+                                   "equal to 3 (field number + min level + max level). "));
+
+          AssertThrow (ridge_refinement_two[0] < this->n_compositional_fields(),
+                       ExcMessage ("The number of compositional field to refine (starting "
+                                   "from 0) should be smaller than the number of fields. "));
+
+          AssertThrow (ridge_refinement_two[1] >= min_level,
+                       ExcMessage ("The minimum refinement for the crust cannot be "
+                                   "smaller than the minimum level of the whole model. "));
+
+          // AssertThrow (weak_zone_refinement_two[2] <= max_level,
+          //              ExcMessage ("The maximum refinement for the crust cannot be "
+          //                          "greater than the maximum level of the whole model. "));
+          
           const std::vector<int> weak_zone
             = Utilities::string_to_int(
                 Utilities::split_string_list(prm.get("Weak Zone refinement")));

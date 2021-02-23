@@ -84,7 +84,8 @@ namespace aspect
         std::vector<unsigned int> weak_zone_refinement_two;
         std::vector<unsigned int> ridge_refinement;
         std::vector<unsigned int> ridge_refinement_two;        
-        std::vector<unsigned int> oceanic_crust_refinement;         
+        std::vector<unsigned int> oceanic_crust_refinement; 
+        std::vector<unsigned int> hazburgite_mantle_refinement;        
         std::vector<unsigned int> oceanic_mantle_refinement; 
         std::vector<unsigned int> mantle_refinement;
         // std::vector<unsigned int> border_refinement_level;
@@ -97,8 +98,8 @@ namespace aspect
          */
         unsigned int max_level;
 
-        std::vector<double> refine_border;
-        unsigned int border_refinement_level;
+//         std::vector<double> refine_border;
+//         unsigned int border_refinement_level;
     };
 
 
@@ -154,7 +155,8 @@ namespace aspect
                 bool ridge_present_two = false;
                 bool oceanic_crust_present = false;
                 bool oceanic_crust_present_one = false;                
-                bool oceanic_mantle_present = false;                
+                bool oceanic_mantle_present = false;
+                bool hazburgite_mantle_present = false;                
                 bool weak_zone_present = false;
                 bool weak_zone_present_two = false;                
                 // bool UPM_present = false;
@@ -163,7 +165,7 @@ namespace aspect
                 // bool LM_present = false;
                 // bool overriding_present = false;
                 bool in_center_of_compo = false;
-                bool refine_border_present = false;
+//                 bool refine_border_present = false;
                 bool mantle_present =false;
 
 
@@ -307,7 +309,24 @@ namespace aspect
                             //   refine_border_present = true;
                             // }
                             }   
-                        }                                                          
+                        }
+                        if (prelim_composition_values[hazburgite_mantle_refinement[0]][p] > 0.1)
+                        {
+                            if(vertex(1) > lithosphere_zone_refined)
+                            {                                 
+                            hazburgite_mantle_present = true;
+                            break; 
+                            if (prelim_composition_values[hazburgite_mantle_refinement[0]][p] >= 1.0)
+                            {
+                              in_center_of_compo = true;
+                            }
+                            // if (prelim_composition_values[oceanic_mantle_refinement[0]][p] < 0.1)
+                            // // if(prelim_composition_values[oceanic_mantle_refinement[0]][p] > 0.35 && prelim_composition_values[oceanic_mantle_refinement[0]][p] < 0.65)
+                            // {
+                            //   refine_border_present = true;
+                            // }
+                            }   
+                        }                          
                         if (prelim_composition_values[continental_mantle_refinement[0]][p] > 0.5)
                           {
                             if(vertex(1) > lithosphere_zone_refined)
@@ -385,7 +404,7 @@ namespace aspect
                       {
                         minimum_refinement_level = oceanic_crust_refinement[1];
                         maximum_refinement_level = oceanic_crust_refinement[2];
-                      }   
+                      }                        
                     else if (oceanic_crust_present_one)
                       {
                         minimum_refinement_level = oceanic_crust_refinement[1]-1;
@@ -403,6 +422,18 @@ namespace aspect
                         // std::cout<<refine_border[oceanic_mantle_refinement[0]+1]<<std::endl;
                         // if(refine_border[oceanic_mantle_refinement[0]+1]==1){
                       }
+                    else if (hazburgite_mantle_present)
+                      {
+                        // std::cout<<"OM"<<std::endl; 
+                        minimum_refinement_level = hazburgite_mantle_refinement[1];
+                        maximum_refinement_level = hazburgite_mantle_refinement[2];
+                        // if (in_center_of_compo)
+                        // minimum_refinement_level = oceanic_mantle_refinement[1];
+                        // maximum_refinement_level = oceanic_mantle_refinement[1];
+                        // std::cout<<oceanic_mantle_refinement[0]+1<<std::endl;
+                        // std::cout<<refine_border[oceanic_mantle_refinement[0]+1]<<std::endl;
+                        // if(refine_border[oceanic_mantle_refinement[0]+1]==1){
+                      }                      
                     // else if(oceanic_mantle_present == true  && refine_border_present == true )
                     //       {
                     //         minimum_refinement_level = border_refinement_level;
@@ -555,6 +586,10 @@ namespace aspect
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
                             "its maximum refinement level.");
+          prm.declare_entry("Hazburgite Mantle refinement","",
+                            Patterns::List (Patterns::Integer(0)),
+                            "The compositional field number of the crust, its minimum refinement level and "
+                            "its maximum refinement level.");          
           prm.declare_entry("Weak Zone refinement","",
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
@@ -629,15 +664,15 @@ namespace aspect
         oceanic_domain_refined = prm.get_double("Refine oceanic domain if x superior at");
         continental_mantle_refined = prm.get_double("Refine continental mantle if on top of");
         
-          const std::vector<double> refine_border
-            = Utilities::string_to_double(
-                Utilities::split_string_list(prm.get("Refine border")));
-
-          AssertThrow (refine_border.size() == this->n_compositional_fields(),
-                       ExcMessage ("The number of refine border given here must be "
-                                   "equal to the number of compositionnal field."));
-         
-         border_refinement_level = prm.get_integer("Refine border level");
+//           const std::vector<double> refine_border
+//             = Utilities::string_to_double(
+//                 Utilities::split_string_list(prm.get("Refine border")));
+// 
+//           AssertThrow (refine_border.size() == this->n_compositional_fields(),
+//                        ExcMessage ("The number of refine border given here must be "
+//                                    "equal to the number of compositionnal field."));
+//          
+//          border_refinement_level = prm.get_integer("Refine border level");
 
           // const std::vector<int> border_refinement_level
           //   = Utilities::string_to_int(
@@ -873,6 +908,28 @@ namespace aspect
           AssertThrow (oceanic_mantle_refinement[2] <= max_level,
                        ExcMessage ("The maximum refinement for the crust cannot be "
                                    "greater than the maximum level of the whole model. "));
+          
+          const std::vector<int> hazburgite_mantle
+            = Utilities::string_to_int(
+                Utilities::split_string_list(prm.get("Hazburgite Mantle refinement")));
+
+          hazburgite_mantle_refinement = std::vector<unsigned int> (hazburgite_mantle.begin(),hazburgite_mantle.end());
+
+          AssertThrow (hazburgite_mantle_refinement.size() == 3,
+                       ExcMessage ("The number of refinement data given here must be "
+                                   "equal to 3 (field number + min level + max level). "));
+
+          AssertThrow (hazburgite_mantle_refinement[0] < this->n_compositional_fields(),
+                       ExcMessage ("The number of compositional field to refine (starting "
+                                   "from 0) should be smaller than the number of fields. "));
+
+          AssertThrow (hazburgite_mantle_refinement[1] >= min_level,
+                       ExcMessage ("The minimum refinement for the crust cannot be "
+                                   "smaller than the minimum level of the whole model. "));
+
+          AssertThrow (hazburgite_mantle_refinement[2] <= max_level,
+                       ExcMessage ("The maximum refinement for the crust cannot be "
+                                   "greater than the maximum level of the whole model. "));          
 
           const std::vector<int> ridge
             = Utilities::string_to_int(

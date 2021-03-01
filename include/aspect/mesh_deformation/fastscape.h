@@ -153,7 +153,7 @@ namespace aspect
         bool diffusion_sinusoid;
         double time_to_diffuse;
 
-
+        bool use_orographic_barriere;
 
         //Boundary conditions
         unsigned int bottom;

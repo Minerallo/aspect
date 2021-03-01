@@ -429,6 +429,55 @@ namespace aspect
                 //and if we aren't advecting the surface then we want to continually send aspect heights.
                 if (use_velocity)
                   fastscape_copy_h_(h.get());
+                
+                if (use_orographic_barriere)
+                {
+                                  // If it isn't the first timestep we just want to know current h values in fastscape.
+                  fastscape_copy_h_(h.get());
+                  
+            //sb modify kf and kd depending topography (orographic control)
+            //sb compute maximum height
+            double hmax = -1000;
+            int hmaxind = 0;
+            int hmaxindx = 0;
+            int hmaxindy = 0;
+            for (int i=0; i<array_size; i++)
+            {
+           // this->get_pcout() << "h[i]= " << h[i] <<  " ; i= " << i << " at ["<< i%nx << ","<<i/nx<<"] array_size= " << array_size << std::endl;
+              if ( h[i] > hmax )
+                {
+                  hmax = h[i];
+                  hmaxind = i;
+                  hmaxindx = i % nx;
+                  hmaxindy = i / nx;
+                  // there was a problem that all heights were shown as 0. This was solved by using less cores. (?)
+                  //this->get_pcout() << "Current hmax= " << hmax << " m at " << hmaxindx << " *** ";   
+                }
+              }
+            //sb get y-index of maximum height
+            this->get_pcout() << "Maximum height hmax= " <<hmax<<" m at "<<hmaxind<<" = ["<< hmaxindx << ","<<hmaxindy<<"]"<< std::endl;
+
+            //sb
+            int hcount = 0; 
+            for (int i=0; i<array_size; i++)
+              {
+              //sb points that are left of the highest peak (if peak larger than 2000 m) and those 
+              //sb that are higher than 500 m get reduced kf and kd values
+                if ( ( (hmax > 904500) && ((i % nx) < hmaxindx) ) || (h[i] > 906000) )
+                //if ( (h[i] < 100) ||  (h[i] > 500) )
+                  {
+                    kf[i] = kf[i]*0.5;
+                    kd[i] = kd[i]*0.5;
+                    hcount = hcount + 1;
+                    //this->get_pcout() << "Reduce Kd and Kf at ["<< i%nx << ","<<i/nx<<"]"<< std::endl;
+                  }  
+              }
+            this->get_pcout() << "Reduced Kf/Kd at hcount= " << hcount << " out of array_size= " << array_size << std::endl;
+                  
+                  //sb update erosional parameters
+                  fastscape_set_erosional_parameters_(kf.get(), &kfsed, &m, &n, kd.get(), &kdsed, &g, &g, &p);
+
+                }
               }
 
           /*
@@ -759,7 +808,7 @@ namespace aspect
               if (use_strat && current_timestep == 1)
                 fastscape_strati_(&nstepp, &nreflectorp, &steps, &vexp);
               else if (!use_strat)
-//                 fastscape_named_vtk_(h.get(), &vexp, &visualization_step, c, &length);
+                fastscape_named_vtk_(h.get(), &vexp, &visualization_step, c, &length);
 
               do
               {
@@ -787,7 +836,7 @@ namespace aspect
                 visualization_step = visualization_step + 1;
 
                 if (!use_strat)
-//                   fastscape_named_vtk_(h.get(), &vexp, &visualization_step, c, &length);
+                  fastscape_named_vtk_(h.get(), &vexp, &visualization_step, c, &length);
 
                 fastscape_destroy_();
               }
@@ -981,6 +1030,9 @@ namespace aspect
           prm.declare_entry("Use stratigraphy", "false",
                             Patterns::Bool(),
                             "Flag to use stratigraphy");
+           prm.declare_entry("Use orographic barriere", "false",
+                            Patterns::Bool(),
+                            "Flag to change kd and kf depending on the elevation");         
           prm.declare_entry("Total steps", "100000",
                             Patterns::Integer(),
                             "Total number of steps you expect in the FastScape model, only used if stratigraphy is turned on.");
@@ -1182,6 +1234,7 @@ namespace aspect
           surface_resolution = prm.get_integer("Surface resolution");
           resolution_difference = prm.get_integer("Resolution difference");
           use_marine = prm.get_bool("Use marine parameters");
+          use_orographic_barriere = prm.get_bool("Use orographic barriere");
           use_strat = prm.get_bool("Use stratigraphy");
           nstepp = prm.get_integer("Total steps");
           nreflectorp = prm.get_integer("Number of horizons");

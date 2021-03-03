@@ -68,9 +68,16 @@ namespace aspect
                 const double f = (1. + (pressure - ak*(temperature - reference_temperatures[c])) *
                                 isothermal_bulk_modulus_pressure_derivatives[c] *
                                 reference_isothermal_compressibilities[c]);
-
-                out.densities[c] = reference_densities[c]*std::pow(f, 1./isothermal_bulk_modulus_pressure_derivatives[c]);
+                
                 out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c] / f;
+
+//                 if(c==composition_number_affected && in.temperature[q]>temperature_threshold)
+//                 {
+//                 out.densities[c] = 4000;
+//                 
+//                 }else{
+                out.densities[c] = reference_densities[c]*std::pow(f, 1./isothermal_bulk_modulus_pressure_derivatives[c]);    
+//                 }
                 
                 if(c==composition_number_affected && in.temperature[q]>temperature_threshold)
                 {

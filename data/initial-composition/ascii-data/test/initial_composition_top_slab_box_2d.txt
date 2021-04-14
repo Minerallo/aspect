@@ -5,7 +5,7 @@
 # Only next line is parsed in format: [nx] [ny] because of keyword "POINTS:"
 # POINTS: 4
 # Columns: x y composition
-0.     60000. 2.
-50000  50000. 2.
-70000  00000. 2
-100000 0. 2.
+0.     50000. 3.
+50000  30000. 3.
+70000  00000. 3
+100000 0. 3.

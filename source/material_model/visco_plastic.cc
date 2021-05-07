@@ -481,7 +481,7 @@ namespace aspect
             }
 
           // Step 5: limit the viscosity with specified minimum and maximum bounds
-          composition_viscosities[j] = std::min(std::max(viscosity_yield, min_visc), max_visc);
+          composition_viscosities[j] = std::min(std::max(viscosity_yield, std::max(min_visc,min_field_visc[j])), max_visc);
           // composition_viscosities[] = std::min(std::max(viscosity_yield, min_visc(in.position[i]), max_visc);
 
         }
@@ -1082,6 +1082,9 @@ namespace aspect
                              "value or the value one would use to compute a Rayleigh number."
                              "\n\n"
                              "Units: \\si{\\pascal\\second}.");
+          prm.declare_entry ("Minimum field viscosities", "2.5e18", 
+                          Patterns::List(Patterns::Double(0)),
+                             "List of lower cutoffs for individual field viscosities. Units: $Pa s$");          
 
           // Equation of state parameters
           prm.declare_entry ("Thermal diffusivities", "0.8e-6",
@@ -1242,6 +1245,10 @@ namespace aspect
 
           max_visc = prm.get_double ("Maximum viscosity");
           ref_visc = prm.get_double ("Reference viscosity");
+          
+          min_field_visc = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Minimum field viscosities"))),
+                                                              n_fields,
+							      "Minimum field viscosities");          
 
           thermal_diffusivities = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Thermal diffusivities"))),
                                                                           n_fields,

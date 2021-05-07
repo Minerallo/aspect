@@ -477,7 +477,9 @@ namespace aspect
         unsigned int
         get_phase_index (const Point<dim> &position,
                          const double temperature,
-                         const double pressure) const; */       
+                         const double pressure) const; */  
+
+        std::vector<double> min_field_visc;
     };
 
   }

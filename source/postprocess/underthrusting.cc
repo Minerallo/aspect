@@ -51,7 +51,7 @@ namespace aspect
      * @ingroup Postprocessing
      */
     template <int dim>
-    class ExtentComposition : public Interface<dim>, public ::aspect::SimulatorAccess<dim>
+    class DifferenceComposition : public Interface<dim>, public ::aspect::SimulatorAccess<dim>
     {
       public:
         /**
@@ -73,14 +73,18 @@ namespace aspect
          * for the crust, mantle part of the slab lithosphere and the
          * overriding plate
          */
-        unsigned int composition_extent; 
+        unsigned int composition_difference; 
         /**
          * Whether or not to produce text files with topography values
          */
         bool write_to_file;
         bool write_to_end_file;
         double ending_depth;
-        double composition_depth;
+        
+        double composition_one;
+        double composition_two;
+        double composition_depth_one;
+        double composition_depth_two;
 
         /**
          * Interval between the generation of text output. This parameter
@@ -103,8 +107,9 @@ namespace aspect
 
     template <int dim>
     std::pair<std::string,std::string>
-    ExtentComposition<dim>::execute (TableHandler &statistics)
+    DifferenceComposition<dim>::execute (TableHandler &statistics)
     {
+        
       QTrapez<dim-1> face_corners;
 
       // const Quadrature<dim> quadrature(this->get_fe().base_element(this->introspection().base_elements.compositional_fields).get_unit_support_points());
@@ -131,24 +136,33 @@ namespace aspect
         // (this->n_compositional_fields(),
         // std::vector<double> (quadrature.size()));
 
-        std::vector<double>compositional_values(face_corners.size()); 
+        std::vector<std::vector<double> > compositional_values
+        (this->n_compositional_fields(),
+        std::vector<double> (face_corners.size())); 
         // double compositional_values =0.0;
         // std::vector<std::vector<double>> temporary_variables(0, std::vector<double>());
 
-      //std::cout<<"name composition selected :"<<this->introspection().name_for_compositional_index(composition_extent)<<std::endl;  
+      //std::cout<<"name composition selected :"<<this->introspection().name_for_compositional_index(composition_Difference)<<std::endl;  
 
       // loop over all cells and find cell with 100 % of the defined composition, then save the elevation to stored_value
       for (const auto &cell : this->get_dof_handler().active_cell_iterators())
       {
         if (cell->is_locally_owned())
         {
-            bool composition_extent_tracked_present = false;   
-
+            bool composition_one_tracked_present = false;
+            bool composition_two_tracked_present = false;
+            
+                    
+                    
           for (unsigned int face_no = 0; face_no < GeometryInfo<dim>::faces_per_cell; ++face_no)
           {
+                      for (unsigned int c = 0; c<this->n_compositional_fields(); c++)
+            {
                 fe_face_values.reinit(cell, face_no);
-                fe_face_values[this->introspection().extractors.compositional_fields[composition_extent]].get_function_values (this->get_solution(),
-                          compositional_values);
+                fe_face_values[this->introspection().extractors.compositional_fields[c]].get_function_values (this->get_solution(),
+                compositional_values[c]);
+            }
+
                 
                 for (unsigned int corner = 0; corner < face_corners.size(); ++corner)
                   {
@@ -159,28 +173,40 @@ namespace aspect
 
                   // for (unsigned int p=0; p<face_corners.size(); ++p)
                   //   {     
-                      if (compositional_values[corner] >= 0.95)
+                      if (compositional_values[composition_one][corner] >= 0.95)
                         {
                             // track the composition at the surface
-                            if(vertex(1) > extents[1]-composition_depth)
+                            if(vertex(1) > extents[1]-composition_depth_one)
                             {
-                          composition_extent_tracked_present = true;
+                          composition_one_tracked_present = true;
                             }
-                        }                        
+                        }  
+                    
                     //  } 
-
-               if(composition_extent_tracked_present)
+                      if (compositional_values[composition_two][corner] >= 0.95)
+                        {
+                            if(vertex(1) > extents[1]-composition_depth_two)
+                            {
+                          composition_two_tracked_present = true;
+                            }                            
+                        }  
+               if(composition_one_tracked_present)
                {
-                    if (vertex(0) < local_min_x)
-                    {
-                      local_min_x = vertex(0);
-                    }
                     if (vertex(0) > local_max_x)
                     {
                       local_max_x = vertex(0);
                     }                    
                     
-               } 
+               }
+               if(composition_two_tracked_present)
+               {
+                    if (vertex(0) < local_min_x)
+                    {
+                      local_min_x = vertex(0);
+                    }                   
+                    
+               }               
+               
                 }           
           }        
         }
@@ -190,23 +216,14 @@ namespace aspect
       const double min_x = std::abs(Utilities::MPI::min(local_min_x, this->get_mpi_communicator())); 
       const double max_x = std::abs(Utilities::MPI::max(local_max_x, this->get_mpi_communicator()));
       
-      double extent_composition = max_x-min_x;
+      double difference_composition = max_x-min_x;
 //       std::cout<<"min_x :"<<min_x<<" max_x :"<<max_x<<std::endl;    
-
-      // statistics.add_value ("Maximum depth value for composition " + this->introspection().name_for_compositional_index(composition_extent),
-      //                           local_min_height);
-
-      
-//       double a_dt = this->get_timestep();
-//       if (this->convert_output_to_years())
-//       {
-//         a_dt = this->get_timestep() / year_in_seconds;
-//       }
+   
       
       //Write results to statistics file
-      statistics.add_value ("Composition extent (m)",
-                            extent_composition);
-      const char *columns[] = { "Composition extent (m)"};
+      statistics.add_value ("Difference between selected compositions (m)",
+                            difference_composition);
+      const char *columns[] = { "Difference between selected compositions (m)"};
       for (unsigned int i=0; i<sizeof(columns)/sizeof(columns[0]); ++i)
         {
           statistics.set_precision (columns[i], 8);
@@ -214,16 +231,16 @@ namespace aspect
         }
 
       output_stats.precision(5);
-      output_stats << extent_composition << " m";
+      output_stats << difference_composition << " m";
 
       // Just return stats if text output is not required at all or not needed at this time
       if (!write_to_file || ((this->get_time() < last_output_time + output_interval)
                              && (this->get_timestep_number() != 0)))
-        return std::pair<std::string, std::string> (" Extent of the selected composition (m)",
+        return std::pair<std::string, std::string> ("Difference between selected compositions (m)",
                                                     output_stats.str());
 
 
-      return std::pair<std::string, std::string> ("Composition extent (m)",
+      return std::pair<std::string, std::string> ("Difference between selected compositions (m)",
                                                   output_stats.str());
 
     }      
@@ -231,7 +248,7 @@ namespace aspect
 
 
     template <int dim>
-    void ExtentComposition<dim>::declare_parameters(ParameterHandler &prm)
+    void DifferenceComposition<dim>::declare_parameters(ParameterHandler &prm)
     {
       prm.enter_subsection("Geometry model");
       {
@@ -251,11 +268,14 @@ namespace aspect
 
      prm.enter_subsection("Postprocess");
       {      
-        prm.enter_subsection("Extent composition");
+        prm.enter_subsection("Difference composition");
         {        
-            prm.declare_entry("Composition tracked for extent", "1",
+            prm.declare_entry("Composition one tracked for difference", "1",
                               Patterns::Integer(),
                               "composition number that is tracked. ");
+             prm.declare_entry("Composition two tracked for difference", "1",
+                              Patterns::Integer(),
+                              "composition number that is tracked. ");           
           prm.declare_entry ("Time between text output", "0.",
                              Patterns::Double (0.),
                              "The time interval between each generation of "
@@ -268,17 +288,20 @@ namespace aspect
                              Patterns::List(Patterns::Bool()),
                              "Whether or not to write topography to a text file named named "
                              "'topography.NNNNN' in the output directory"); 
-          prm.declare_entry ("Output extent dependant ending file", "false",
+          prm.declare_entry ("Output composition difference dependant ending file", "false",
                              Patterns::List(Patterns::Bool()),
                              "Output a Termin aspect file when a depth that user set has been reached by the choosen composition"
                              ", for example, in a subduction model, when the slab reach a defined depth"
                              ", a fill is outputed and using the request user termination criterion, the simulation can stop");   
-          prm.declare_entry ("Ending extent criterion", "300000",
+          prm.declare_entry ("Ending composition difference criterion", "300000",
                              Patterns::Double (0.),
-                             "The depth choosen to ouput a random file that cam be used as an termine aspect file"); 
-          prm.declare_entry ("Composition maximum depth", "5000",
+                             "The depth choosen to ouput a random file that cam be used as an termine aspect file");    
+          prm.declare_entry ("Composition 1 maximum depth", "5000",
                              Patterns::Double (0.),
-                             "Maximum depth until which the composition extent sould be tracked");           
+                             "Maximum depth until which the composition sould be tracked");  
+           prm.declare_entry ("Composition 2 maximum depth", "10000",
+                             Patterns::Double (0.),
+                             "Maximum depth until which the composition sould be tracked");          
         }
           prm.leave_subsection();        
       }
@@ -287,7 +310,7 @@ namespace aspect
 
     template <int dim>
     void
-    ExtentComposition<dim>::parse_parameters (ParameterHandler &prm)
+    DifferenceComposition<dim>::parse_parameters (ParameterHandler &prm)
     {
       prm.enter_subsection("Geometry model");
       {
@@ -303,10 +326,12 @@ namespace aspect
 
       prm.enter_subsection("Postprocess");
       {
-        prm.enter_subsection("Extent composition");
+        prm.enter_subsection("Difference composition");
         {
-          composition_extent = prm.get_integer("Composition tracked for extent");
-          composition_depth = prm.get_double ("Composition maximum depth");
+          composition_one = prm.get_integer("Composition one tracked for difference");
+          composition_two = prm.get_integer("Composition two tracked for difference"); 
+          composition_depth_one = prm.get_double ("Composition 1 maximum depth");
+          composition_depth_two = prm.get_double ("Composition 2 maximum depth");          
           write_to_file      = prm.get_bool ("Output to file");
           output_interval    = prm.get_double ("Time between text output");                            
         }
@@ -323,8 +348,8 @@ namespace aspect
 {
   namespace Postprocess
   {
-    ASPECT_REGISTER_POSTPROCESSOR(ExtentComposition,
-                                  "Composition extent",
+    ASPECT_REGISTER_POSTPROCESSOR(DifferenceComposition,
+                                  "Composition difference",
                                   "A postprocessor that computes some statistics about "
                                   "the compositional fields, if present in this simulation. "
                                   "In particular, it computes maximal and minimal values of "

@@ -88,18 +88,16 @@ namespace aspect
         std::vector<unsigned int> hazburgite_mantle_refinement;        
         std::vector<unsigned int> oceanic_mantle_refinement; 
         std::vector<unsigned int> mantle_refinement;
+        std::vector<unsigned int> upper_mantle_refinement;
         // std::vector<unsigned int> border_refinement_level;
         /**
          * The absolute minimum refinement level
          */
         unsigned int min_level;
+        unsigned int max_level;
         /**
          * The absolute maximum refinement level
          */
-        unsigned int max_level;
-
-//         std::vector<double> refine_border;
-//         unsigned int border_refinement_level;
     };
 
 
@@ -164,10 +162,10 @@ namespace aspect
                 // bool TZ2_present = false;
                 // bool LM_present = false;
                 // bool overriding_present = false;
-                bool in_center_of_compo = false;
+//                 bool in_center_of_compo = false;
 //                 bool refine_border_present = false;
                 bool mantle_present =false;
-
+                bool upper_mantle_present =false;
 
               fe_values.reinit(cell);
             //   in.reinit(fe_values, cell, this->introspection(), this->get_solution(), true);
@@ -247,32 +245,44 @@ namespace aspect
                               // }
                               }
                             }
-                          }                          
-                        if (prelim_composition_values[upper_crust_refinement[0]][p] > 0.01)
-                          {
-                            if(vertex(1) > lithosphere_zone_refined)
-                            {                            
-                              if (vertex(0) < crust_zone_refined){
-                              upper_crust_present = true;
-                              // //Crust will have smallest res, so not interested in other fields
-                              // break;
-                              }else{
-                                upper_crust_present_two = true;
-                              }
+                          }    
+                          
+                        if (vertex(1) >= continental_mantle_refined)
+                        { 
+                            if (prelim_composition_values[upper_crust_refinement[0]][p] > 0.01)
+                            {
+                               if (vertex(0) < crust_zone_refined){
+                               upper_crust_present = true; 
+                               }else{
+                            upper_crust_present_two = true;
+                            }                            
                             }
-                          }
-                        if (prelim_composition_values[lower_crust_refinement[0]][p] > 0.01)
+                          }else if(vertex(1) < continental_mantle_refined)
                           {
-                            if(vertex(1) > lithosphere_zone_refined)
-                            {                                   
-                            if (vertex(0) < crust_zone_refined){
-                            lower_crust_present = true;
-                            // break;
-                            }else{
+                           if (prelim_composition_values[upper_crust_refinement[0]][p] > 0.5)
+                           {
+                            upper_crust_present = true;    
+                        }
+                        }
+                        
+                        if (vertex(1) >= continental_mantle_refined)
+                        { 
+                            if (prelim_composition_values[lower_crust_refinement[0]][p] > 0.01)
+                            {
+                               if (vertex(0) < crust_zone_refined){
+                               lower_crust_present = true; 
+                               }else{
                             lower_crust_present_two = true;
+                            }                            
                             }
-                            }
-                          }
+                          }else if(vertex(1) < continental_mantle_refined)
+                          {
+                           if (prelim_composition_values[lower_crust_refinement[0]][p] > 0.5)
+                           {
+                            lower_crust_present = true;    
+                        }
+                        }
+                      
                         if (prelim_composition_values[sediments_refinement[0]][p] > 0.01)
                           {
                             if(vertex(1) > lithosphere_zone_refined)
@@ -299,10 +309,10 @@ namespace aspect
                             {                                 
                             oceanic_mantle_present = true;
                             break; 
-                            if (prelim_composition_values[oceanic_mantle_refinement[0]][p] >= 1.0)
-                            {
-                              in_center_of_compo = true;
-                            }
+//                             if (prelim_composition_values[oceanic_mantle_refinement[0]][p] >= 1.0)
+//                             {
+//                               in_center_of_compo = true;
+//                             }
                             // if (prelim_composition_values[oceanic_mantle_refinement[0]][p] < 0.1)
                             // // if(prelim_composition_values[oceanic_mantle_refinement[0]][p] > 0.35 && prelim_composition_values[oceanic_mantle_refinement[0]][p] < 0.65)
                             // {
@@ -316,10 +326,10 @@ namespace aspect
                             {                                 
                             hazburgite_mantle_present = true;
                             break; 
-                            if (prelim_composition_values[hazburgite_mantle_refinement[0]][p] >= 1.0)
-                            {
-                              in_center_of_compo = true;
-                            }
+//                             if (prelim_composition_values[hazburgite_mantle_refinement[0]][p] >= 1.0)
+//                             {
+//                               in_center_of_compo = true;
+//                             }
                             // if (prelim_composition_values[oceanic_mantle_refinement[0]][p] < 0.1)
                             // // if(prelim_composition_values[oceanic_mantle_refinement[0]][p] > 0.35 && prelim_composition_values[oceanic_mantle_refinement[0]][p] < 0.65)
                             // {
@@ -345,12 +355,20 @@ namespace aspect
                             if(vertex(1) > lithosphere_zone_refined)
                             {                                   
                             craton_present = true;
-                            if (prelim_composition_values[craton_refinement[0]][p] >= 1.0)
-                            {
-                              in_center_of_compo = true;
-                            }
-                            }
+//                             if (prelim_composition_values[craton_refinement[0]][p] >= 1.0)
+//                             {
+//                               in_center_of_compo = true;
+//                             }
+//                             }
                           }
+                          }
+                        if (prelim_composition_values[upper_mantle_refinement[0]][p] > 0.80)
+                          {
+                            if(vertex(1) > lithosphere_zone_refined)
+                            {                                   
+                            upper_mantle_present = true;
+                            }
+                          }                          
                         if (prelim_composition_values[0][p] > 0.85)
                           {
                             mantle_present = true;
@@ -363,37 +381,36 @@ namespace aspect
         
                //Only continue if at least one is true
 
-                    int maximum_refinement_level = max_level;
-                    int minimum_refinement_level = min_level;               
+                    int refinement_level = min_level;
 
                     if (upper_crust_present)
                       {
                         // std::cout<<"UPC"<<std::endl; 
-                        minimum_refinement_level = upper_crust_refinement[1];
-                        maximum_refinement_level = upper_crust_refinement[2];
+                        refinement_level =  upper_crust_refinement[1];
+
                       }
                     else if (upper_crust_present_two)
                       {
                         // std::cout<<"UPC"<<std::endl; 
-                        minimum_refinement_level = upper_crust_refinement_two[1];
-                        maximum_refinement_level = upper_crust_refinement_two[2];
+                        refinement_level =  upper_crust_refinement_two[1];
+
                       }                      
                     else if (lower_crust_present)
                       {
                         // std::cout<<"UPL"<<std::endl; 
-                        minimum_refinement_level = lower_crust_refinement[1];
-                        maximum_refinement_level = lower_crust_refinement[2];
+                        refinement_level =  lower_crust_refinement[1];
+                
                       }  
                     else if (lower_crust_present_two)
                       {
                         // std::cout<<"UPL"<<std::endl; 
-                        minimum_refinement_level = lower_crust_refinement_two[1];
-                        maximum_refinement_level = lower_crust_refinement_two[2];
+                       refinement_level =  lower_crust_refinement_two[1];
+                  
                       }                        
                     else if (sediments_present)
                       {
-                        minimum_refinement_level = sediments_refinement[1];
-                        maximum_refinement_level = sediments_refinement[2];
+                        refinement_level =  sediments_refinement[1];
+               
                       }
                     // else if (weak_layer_present)
                     //   {
@@ -402,19 +419,19 @@ namespace aspect
                     //   }
                     else if (oceanic_crust_present)
                       {
-                        minimum_refinement_level = oceanic_crust_refinement[1];
-                        maximum_refinement_level = oceanic_crust_refinement[2];
+                        refinement_level = oceanic_crust_refinement[1];
+                     
                       }                        
                     else if (oceanic_crust_present_one)
                       {
-                        minimum_refinement_level = oceanic_crust_refinement[1]-1;
-                        maximum_refinement_level = oceanic_crust_refinement[2]-1;
+                        refinement_level =  oceanic_crust_refinement[1]-1;
+                
                       }                         
                     else if (oceanic_mantle_present)
                       {
                         // std::cout<<"OM"<<std::endl; 
-                        minimum_refinement_level = oceanic_mantle_refinement[1];
-                        maximum_refinement_level = oceanic_mantle_refinement[2];
+                        refinement_level =  oceanic_mantle_refinement[1];
+              
                         // if (in_center_of_compo)
                         // minimum_refinement_level = oceanic_mantle_refinement[1];
                         // maximum_refinement_level = oceanic_mantle_refinement[1];
@@ -425,8 +442,8 @@ namespace aspect
                     else if (hazburgite_mantle_present)
                       {
                         // std::cout<<"OM"<<std::endl; 
-                        minimum_refinement_level = hazburgite_mantle_refinement[1];
-                        maximum_refinement_level = hazburgite_mantle_refinement[2];
+                        refinement_level =  hazburgite_mantle_refinement[1];
+              
                         // if (in_center_of_compo)
                         // minimum_refinement_level = oceanic_mantle_refinement[1];
                         // maximum_refinement_level = oceanic_mantle_refinement[1];
@@ -443,45 +460,45 @@ namespace aspect
                       // }
                     else if (weak_zone_present)
                       {
-                        minimum_refinement_level = weak_zone_refinement[1];
-                        maximum_refinement_level = weak_zone_refinement[2];
+                        refinement_level =  weak_zone_refinement[1];
+             
                       }    
                     else if (weak_zone_present_two)
                       {
-                        minimum_refinement_level = weak_zone_refinement_two[1];
-                        maximum_refinement_level = weak_zone_refinement_two[2];
+                        refinement_level =  weak_zone_refinement_two[1];
+                
                       }
                     else if (ridge_present)
                       {
-                        minimum_refinement_level = ridge_refinement[1];
-                        maximum_refinement_level = ridge_refinement[2];
+                        refinement_level =  ridge_refinement[1];
+             
                       }    
                     else if (ridge_present_two)
                       {
-                        minimum_refinement_level = ridge_refinement_two[1];
-                        maximum_refinement_level = ridge_refinement_two[2];
+                       refinement_level =  ridge_refinement_two[1];
+                  
                       }                       
                     else if (continental_mantle_present)
                       {
                         // std::cout<<"CM"<<std::endl; 
-                        minimum_refinement_level = continental_mantle_refinement[1];
-                        maximum_refinement_level = continental_mantle_refinement[2];
+                        refinement_level =  continental_mantle_refinement[1];
+            
                       }
                      else if (craton_present)
                       {
-                        minimum_refinement_level = craton_refinement[1];
-                        maximum_refinement_level = craton_refinement[2];
+                        refinement_level =  craton_refinement[1];
+              
                       }          
                       // This mantle present will be helpfull to not refine tiny amount of composition that get lost in the model
-                    else if (mantle_present)
+                    else if (upper_mantle_present)
                       {
-                        minimum_refinement_level = mantle_refinement[0];
-                        maximum_refinement_level = mantle_refinement[1];
+                        refinement_level =  mantle_refinement[1];
+                 
                       }                                                                                                                                                                       
                     else
                       {
-                        minimum_refinement_level = mantle_refinement[0];
-                        maximum_refinement_level = mantle_refinement[1];
+                        refinement_level =  mantle_refinement[0];
+                
                       }
 
                     
@@ -490,22 +507,22 @@ namespace aspect
                     // }   
 
                     const int cell_level = cell->level();
-                    if (cell_level >= maximum_refinement_level)
+                    if (cell_level >= refinement_level)
                       {
                         clear_refine = false;
                       }
-                    if (cell_level >  maximum_refinement_level)
+                    if (cell_level >  refinement_level)
                       {
                         coarsen = true;
                       }
-                    if (cell_level <= minimum_refinement_level)
+                    if (cell_level <= refinement_level)
                       {
                         clear_coarsen = true;
                       }
-                    if (cell_level < minimum_refinement_level)
+                    if (cell_level < refinement_level)
                       {
                         refine = true;
-                      }    
+                      }   
               // if both coarsen and refine are true, give preference to refinement
               if (coarsen == true && refine == true)
                 {
@@ -605,6 +622,10 @@ namespace aspect
           prm.declare_entry("Ridge 2 refinement","",
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
+                            "its maximum refinement level.");  
+          prm.declare_entry("Upper Mantle refinement","",
+                            Patterns::List (Patterns::Integer(0)),
+                            "The compositional field number of the crust, its minimum refinement level and "
                             "its maximum refinement level.");          
           prm.declare_entry("Mantle refinement","",
                             Patterns::List (Patterns::Integer(0)),
@@ -690,7 +711,7 @@ namespace aspect
 
           sediments_refinement = std::vector<unsigned int> (sediments.begin(),sediments.end());
 
-          AssertThrow (sediments_refinement.size() == 3,
+          AssertThrow (sediments_refinement.size() == 2,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
@@ -702,9 +723,7 @@ namespace aspect
                        ExcMessage ("The minimum refinement for the crust cannot be "
                                    "smaller than the minimum level of the whole model. "));
 
-          AssertThrow (sediments_refinement[2] <= max_level,
-                       ExcMessage ("The maximum refinement for the crust cannot be "
-                                   "greater than the maximum level of the whole model. "));
+
 
 
           const std::vector<int> upper_crust
@@ -713,7 +732,7 @@ namespace aspect
 
           upper_crust_refinement = std::vector<unsigned int> (upper_crust.begin(),upper_crust.end());
 
-          AssertThrow (upper_crust_refinement.size() == 3,
+          AssertThrow (upper_crust_refinement.size() == 2,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
@@ -725,9 +744,6 @@ namespace aspect
                        ExcMessage ("The minimum refinement for the crust cannot be "
                                    "smaller than the minimum level of the whole model. "));
 
-          AssertThrow (upper_crust_refinement[2] <= max_level,
-                       ExcMessage ("The maximum refinement for the crust cannot be "
-                                   "greater than the maximum level of the whole model. "));
 
           const std::vector<int> upper_crust_two
             = Utilities::string_to_int(
@@ -735,7 +751,7 @@ namespace aspect
 
           upper_crust_refinement_two = std::vector<unsigned int> (upper_crust_two.begin(),upper_crust_two.end());
 
-          AssertThrow (upper_crust_refinement_two.size() == 3,
+          AssertThrow (upper_crust_refinement_two.size() == 2,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
@@ -747,9 +763,7 @@ namespace aspect
                        ExcMessage ("The minimum refinement for the crust cannot be "
                                    "smaller than the minimum level of the whole model. "));
 
-          AssertThrow (upper_crust_refinement_two[2] <= max_level,
-                       ExcMessage ("The maximum refinement for the crust cannot be "
-                                   "greater than the maximum level of the whole model. "));                                   
+                                  
 
           const std::vector<int> lower_crust
             = Utilities::string_to_int(
@@ -757,7 +771,7 @@ namespace aspect
 
           lower_crust_refinement = std::vector<unsigned int> (lower_crust.begin(),lower_crust.end());
 
-          AssertThrow (lower_crust_refinement.size() == 3,
+          AssertThrow (lower_crust_refinement.size() == 2,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
@@ -769,9 +783,7 @@ namespace aspect
                        ExcMessage ("The minimum refinement for the crust cannot be "
                                    "smaller than the minimum level of the whole model. "));
 
-          AssertThrow (lower_crust_refinement[2] <= max_level,
-                       ExcMessage ("The maximum refinement for the crust cannot be "
-                                   "greater than the maximum level of the whole model. "));
+
 
           const std::vector<int> lower_crust_two
             = Utilities::string_to_int(
@@ -779,7 +791,7 @@ namespace aspect
 
           lower_crust_refinement_two = std::vector<unsigned int> (lower_crust_two.begin(),lower_crust_two.end());
 
-          AssertThrow (lower_crust_refinement_two.size() == 3,
+          AssertThrow (lower_crust_refinement_two.size() == 2,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
@@ -791,9 +803,6 @@ namespace aspect
                        ExcMessage ("The minimum refinement for the crust cannot be "
                                    "smaller than the minimum level of the whole model. "));
 
-          AssertThrow (lower_crust_refinement_two[2] <= max_level,
-                       ExcMessage ("The maximum refinement for the crust cannot be "
-                                   "greater than the maximum level of the whole model. "));
 
           const std::vector<int> continental_mantle
             = Utilities::string_to_int(
@@ -801,7 +810,7 @@ namespace aspect
 
           continental_mantle_refinement = std::vector<unsigned int> (continental_mantle.begin(),continental_mantle.end());
 
-          AssertThrow (continental_mantle_refinement.size() == 3,
+          AssertThrow (continental_mantle_refinement.size() == 2,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
@@ -813,9 +822,7 @@ namespace aspect
                        ExcMessage ("The minimum refinement for the crust cannot be "
                                    "smaller than the minimum level of the whole model. "));
 
-          AssertThrow (continental_mantle_refinement[2] <= max_level,
-                       ExcMessage ("The maximum refinement for the crust cannot be "
-                                   "greater than the maximum level of the whole model. "));
+
 
 
           const std::vector<int> craton
@@ -824,7 +831,7 @@ namespace aspect
 
           craton_refinement = std::vector<unsigned int> (craton.begin(),craton.end());
 
-          AssertThrow (craton_refinement.size() == 3,
+          AssertThrow (craton_refinement.size() == 2,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
@@ -836,9 +843,7 @@ namespace aspect
                        ExcMessage ("The minimum refinement for the crust cannot be "
                                    "smaller than the minimum level of the whole model. "));
 
-          AssertThrow (craton_refinement[2] <= max_level,
-                       ExcMessage ("The maximum refinement for the crust cannot be "
-                                   "greater than the maximum level of the whole model. "));
+
 
 
           // const std::vector<int> weak_layer
@@ -870,7 +875,7 @@ namespace aspect
 
           oceanic_crust_refinement = std::vector<unsigned int> (oceanic_crust.begin(),oceanic_crust.end());
 
-          AssertThrow (oceanic_crust_refinement.size() == 3,
+          AssertThrow (oceanic_crust_refinement.size() ==2,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
@@ -882,9 +887,7 @@ namespace aspect
                        ExcMessage ("The minimum refinement for the crust cannot be "
                                    "smaller than the minimum level of the whole model. "));
 
-          AssertThrow (oceanic_crust_refinement[2] <= max_level,
-                       ExcMessage ("The maximum refinement for the crust cannot be "
-                                   "greater than the maximum level of the whole model. "));
+
 
 
           const std::vector<int> oceanic_mantle
@@ -893,7 +896,7 @@ namespace aspect
 
           oceanic_mantle_refinement = std::vector<unsigned int> (oceanic_mantle.begin(),oceanic_mantle.end());
 
-          AssertThrow (oceanic_mantle_refinement.size() == 3,
+          AssertThrow (oceanic_mantle_refinement.size() == 2,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
@@ -905,9 +908,6 @@ namespace aspect
                        ExcMessage ("The minimum refinement for the crust cannot be "
                                    "smaller than the minimum level of the whole model. "));
 
-          AssertThrow (oceanic_mantle_refinement[2] <= max_level,
-                       ExcMessage ("The maximum refinement for the crust cannot be "
-                                   "greater than the maximum level of the whole model. "));
           
           const std::vector<int> hazburgite_mantle
             = Utilities::string_to_int(
@@ -915,7 +915,7 @@ namespace aspect
 
           hazburgite_mantle_refinement = std::vector<unsigned int> (hazburgite_mantle.begin(),hazburgite_mantle.end());
 
-          AssertThrow (hazburgite_mantle_refinement.size() == 3,
+          AssertThrow (hazburgite_mantle_refinement.size() == 2,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
@@ -926,10 +926,7 @@ namespace aspect
           AssertThrow (hazburgite_mantle_refinement[1] >= min_level,
                        ExcMessage ("The minimum refinement for the crust cannot be "
                                    "smaller than the minimum level of the whole model. "));
-
-          AssertThrow (hazburgite_mantle_refinement[2] <= max_level,
-                       ExcMessage ("The maximum refinement for the crust cannot be "
-                                   "greater than the maximum level of the whole model. "));          
+         
 
           const std::vector<int> ridge
             = Utilities::string_to_int(
@@ -937,7 +934,7 @@ namespace aspect
 
           ridge_refinement = std::vector<unsigned int> (ridge.begin(),ridge.end());
 
-          AssertThrow (ridge_refinement.size() == 3,
+          AssertThrow (ridge_refinement.size() == 2,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
@@ -949,9 +946,7 @@ namespace aspect
                        ExcMessage ("The minimum refinement for the crust cannot be "
                                    "smaller than the minimum level of the whole model. "));
 
-          // AssertThrow (weak_zone_refinement[2] <= max_level,
-          //              ExcMessage ("The maximum refinement for the crust cannot be "
-          //                          "greater than the maximum level of the whole model. "));
+
           
 
           const std::vector<int> ridge_two
@@ -960,7 +955,7 @@ namespace aspect
 
           ridge_refinement_two = std::vector<unsigned int> (ridge_two.begin(),ridge_two.end());
 
-          AssertThrow (ridge_refinement_two.size() == 3,
+          AssertThrow (ridge_refinement_two.size() == 2,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
@@ -982,7 +977,7 @@ namespace aspect
 
           weak_zone_refinement = std::vector<unsigned int> (weak_zone.begin(),weak_zone.end());
 
-          AssertThrow (weak_zone_refinement.size() == 3,
+          AssertThrow (weak_zone_refinement.size() == 2,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
@@ -1005,7 +1000,7 @@ namespace aspect
 
           weak_zone_refinement_two = std::vector<unsigned int> (weak_zone_two.begin(),weak_zone_two.end());
 
-          AssertThrow (weak_zone_refinement_two.size() == 3,
+          AssertThrow (weak_zone_refinement_two.size() == 2,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
@@ -1022,7 +1017,25 @@ namespace aspect
           //                          "greater than the maximum level of the whole model. "));
           
 
+          const std::vector<int> upper_mantle
+            = Utilities::string_to_int(
+                Utilities::split_string_list(prm.get("Upper Mantle refinement")));
 
+          upper_mantle_refinement = std::vector <unsigned int> (upper_mantle.begin(),
+                                                          upper_mantle.end());
+
+          AssertThrow (upper_mantle_refinement.size() == 2,
+                       ExcMessage ("The number of refinement data given here must be "
+                                   "equal to 2 (min level + max level). "));
+
+          AssertThrow (weak_zone_refinement_two[0] < this->n_compositional_fields(),
+                       ExcMessage ("The number of compositional field to refine (starting "
+                                   "from 0) should be smaller than the number of fields. "));
+
+          AssertThrow (weak_zone_refinement_two[1] >= min_level,
+                       ExcMessage ("The minimum refinement for the crust cannot be "
+                                   "smaller than the minimum level of the whole model. "));
+          
           const std::vector<int> mantle
             = Utilities::string_to_int(
                 Utilities::split_string_list(prm.get("Mantle refinement")));
@@ -1038,9 +1051,6 @@ namespace aspect
                        ExcMessage ("The minimum refinement for the mantle cannot be "
                                    "smaller than the minimum level of the whole model. "));
 
-          AssertThrow (mantle_refinement[1] <= max_level,
-                       ExcMessage ("The maximum refinement for the mantle cannot be "
-                                   "greater than the maximum level of the whole model. "));
 
         //   AssertThrow (crust_refinement[0] != slab_mantle_refinement[0] && \
         //                crust_refinement[0] != overriding_refinement[0]  && \

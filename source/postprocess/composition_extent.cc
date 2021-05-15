@@ -98,7 +98,9 @@ namespace aspect
        /**
          * Extent of the whole model domain in x-, y-, and z-direction (in 3d).
          */
-        Point<dim> extents;               
+        Point<dim> extents;  
+        
+//         const std::set<types::boundary_id> &boundary_id;
     };
 
     template <int dim>
@@ -135,7 +137,10 @@ namespace aspect
         // double compositional_values =0.0;
         // std::vector<std::vector<double>> temporary_variables(0, std::vector<double>());
 
-      //std::cout<<"name composition selected :"<<this->introspection().name_for_compositional_index(composition_extent)<<std::endl;  
+      //std::cout<<"name composition selected :"<<this->introspection().name_for_compositional_index(composition_extent)<<std::endl;
+        
+        const types::boundary_id relevant_boundary = this->get_geometry_model().translate_symbolic_boundary_name_to_id("top");
+//         const bool top_boundary = boundary_ids.find(relevant_boundary) == boundary_ids.begin();
 
       // loop over all cells and find cell with 100 % of the defined composition, then save the elevation to stored_value
       for (const auto &cell : this->get_dof_handler().active_cell_iterators())
@@ -146,6 +151,11 @@ namespace aspect
 
           for (unsigned int face_no = 0; face_no < GeometryInfo<dim>::faces_per_cell; ++face_no)
           {
+              if (cell->face(face_no)->at_boundary())
+              {
+                if (cell->face(face_no)->boundary_id() != relevant_boundary)
+                  continue;
+                
                 fe_face_values.reinit(cell, face_no);
                 fe_face_values[this->introspection().extractors.compositional_fields[composition_extent]].get_function_values (this->get_solution(),
                           compositional_values);
@@ -162,10 +172,10 @@ namespace aspect
                       if (compositional_values[corner] >= 0.95)
                         {
                             // track the composition at the surface
-                            if(vertex(1) > extents[1]-composition_depth)
-                            {
+//                             if(vertex(1) > extents[1]-composition_depth)
+//                             {
                           composition_extent_tracked_present = true;
-                            }
+//                             }
                         }                        
                     //  } 
 
@@ -184,6 +194,7 @@ namespace aspect
                 }           
           }        
         }
+      }
       }
 
       //Calculate max depth across all processes

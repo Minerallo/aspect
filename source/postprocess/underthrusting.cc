@@ -139,6 +139,8 @@ namespace aspect
         std::vector<std::vector<double> > compositional_values
         (this->n_compositional_fields(),
         std::vector<double> (face_corners.size())); 
+        
+        const types::boundary_id relevant_boundary = this->get_geometry_model().translate_symbolic_boundary_name_to_id("top");
         // double compositional_values =0.0;
         // std::vector<std::vector<double>> temporary_variables(0, std::vector<double>());
 
@@ -156,34 +158,45 @@ namespace aspect
                     
           for (unsigned int face_no = 0; face_no < GeometryInfo<dim>::faces_per_cell; ++face_no)
           {
+
+                
                       for (unsigned int c = 0; c<this->n_compositional_fields(); c++)
             {
                 fe_face_values.reinit(cell, face_no);
                 fe_face_values[this->introspection().extractors.compositional_fields[c]].get_function_values (this->get_solution(),
                 compositional_values[c]);
             }
+            
 
-                
                 for (unsigned int corner = 0; corner < face_corners.size(); ++corner)
                   {
+                      
                       const Point<dim> vertex = fe_face_values.quadrature_point(corner);
                       
 
                     // std::cout<<corner<<"  "<<compositional_values[corner]<<std::endl;
 
                   // for (unsigned int p=0; p<face_corners.size(); ++p)
-                  //   {     
-                      if (compositional_values[composition_one][corner] >= 0.95)
+                  //   {
+                      
+                    if (cell->face(face_no)->at_boundary())
+                    {
+                        if (cell->face(face_no)->boundary_id() == relevant_boundary)
                         {
-                            // track the composition at the surface
-                            if(vertex(1) > extents[1]-composition_depth_one)
+                        
+                        if (compositional_values[composition_one][corner] >= 0.95)
                             {
-                          composition_one_tracked_present = true;
-                            }
-                        }  
+                                // track the composition at the surface
+    //                             if(vertex(1) > extents[1]-composition_depth_one)
+    //                             {
+                            composition_one_tracked_present = true;
+    //                             }
+                            } 
+                        }
+                    }
                     
                     //  } 
-                      if (compositional_values[composition_two][corner] >= 0.95)
+                      if (compositional_values[composition_two][corner] >= 0.98)
                         {
                             if(vertex(1) > extents[1]-composition_depth_two)
                             {
@@ -211,6 +224,7 @@ namespace aspect
           }        
         }
       }
+      
 
       //Calculate max depth across all processes
       const double min_x = std::abs(Utilities::MPI::min(local_min_x, this->get_mpi_communicator())); 

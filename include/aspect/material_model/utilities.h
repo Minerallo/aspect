@@ -358,6 +358,7 @@ namespace aspect
         double pressure;
         double depth;
         double pressure_depth_derivative;
+//         std::vector<double> phase_for_kinetic_activation;
 
         /**
          * This parameter determines which phase function of all the stored
@@ -445,6 +446,7 @@ namespace aspect
           std::vector<double> transition_widths;
           std::vector<double> transition_pressure_widths;
           std::vector<double> transition_slopes;
+          std::vector<double> kinetic_temperatures_activation;
 
           /**
            * Whether to define the phase transitions based on depth, or pressure.

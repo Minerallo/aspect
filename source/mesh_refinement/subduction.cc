@@ -68,6 +68,7 @@ namespace aspect
         double crust_zone_refined;
         double oceanic_domain_refined;
         double continental_mantle_refined;
+        double abs_plate_velocity;
         /**
          * The compositional field number, min ref level and max ref level
          * for the crust, mantle part of the slab lithosphere and the
@@ -130,6 +131,10 @@ namespace aspect
         std::vector<std::vector<double> > prelim_composition_values
         (this->n_compositional_fields(),
         std::vector<double> (quadrature.size()));
+        
+      // the velocity is given in cm/yr,a the new eastern limit 
+      double crust_zone_refined_updated = crust_zone_refined-(this->get_time()/ year_in_seconds)*abs_plate_velocity*0.01;
+      std::cout<<crust_zone_refined_updated<<std::endl; 
 
       for (typename DoFHandler<dim>::active_cell_iterator
            cell = this->get_dof_handler().begin_active();
@@ -166,7 +171,9 @@ namespace aspect
 //                 bool refine_border_present = false;
                 bool mantle_present =false;
                 bool upper_mantle_present =false;
-
+                bool box_out=false; 
+                bool oceanic_mantle_out=false;
+                
               fe_values.reinit(cell);
             //   in.reinit(fe_values, cell, this->introspection(), this->get_solution(), true);
             //   this->get_material_model().evaluate(in, out);                        
@@ -204,10 +211,12 @@ namespace aspect
                         //     weak_layer_present = true;
 
                         //   }     
-                        // std::cout<<prelim_composition_values[upper_crust_refinement[0]][p]<<std::endl;  
-
+                        // std::cout<<prelim_composition_values[upper_crust_refinement[0]][p]<<std::endl;
+                          
+                        
                          if (prelim_composition_values[ridge_refinement[0]][p] >= 0.60)
                           {
+                            if (vertex(0) < crust_zone_refined_updated+300000){  
                             if(vertex(1) > lithosphere_zone_refined)
                             {
                               if(ridge_two_lower_depth <=vertex(1) && vertex(1)<=ridge_two_upper_depth){  
@@ -222,12 +231,17 @@ namespace aspect
                               }else if (ridge_one_lower_depth <=vertex(1) && vertex(1)<ridge_two_lower_depth){  
                                 ridge_present = true;
                                 break;
+                              }
                               // }
                               }
-                            }
+                        }else{
+                            box_out=true;
+                        }                              
+                            
                           }
                         if (prelim_composition_values[weak_zone_refinement[0]][p] >= 0.60)
                           {
+                            if (vertex(0) < crust_zone_refined_updated+300000){
                             if(vertex(1) > lithosphere_zone_refined)
                             {
                               if(weakzone_two_lower_depth <=vertex(1) && vertex(1)<=weakzone_two_upper_depth){  
@@ -242,73 +256,107 @@ namespace aspect
                               }else if (weakzone_one_lower_depth <=vertex(1) && vertex(1)<weakzone_two_lower_depth){  
                                 weak_zone_present = true;
                                 break;
+                              }
                               // }
                               }
-                            }
-                          }    
+                         }else{
+                            box_out=true;
+                        }                             
+                            
+                          }  
+
+                        
+                          
                           
                         if (vertex(1) >= continental_mantle_refined)
                         { 
                             if (prelim_composition_values[upper_crust_refinement[0]][p] > 0.01)
                             {
-                               if (vertex(0) < crust_zone_refined){
+                             if (vertex(0) < crust_zone_refined_updated){  
                                upper_crust_present = true; 
-                               }else{
-                            upper_crust_present_two = true;
-                            }                            
+                             }else{
+                                 box_out=true;
+                            }
                             }
                           }else if(vertex(1) < continental_mantle_refined)
                           {
                            if (prelim_composition_values[upper_crust_refinement[0]][p] > 0.5)
                            {
-                            upper_crust_present = true;    
+                            if (vertex(0) < crust_zone_refined_updated){   
+                            upper_crust_present = true;
+                                
+                            }else{
+                                box_out=true;
+                            }
+                           }
                         }
-                        }
+
+                        
+                      
                         
                         if (vertex(1) >= continental_mantle_refined)
                         { 
                             if (prelim_composition_values[lower_crust_refinement[0]][p] > 0.01)
                             {
-                               if (vertex(0) < crust_zone_refined){
+                               if (vertex(0) < crust_zone_refined_updated){
                                lower_crust_present = true; 
                                }else{
-                            lower_crust_present_two = true;
+                            box_out = true;
                             }                            
                             }
                           }else if(vertex(1) < continental_mantle_refined)
                           {
                            if (prelim_composition_values[lower_crust_refinement[0]][p] > 0.5)
                            {
-                            lower_crust_present = true;    
+                               if (vertex(0) < crust_zone_refined_updated){
+                            lower_crust_present = true; 
+                               }else{
+                                   box_out=true;
+                            }
                         }
                         }
                       
                         if (prelim_composition_values[sediments_refinement[0]][p] > 0.01)
                           {
                             if(vertex(1) > lithosphere_zone_refined)
-                            {                                   
-                            sediments_present = true;
+                            {
+                                if (vertex(0) < crust_zone_refined_updated){
+                            sediments_present = true;}
+                            else{
+                                box_out=true;
+                            }
                             // break;
                             }
                           }
                         if (prelim_composition_values[oceanic_crust_refinement[0]][p] > 0.1)
                           {
                             if(vertex(1) > lithosphere_zone_refined)
-                            {                                   
+                            { 
+                              if (vertex(0) < crust_zone_refined_updated+300000){  
                               if (vertex(0) > oceanic_domain_refined){                            
                               oceanic_crust_present = true;
                               break;                           
                               }else{
                                 oceanic_crust_present_one = true;                            
                               }
+                              }else{
+                                  box_out=true;
                             }
-                          }                                                                             
+                            }
+                          }
+                          
+
+                        
                         if (prelim_composition_values[oceanic_mantle_refinement[0]][p] > 0.1)
                         {
                             if(vertex(1) > lithosphere_zone_refined)
-                            {                                 
+                            {
+                            if (vertex(0) < crust_zone_refined_updated+600000){    
                             oceanic_mantle_present = true;
-                            break; 
+                            break;
+                            }else{
+                            oceanic_mantle_out=true;     
+                            }
 //                             if (prelim_composition_values[oceanic_mantle_refinement[0]][p] >= 1.0)
 //                             {
 //                               in_center_of_compo = true;
@@ -323,9 +371,13 @@ namespace aspect
                         if (prelim_composition_values[hazburgite_mantle_refinement[0]][p] > 0.1)
                         {
                             if(vertex(1) > lithosphere_zone_refined)
-                            {                                 
+                            {
+                            if (vertex(0) < crust_zone_refined_updated+600000){    
                             hazburgite_mantle_present = true;
                             break; 
+                            }else{
+                            oceanic_mantle_out=true;   
+                            }
 //                             if (prelim_composition_values[hazburgite_mantle_refinement[0]][p] >= 1.0)
 //                             {
 //                               in_center_of_compo = true;
@@ -336,7 +388,11 @@ namespace aspect
                             //   refine_border_present = true;
                             // }
                             }   
-                        }                          
+                        } 
+                        
+
+                        
+                        
                         if (prelim_composition_values[continental_mantle_refinement[0]][p] > 0.5)
                           {
                             if(vertex(1) > lithosphere_zone_refined)
@@ -382,8 +438,14 @@ namespace aspect
                //Only continue if at least one is true
 
                     int refinement_level = min_level;
-
-                    if (upper_crust_present)
+                    
+                    if(oceanic_mantle_out){
+                        refinement_level =1;
+                    }
+                    else if(box_out){
+                        refinement_level = 2;
+                    }
+                    else if (upper_crust_present)
                       {
                         // std::cout<<"UPC"<<std::endl; 
                         refinement_level =  upper_crust_refinement[1];
@@ -656,7 +718,9 @@ namespace aspect
          prm.declare_entry ("Refine oceanic domain if x superior at", "350000", Patterns::Double(0),
                              "the strain rate at which the mesh should start to be refined. Units: $1 / s$");
          prm.declare_entry ("Refine continental mantle if on top of", "800000", Patterns::Double(0),
-                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");         
+                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");  
+         prm.declare_entry ("Overriding plate velocity", "2", Patterns::Double(0),
+                             "The velocity is given in cm/yr. Units: $1 / s$");        
          
         }
         prm.leave_subsection();
@@ -684,6 +748,8 @@ namespace aspect
         crust_zone_refined = prm.get_double("Refine continental domain if x inferior at");
         oceanic_domain_refined = prm.get_double("Refine oceanic domain if x superior at");
         continental_mantle_refined = prm.get_double("Refine continental mantle if on top of");
+        abs_plate_velocity = prm.get_double("Overriding plate velocity");
+
         
 //           const std::vector<double> refine_border
 //             = Utilities::string_to_double(

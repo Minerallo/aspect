@@ -134,7 +134,7 @@ namespace aspect
         
       // the velocity is given in cm/yr,a the new eastern limit 
       double crust_zone_refined_updated = crust_zone_refined-(this->get_time()/ year_in_seconds)*abs_plate_velocity*0.01;
-      std::cout<<crust_zone_refined_updated<<std::endl; 
+//       std::cout<<crust_zone_refined_updated<<std::endl; 
 
       for (typename DoFHandler<dim>::active_cell_iterator
            cell = this->get_dof_handler().begin_active();

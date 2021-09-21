@@ -1057,12 +1057,19 @@ namespace aspect
             // calculate the deviation from the transition point (convert temperature to pressure)
             const double pressure_deviation = in.pressure - transition_pressures[in.phase_index]
                                               - transition_slopes[in.phase_index] * (in.temperature - transition_temperatures[in.phase_index]);
+            
+            if(in.temperature<blocking_temperatures[in.phase_index])
+            {
+                    function_value = 0.;
+            }else
+            {
 
             // use delta function for width = 0
             if (transition_pressure_widths[in.phase_index] == 0)
               function_value = (pressure_deviation > 0) ? 1. : 0.;
             else
               function_value = 0.5*(1.0 + std::tanh(pressure_deviation / transition_pressure_widths[in.phase_index]));
+            }
           }
 
         return function_value;
@@ -1205,6 +1212,14 @@ namespace aspect
                            "For negative slopes the other way round. "
                            "List must have the same number of entries as Phase transition depths. "
                            "Units: \\si{\\pascal\\per\\kelvin}.");
+        prm.declare_entry ("Blocking temperatures", "",
+                           Patterns::Anything(),
+                           "A list of temperatures where phase transitions occur. Higher or lower "
+                           "temperatures lead to phase transition occurring in smaller or greater "
+                           "depths than given in Phase transition depths, depending on the "
+                           "Clapeyron slope given in Phase transition Clapeyron slopes. "
+                           "List must have the same number of entries as Phase transition depths. "
+                           "Units: \\si{\\kelvin}.");            
       }
 
 
@@ -1275,6 +1290,15 @@ namespace aspect
                                                                   true,
                                                                   n_phase_transitions_per_composition,
                                                                   true);
+        
+        blocking_temperatures = Utilities::parse_map_to_double_array (prm.get("Blocking temperatures"),
+                                                                        list_of_composition_names,
+                                                                        has_background_field,
+                                                                        "Blocking temperatures",
+                                                                        true,
+                                                                        n_phase_transitions_per_composition,
+                                                                        true);               
+        
       }
     }
   }

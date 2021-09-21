@@ -40,6 +40,7 @@ namespace aspect
         names.emplace_back("current_cohesions");
         names.emplace_back("current_friction_angles");
         names.emplace_back("plastic_yielding");
+        names.emplace_back("yield_stresses");
         return names;
       }
     }
@@ -52,7 +53,8 @@ namespace aspect
       NamedAdditionalMaterialOutputs<dim>(make_plastic_additional_outputs_names()),
       cohesions(n_points, numbers::signaling_nan<double>()),
       friction_angles(n_points, numbers::signaling_nan<double>()),
-      yielding(n_points, numbers::signaling_nan<double>())
+      yielding(n_points, numbers::signaling_nan<double>()),
+      yield_stresses(n_points, numbers::signaling_nan<double>())
     {}
 
 
@@ -61,7 +63,7 @@ namespace aspect
     std::vector<double>
     PlasticAdditionalOutputs<dim>::get_nth_output(const unsigned int idx) const
     {
-      AssertIndexRange (idx, 3);
+      AssertIndexRange (idx, 4);
       switch (idx)
         {
           case 0:
@@ -72,6 +74,9 @@ namespace aspect
 
           case 2:
             return yielding;
+
+          case 3:
+            return yield_stresses;
 
           default:
             AssertThrow(false, ExcInternalError());
@@ -316,6 +321,28 @@ namespace aspect
                 }
               }
 
+       double min_visc=0;
+      // Set the minimum viscosity depending on time
+      if(change_min_visc)
+      {
+        if(this->get_time()/ year_in_seconds>=time_change_min_visc_second)     
+        {
+          min_visc=min_visc_third;
+          // [1]; 
+        }
+        else if(this->get_time()/year_in_seconds>=time_change_min_visc) 
+        {
+          min_visc=min_visc_second;
+          // [1]; 
+        }
+        else 
+        {
+          min_visc=min_visc_first;
+        // [0];
+        }    
+      }else{
+          min_visc=min_visc_first;        
+      } 
             // Step 5: limit the viscosity with specified minimum and maximum bounds
             output_parameters.composition_viscosities[j] = std::min(std::max(viscosity_yield, min_visc), max_visc);
           }
@@ -472,8 +499,23 @@ namespace aspect
                            "Stabilizes strain dependent viscosity. Units: \\si{\\per\\second}.");
         prm.declare_entry ("Reference strain rate","1.0e-15",Patterns::Double (0.),
                            "Reference strain rate for first time step. Units: \\si{\\per\\second}.");
-        prm.declare_entry ("Minimum viscosity", "1e17", Patterns::Double (0.),
-                           "Lower cutoff for effective viscosity. Units: \\si{\\pascal\\second}.");
+          prm.declare_entry ("Minimum viscosity", "1e20", Patterns::Double (0.),
+                             "Lower cutoff for effective viscosity. Units: $Pa \\, s$");     
+          prm.declare_entry ("Minimum viscosity second", "4e19", Patterns::Double (0.),
+                             "Lower cutoff for effective viscosity. Units: $Pa \\, s$");
+          prm.declare_entry ("Minimum viscosity third", "2e18", Patterns::Double (0.),
+                             "Lower cutoff for effective viscosity. Units: $Pa \\, s$");            
+          prm.declare_entry("Switch minimum viscosity", "false",
+                            Patterns::Bool(),
+                             "If you want to switch the minimum viscosity");   
+          prm.declare_entry("Switch minimum viscosity second", "false",
+                            Patterns::Bool(),
+                            "If you want to switch the minimum viscosity");
+          
+          prm.declare_entry ("Time minimum viscosity switch", "1e6", Patterns::Double (0.),
+                             "Time to switch the minimum viscosity. Units: $Pa \\, s$");   
+          prm.declare_entry ("Time minimum viscosity switch second", "2e6", Patterns::Double (0.),
+                             "Time to switch the minimum viscosity. Units: $Pa \\, s$");  
         prm.declare_entry ("Maximum viscosity", "1e28", Patterns::Double (0.),
                            "Upper cutoff for effective viscosity. Units: \\si{\\pascal\\second}.");
         prm.declare_entry ("Reference viscosity", "1e22", Patterns::Double (0.),
@@ -602,11 +644,20 @@ namespace aspect
         // Reference and minimum/maximum values
         min_strain_rate = prm.get_double("Minimum strain rate");
         ref_strain_rate = prm.get_double("Reference strain rate");
-        min_visc = prm.get_double ("Minimum viscosity");
+        //min_visc = prm.get_double ("Minimum viscosity");
         max_visc = prm.get_double ("Maximum viscosity");
         ref_visc = prm.get_double ("Reference viscosity");
+        
+                  // Allow a vector for the minimum viscosity in order to change it later in time
+           min_visc_first = prm.get_double ("Minimum viscosity");
+           min_visc_second = prm.get_double ("Minimum viscosity second");
+           min_visc_third = prm.get_double ("Minimum viscosity third");
+                                                                           
+          change_min_visc = prm.get_bool ("Switch minimum viscosity"); 
+          time_change_min_visc = prm.get_double("Time minimum viscosity switch"); 
+          time_change_min_visc_second = prm.get_double("Time minimum viscosity switch second"); 
 
-        AssertThrow(max_visc >= min_visc, ExcMessage("Maximum viscosity should be larger or equal to the minimum viscosity. "));
+        AssertThrow(max_visc >= min_visc_first, ExcMessage("Maximum viscosity should be larger or equal to the minimum viscosity. "));
 
         viscosity_averaging = MaterialUtilities::parse_compositional_averaging_operation ("Viscosity averaging scheme",
                               prm);
@@ -719,6 +770,11 @@ namespace aspect
             plastic_out->cohesions[i] = 0;
             plastic_out->friction_angles[i] = 0;
             plastic_out->yielding[i] = plastic_yielding ? 1 : 0;
+            plastic_out->yield_stresses[i] = 0;
+
+            double pressure_for_plasticity = in.pressure[i];
+            if (allow_negative_pressures_in_plasticity == false)
+              pressure_for_plasticity = std::max(in.pressure[i],0.0);
 
             // set to weakened values, or unweakened values when strain weakening is not used
             for (unsigned int j=0; j < volume_fractions.size(); ++j)
@@ -731,6 +787,10 @@ namespace aspect
                 plastic_out->cohesions[i]   += volume_fractions[j] * (drucker_prager_parameters.cohesion * weakening_factors[0]);
                 // Also convert radians to degrees
                 plastic_out->friction_angles[i] += 180.0/numbers::PI * volume_fractions[j] * (drucker_prager_parameters.angle_internal_friction * weakening_factors[1]);
+                plastic_out->yield_stresses[i] += volume_fractions[j] * drucker_prager_plasticity.compute_yield_stress(drucker_prager_parameters.cohesion * weakening_factors[0],
+                                                  drucker_prager_parameters.angle_internal_friction * weakening_factors[1],
+                                                  pressure_for_plasticity,
+                                                  drucker_prager_parameters.max_yield_stress);
               }
           }
       }

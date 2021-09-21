@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2019 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -36,14 +36,13 @@ namespace aspect
 
       /**
        * An incompressible equation of state that is intended for use with multiple compositional
-       * fields and potentially phases. For each material property, the user supplies a comma
-       * delimited list of length N+P+1, where N is the number of compositional fields used in
-       * the computation, P is the total number of phase transitions.
-       * The first entry corresponds to the "background" (which is also why there are N+P+1 entries).
+       * fields. For each material property, the user supplies a comma delimited list of
+       * length N+1, where N is the number of compositional fields used in the computation.
+       * The first entry corresponds to the "background" (which is also why there are N+1 entries).
        *
-       * If a single value is given, then all the compositional fields and phases are given
+       * If a single value is given, then all the compositional fields are given
        * that value. Other lengths of lists are not allowed. For a given
-       * compositional field and phase the material parameters are treated as constant,
+       * compositional field the material parameters are treated as constant,
        * except density, which varies linearly with temperature according to the equation:
        *
        * $\rho(p,T,\mathfrak c) = \left(1-\alpha_i (T-T_0)\right) \rho_0(\mathfrak c_i).$
@@ -56,11 +55,11 @@ namespace aspect
         public:
           /**
            * A function that computes the output of the equation of state @p out
-           * for all compositions and phases, given the inputs in @p in and an
-           * index input_index that determines which entry of the vector of inputs is used.
+           * for all compositions, given the inputs in @p in and an index q that
+           * determines which entry of the vector of inputs is used.
            */
           void evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
-                        const unsigned int input_index,
+                        const unsigned int q,
                         MaterialModel::EquationOfStateOutputs<dim> &out) const;
 
           /**
@@ -70,14 +69,16 @@ namespace aspect
            * context, compressibility means whether we should solve the continuity
            * equation as $\nabla \cdot (\rho \mathbf u)=0$ (compressible Stokes)
            * or as $\nabla \cdot \mathbf{u}=0$ (incompressible Stokes).
+          * This model is compressible.
            */
           bool is_compressible () const;
 
           /**
            * Declare the parameters this class takes through input files.
-           * The optional parameter @p default_thermal_expansion determines
-           * the default value of the thermal expansivity used in the
-           * equation of state.
+           * The optional parameter @p n_compositions determines the maximum
+           * number of compositions the equation of state is set up with,
+           * in other words, how many compositional fields influence the
+           * density.
            */
           static
           void
@@ -86,39 +87,63 @@ namespace aspect
 
           /**
            * Read the parameters this class declares from the parameter file.
-           * If @p expected_n_phases_per_composition points to a vector of
-           * unsigned integers this is considered the number of phase transitions
-           * for each compositional field and will be checked against the parsed
-           * parameters.
+           * The optional parameter @p n_compositions determines the maximum
+           * number of compositions the equation of state is set up with,
+           * and should have the same value as the parameter with the same
+           * name in the declare_parameters() function.
            */
           void
           parse_parameters (ParameterHandler &prm,
                             const std::unique_ptr<std::vector<unsigned int>> &expected_n_phases_per_composition = nullptr);
 
+          /**
+           * Vector for reference_densities, read from parameter file .
+           */
+          std::vector<double> reference_densities;
+
         private:
           /**
-           * Vector of reference densities $\rho_0$ with one entry per composition and phase plus one
-           * for the background field.
+           * Vector for reference temperatures, read from parameter file .
            */
-          std::vector<double> densities;
+          std::vector<double> reference_temperatures;
 
           /**
-           * The reference temperature $T_0$ used in the computation of the density.
-           * All components use the same reference temperature.
+           * Vector for reference compressibilities, read from parameter file.
            */
-          double reference_T;
+          std::vector<double> reference_isothermal_compressibilities;
 
           /**
-           * Vector of thermal expansivities with one entry per composition and phase plus one
-           * for the background field.
+           * Vector for isothermal bulk modulus pressure derivatives, read from parameter file.
            */
-          std::vector<double> thermal_expansivities;
+          std::vector<double> isothermal_bulk_modulus_pressure_derivatives;
 
           /**
-           * Vector of specific heat capacities with one entry per composition and phase plus one
-           * for the background field.
+           * Vector for reference thermal expansivities, read from parameter file.
            */
-          std::vector<double> specific_heats;
+          std::vector<double> reference_thermal_expansivities;
+
+          /**
+           * Vector for isochoric specific heats, read from parameter file.
+           */
+          std::vector<double> isochoric_specific_heats;
+
+//            /**
+//            * A vector that stores how many separate phases there are per compositional
+//            * field. In other words if there is a background field without phase transitions
+//            * and one more composition that has 2 phase transitions this vector would store {1,3}.
+//            */
+//           std::shared_ptr<std::vector<unsigned int> > n_phases_per_composition;
+          
+          bool use_full_compressibility;
+          bool use_compressible_density_only;
+          bool use_incompressibility;
+          bool use_incompressibility_adiabat;
+          
+          bool use_conductivity_temperature_dependent;
+          double composition_number_affected;
+          double temperature_threshold;
+          double conductivity_increase_factor;          
+
       };
     }
   }

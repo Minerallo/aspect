@@ -74,6 +74,11 @@ namespace aspect
          * and viscosity is rescaled back to the yield envelope.
          */
         std::vector<double> yielding;
+        /**
+         * The area where the viscous stress exceeds the plastic yield stress,
+         * and viscosity is rescaled back to the yield envelope.
+         */
+        std::vector<double> yield_stresses;        
     };
 
     /**
@@ -220,8 +225,18 @@ namespace aspect
            * Minimum and maximum viscosities used to improve the
            * stability of the rheology model.
            */
-          double min_visc;
+          //double min_visc;
           double max_visc;
+          
+          double min_visc_first;
+          double min_visc_second;
+          double min_visc_third;
+          // std::vector<double> min_visc;
+          bool change_min_visc;
+          double time_change_min_visc;
+
+//         bool change_min_visc_second;
+        double time_change_min_visc_second;          
 
           /**
            * Enumeration for selecting which type of viscous flow law to use.

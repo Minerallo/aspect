@@ -44,7 +44,7 @@ namespace aspect
         grid_extent[0].first = 0;
         grid_extent[1].first = 0;
         grid_extent[0].second = x_extent_2d;
-        grid_extent[1].second = y_extent_2d;
+        grid_extent[1].second = y_extent_2d_bl;
         x_repetitions = x_repetitions_2d;
         y_repetitions = y_repetitions_2d;
       }
@@ -1247,7 +1247,7 @@ namespace aspect
           prm.enter_subsection("Box with lithosphere 2d");
           {
             x_extent_2d = prm.get_double("X extent in 2d");
-            y_extent_2d = prm.get_double("Y extent in 2d");            
+            y_extent_2d_bl = prm.get_double("Y extent in 2d");            
             x_repetitions_2d = prm.get_double("X repetitions in 2d");
             y_repetitions_2d = prm.get_double("Y repetitions in 2d");
           }

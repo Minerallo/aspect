@@ -105,16 +105,16 @@ namespace aspect
             const double stress_invariant = std::sqrt(std::fabs(second_invariant(deviatoric_stress)));
 
             // Get the current yield_stress
-            const double yield_stress = plastic_output->yield_stresses[q];
+//             const double yield_stress = plastic_output->yield_stresses[q];
 
             // Compute the difference between the second stress invariant and the yield stress
-            computed_quantities[q](0) = stress_invariant - yield_stress;
+//             computed_quantities[q](0) = stress_invariant - yield_stress;
           }
 
         // average the values if requested
-        const auto &viz = this->get_postprocess_manager().template get_matching_postprocessor<Postprocess::Visualization<dim>>();
-        if (!viz.output_pointwise_stress_and_strain())
-          average_quantities(computed_quantities);
+//         const auto &viz = this->get_postprocess_manager().template get_matching_postprocessor<Postprocess::Visualization<dim>>();
+//         if (!viz.output_pointwise_stress_and_strain())
+//           average_quantities(computed_quantities);
       }
     }
   }

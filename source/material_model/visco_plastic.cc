@@ -39,10 +39,10 @@ namespace aspect
         names.emplace_back("current_cohesions");
         names.emplace_back("current_friction_angles"); 
         names.emplace_back("plastic_yielding");
-        names.emplace_back("phase");
+/*        names.emplace_back("phase");
         names.emplace_back("diffusion");
         names.emplace_back("dislocation");
-        names.emplace_back("viscosity_ratio");        
+        names.emplace_back("viscosity_ratio"); */       
         return names;
       }
     }
@@ -175,11 +175,11 @@ namespace aspect
       NamedAdditionalMaterialOutputs<dim>(make_plastic_additional_outputs_names()),
       cohesions(n_points, numbers::signaling_nan<double>()),
       friction_angles(n_points, numbers::signaling_nan<double>()),
-      yielding(n_points, numbers::signaling_nan<double>()),
-      phase(n_points, numbers::signaling_nan<double>()),
-      diffusion(n_points, numbers::signaling_nan<double>()),
-      dislocation(n_points, numbers::signaling_nan<double>()),
-      viscosity_ratio(n_points, numbers::signaling_nan<double>())
+      yielding(n_points, numbers::signaling_nan<double>())
+//       phase(n_points, numbers::signaling_nan<double>()),
+//       diffusion(n_points, numbers::signaling_nan<double>()),
+//       dislocation(n_points, numbers::signaling_nan<double>()),
+//       viscosity_ratio(n_points, numbers::signaling_nan<double>())
     {}
 
     template <int dim>
@@ -198,7 +198,7 @@ namespace aspect
           case 2:
             return yielding;
 
-          case 3:
+/*          case 3:
     	    return phase;
 
           case 4:
@@ -208,7 +208,7 @@ namespace aspect
             return dislocation;
 
           case 6:
-            return viscosity_ratio;            
+            return viscosity_ratio;       */     
 
           default:
             AssertThrow(false, ExcInternalError());
@@ -217,15 +217,15 @@ namespace aspect
       return cohesions;
     }
 
-      template <int dim>
-      void
-      ViscoPlastic<dim>::get_trench_position()
-      {
-      aspect::MeshDeformation::FastScape<dim> obj;
-      Ptrench= obj.trench_position();  
-      // std::cout<<"here we get the Ptrench Yiahh "<<Ptrench<<std::endl;
-      // return Ptrench2;
-      }
+//       template <int dim>
+//       void
+//       ViscoPlastic<dim>::get_trench_position()
+//       {
+//       aspect::MeshDeformation::FastScape<dim> obj;
+//       Ptrench= obj.trench_position();  
+//       // std::cout<<"here we get the Ptrench Yiahh "<<Ptrench<<std::endl;
+//       // return Ptrench2;
+//       }
 
     template <int dim>
     std::pair<std::vector<double>, std::vector<bool> >
@@ -505,9 +505,9 @@ namespace aspect
           plastic_out->cohesions[i] = 0;
           plastic_out->friction_angles[i] = 0;
           plastic_out->yielding[i] = plastic_yielding ? 1 : 0;
-          plastic_out->phase[i] = 0;
-          plastic_out->dislocation[i] = 0;
-          plastic_out->diffusion[i] = 0;          
+//           plastic_out->phase[i] = 0;
+//           plastic_out->dislocation[i] = 0;
+//           plastic_out->diffusion[i] = 0;          
 
           EquationOfStateOutputs<dim> eos_outputs (this->n_compositional_fields()+1);
           EquationOfStateOutputs<dim> eos_outputs_all_phases (this->n_compositional_fields()+1+phase_function.n_phase_transitions());

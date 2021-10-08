@@ -1080,7 +1080,7 @@ namespace aspect
                            "For negative slopes the other way round. "
                            "List must have the same number of entries as Phase transition depths. "
                            "Units: \\si{\\pascal\\per\\kelvin}.");
-        prm.declare_entry ("Kinetic temperatures of activation", "",
+        prm.declare_entry ("Blocking temperatures", "",
                            Patterns::Anything(),
                            "A list of temperatures where phase transitions occur. Higher or lower "
                            "temperatures lead to phase transition occurring in smaller or greater "
@@ -1159,10 +1159,10 @@ namespace aspect
                                                                   n_phase_transitions_per_composition,
                                                                   true);
         
-        kinetic_temperatures_activation = Utilities::parse_map_to_double_array (prm.get("Kinetic temperatures of activation"),
+        kinetic_temperatures_activation = Utilities::parse_map_to_double_array (prm.get("Blocking temperatures"),
                                                                         list_of_composition_names,
                                                                         has_background_field,
-                                                                        "Kinetics temperature of activation",
+                                                                        "Blocking temperatures",
                                                                         true,
                                                                         n_phase_transitions_per_composition,
                                                                         true);        

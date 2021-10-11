@@ -138,10 +138,10 @@ namespace aspect
           bool use_incompressibility;
           bool use_incompressibility_adiabat;
           
-          bool use_conductivity_temperature_dependent;
+/*          bool use_conductivity_temperature_dependent;
           double composition_number_affected;
           double temperature_threshold;
-          double conductivity_increase_factor;          
+          double conductivity_increase_factor;   */       
 
       };
     }

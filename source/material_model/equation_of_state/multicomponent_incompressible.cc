@@ -79,19 +79,20 @@ namespace aspect
                 out.densities[c] = reference_densities[c]*std::pow(f, 1./isothermal_bulk_modulus_pressure_derivatives[c]);    
 //                 }
                 
-                if(c==composition_number_affected && in.temperature[q]>temperature_threshold)
-                {
+//                 if(c==composition_number_affected && in.temperature[q]>temperature_threshold)
+//                 {
                 out.specific_heat_capacities[c] = ((isochoric_specific_heats[c] +
                                                 (temperature*reference_thermal_expansivities[c] *
                                                     ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
-                                                    / reference_densities[c]))*conductivity_increase_factor);
-                }else
-                {
+                                                    / reference_densities[c])));
+//                 *conductivity_increase_factor);
+//                 }else
+//                 {
                 out.specific_heat_capacities[c] = (isochoric_specific_heats[c] +
                                                 (temperature*reference_thermal_expansivities[c] *
                                                     ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
                                                     / reference_densities[c]));                    
-                }
+//                 }
                 
                 //we send back that the model is incompressible, the mass will be balanced with the lithostatic pressure
                 out.compressibilities[c] = 0;
@@ -197,9 +198,9 @@ namespace aspect
                              "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");
         prm.declare_entry("Use incompressibility with adiabat", "false",
                             Patterns::Bool(),
-                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");  
-
-        prm.declare_entry("Use conductivity temperature dependent", "false",
+                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation"); 
+        
+/*        prm.declare_entry("Use conductivity temperature dependent", "false",
                             Patterns::Bool(),
                              "change the  spcific heat by a factor so it applies later to the conductivity");
         prm.declare_entry ("Composition number affected", "5", Patterns::Double (0.),
@@ -207,7 +208,7 @@ namespace aspect
         prm.declare_entry ("Temperature of activation", "1000", Patterns::Double (0.),
                              "Temperature at which conductivity factor applies in Kelvin"); 
         prm.declare_entry ("Conductivity increase factor", "10", Patterns::Double (0.),
-                             "Factor of increase of conductivity");        
+                             "Factor of increase of conductivity"); */        
         
       }
 
@@ -275,10 +276,10 @@ namespace aspect
         use_incompressibility = prm.get_bool ("Use incompressibility");
         use_incompressibility_adiabat=prm.get_bool ("Use incompressibility with adiabat");
         
-        use_conductivity_temperature_dependent = prm.get_bool("Use conductivity temperature dependent");
-        composition_number_affected = prm.get_double("Composition number affected");
-        temperature_threshold = prm.get_double("Temperature of activation"); 
-        conductivity_increase_factor = prm.get_double("Conductivity increase factor");          
+//         use_conductivity_temperature_dependent = prm.get_bool("Use conductivity temperature dependent");
+//         composition_number_affected = prm.get_double("Composition number affected");
+//         temperature_threshold = prm.get_double("Temperature of activation"); 
+//         conductivity_increase_factor = prm.get_double("Conductivity increase factor");          
 
       }
     }

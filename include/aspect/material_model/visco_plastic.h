@@ -480,6 +480,10 @@ namespace aspect
                          const double pressure) const; */  
 
         std::vector<double> min_field_visc;
+          bool use_conductivity_temperature_dependent;
+          double composition_number_affected;
+          double temperature_threshold;
+          double conductivity_increase_factor;           
     };
 
   }

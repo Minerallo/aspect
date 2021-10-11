@@ -875,31 +875,55 @@ namespace aspect
                                                   eos_outputs);
 
           const std::vector<double> volume_fractions = MaterialUtilities::compute_volume_fractions(in.composition[i], volumetric_compositions);
-
+// std::cout<<"volume_fractions.size() "<< volume_fractions.size() <<std::endl;
           // not strictly correct if thermal expansivities are different, since we are interpreting
           // these compositions as volume fractions, but the error introduced should not be too bad.
           out.densities[i] = MaterialUtilities::average_value (volume_fractions, eos_outputs.densities, MaterialUtilities::arithmetic);
           out.thermal_expansion_coefficients[i] = MaterialUtilities::average_value (volume_fractions, eos_outputs.thermal_expansion_coefficients, MaterialUtilities::arithmetic);
           out.specific_heat[i] = MaterialUtilities::average_value (volume_fractions, eos_outputs.specific_heat_capacities, MaterialUtilities::arithmetic);
+          
+//            int composition_number_affected = this->introspection().compositional_index_for_name("Upper_Crust") + 1;
+// std::cout<<"upper_crust index "<< composition_number_affected <<std::endl;
+
 
           if (define_conductivities == false)
             {
-              double thermal_diffusivity = 0.0;
+                double thermal_diffusivity = 0.0;
 
-              for (unsigned int j=0; j < volume_fractions.size(); ++j)
-                thermal_diffusivity += volume_fractions[j] * thermal_diffusivities[j];
-
-              // Thermal conductivity at the given positions. If the temperature equation uses
-              // the reference density profile formulation, use the reference density to
-              // calculate thermal conductivity. Otherwise, use the real density. If the adiabatic
-              // conditions are not yet initialized, the real density will still be used.
-              if (this->get_parameters().formulation_temperature_equation ==
-                  Parameters<dim>::Formulation::TemperatureEquation::reference_density_profile &&
-                  this->get_adiabatic_conditions().is_initialized())
-                out.thermal_conductivities[i] = thermal_diffusivity * out.specific_heat[i] *
-                                                this->get_adiabatic_conditions().density(in.position[i]);
-              else
-                out.thermal_conductivities[i] = thermal_diffusivity * out.specific_heat[i] * out.densities[i];
+                for (unsigned int j=0; j < volume_fractions.size(); ++j)
+                {
+                    thermal_diffusivity += volume_fractions[j] * thermal_diffusivities[j];
+                
+                if(in.composition[i][composition_number_affected]>0.5 && in.temperature[i]>temperature_threshold && use_conductivity_temperature_dependent== true)
+                {
+                    
+                 // Thermal conductivity at the given positions. If the temperature equation uses
+                // the reference density profile formulation, use the reference density to
+                // calculate thermal conductivity. Otherwise, use the real density. If the adiabatic
+                // conditions are not yet initialized, the real density will still be used.
+                if (this->get_parameters().formulation_temperature_equation ==
+                    Parameters<dim>::Formulation::TemperatureEquation::reference_density_profile &&
+                    this->get_adiabatic_conditions().is_initialized())
+                {
+                    out.thermal_conductivities[i] = thermal_diffusivity * out.specific_heat[i] *
+                                                    this->get_adiabatic_conditions().density(in.position[i])*conductivity_increase_factor;
+                }else{
+                    out.thermal_conductivities[i] = thermal_diffusivity * out.specific_heat[i] * out.densities[i]*conductivity_increase_factor;
+                }
+                }else{
+                // Thermal conductivity at the given positions. If the temperature equation uses
+                // the reference density profile formulation, use the reference density to
+                // calculate thermal conductivity. Otherwise, use the real density. If the adiabatic
+                // conditions are not yet initialized, the real density will still be used.
+                if (this->get_parameters().formulation_temperature_equation ==
+                    Parameters<dim>::Formulation::TemperatureEquation::reference_density_profile &&
+                    this->get_adiabatic_conditions().is_initialized())
+                    out.thermal_conductivities[i] = thermal_diffusivity * out.specific_heat[i] *
+                                                    this->get_adiabatic_conditions().density(in.position[i]);
+                else
+                    out.thermal_conductivities[i] = thermal_diffusivity * out.specific_heat[i] * out.densities[i];
+                }
+                }
             }
           else
             {
@@ -1017,6 +1041,16 @@ namespace aspect
           Rheology::StrainDependent<dim>::declare_parameters (prm);
 
           Rheology::Elasticity<dim>::declare_parameters (prm);
+          
+        prm.declare_entry("Use conductivity temperature dependent", "false",
+                            Patterns::Bool(),
+                             "change the  spcific heat by a factor so it applies later to the conductivity");
+        prm.declare_entry ("Composition number affected", "5", Patterns::Double (0.),
+                             "Composition affected by the change of conductivity");
+        prm.declare_entry ("Temperature of activation", "1000", Patterns::Double (0.),
+                             "Temperature at which conductivity factor applies in Kelvin"); 
+        prm.declare_entry ("Conductivity increase factor", "10", Patterns::Double (0.),
+                             "Factor of increase of conductivity");              
 
           // Reference and minimum/maximum values
           prm.declare_entry ("Minimum strain rate", "1.0e-20", Patterns::Double (0.),
@@ -1220,6 +1254,11 @@ namespace aspect
               elastic_rheology.initialize_simulator (this->get_simulator());
               elastic_rheology.parse_parameters(prm);
             }
+
+        use_conductivity_temperature_dependent = prm.get_bool("Use conductivity temperature dependent");
+        composition_number_affected = prm.get_double("Composition number affected");
+        temperature_threshold = prm.get_double("Temperature of activation"); 
+        conductivity_increase_factor = prm.get_double("Conductivity increase factor");          
             
           switch_layer_friction=prm.get_bool("Switch layer friction");
           time_switch_layer_friction=prm.get_double ("Time to swtich layer friction");

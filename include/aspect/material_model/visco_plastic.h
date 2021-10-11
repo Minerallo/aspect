@@ -483,7 +483,9 @@ namespace aspect
           bool use_conductivity_temperature_dependent;
           double composition_number_affected;
           double temperature_threshold;
-          double conductivity_increase_factor;           
+          double conductivity_increase_factor;
+          double viscosity_decrease_factor;
+          bool use_drop_viscosity;      
     };
 
   }

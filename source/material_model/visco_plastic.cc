@@ -361,6 +361,8 @@ namespace aspect
                 break;
               }
             }
+            
+ 
 
           // Step 1d: compute viscosity from Peierls creep law and harmonically average with current viscosities
           if (use_peierls_creep)
@@ -443,9 +445,16 @@ namespace aspect
                                                                                      current_friction,
                                                                                      pressure_for_plasticity,
                                                                                      drucker_prager_parameters.max_yield_stress);
-
+          
+  
           // Step 4b: select if yield viscosity is based on Drucker Prager or stress limiter rheology
           double viscosity_yield = viscosity_pre_yield;
+          
+               if(in.composition[i][composition_number_affected]>0.5 && in.temperature[i]>temperature_threshold && use_drop_viscosity== true)
+                {
+                viscosity_yield = viscosity_yield / viscosity_decrease_factor;    
+                }           
+          
           switch (yield_type)
             {
               case stress_limiter:
@@ -480,6 +489,7 @@ namespace aspect
               }
             }
 
+                   
           // Step 5: limit the viscosity with specified minimum and maximum bounds
           composition_viscosities[j] = std::min(std::max(viscosity_yield, std::max(min_visc,min_field_visc[j])), max_visc);
           // composition_viscosities[] = std::min(std::max(viscosity_yield, min_visc(in.position[i]), max_visc);
@@ -1050,7 +1060,12 @@ namespace aspect
         prm.declare_entry ("Temperature of activation", "1000", Patterns::Double (0.),
                              "Temperature at which conductivity factor applies in Kelvin"); 
         prm.declare_entry ("Conductivity increase factor", "10", Patterns::Double (0.),
-                             "Factor of increase of conductivity");              
+                             "Factor of increase of conductivity");    
+        prm.declare_entry ("Viscosity decrease factor", "10", Patterns::Double (0.),
+                             "Factor for decrease of viscosity");         
+        prm.declare_entry("Use drop viscosity", "false",
+                            Patterns::Bool(),
+                             "Drop viscosity depending on composition and tmperature threshold");        
 
           // Reference and minimum/maximum values
           prm.declare_entry ("Minimum strain rate", "1.0e-20", Patterns::Double (0.),
@@ -1259,7 +1274,9 @@ namespace aspect
         composition_number_affected = prm.get_double("Composition number affected");
         temperature_threshold = prm.get_double("Temperature of activation"); 
         conductivity_increase_factor = prm.get_double("Conductivity increase factor");          
-            
+        viscosity_decrease_factor = prm.get_double("Viscosity decrease factor");
+        use_drop_viscosity = prm.get_bool("Use drop viscosity");
+        
           switch_layer_friction=prm.get_bool("Switch layer friction");
           time_switch_layer_friction=prm.get_double ("Time to swtich layer friction");
           layer_number= prm.get_double ("Layer number");

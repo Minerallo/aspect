@@ -86,10 +86,11 @@ namespace aspect
         std::vector<unsigned int> ridge_refinement;
         std::vector<unsigned int> ridge_refinement_two;        
         std::vector<unsigned int> oceanic_crust_refinement; 
-        std::vector<unsigned int> hazburgite_mantle_refinement;        
+        std::vector<unsigned int> harzburgite_mantle_refinement;        
         std::vector<unsigned int> oceanic_mantle_refinement; 
         std::vector<unsigned int> mantle_refinement;
         std::vector<unsigned int> upper_mantle_refinement;
+        std::vector<unsigned int> herzolite_mantle_refinement;
         // std::vector<unsigned int> border_refinement_level;
         /**
          * The absolute minimum refinement level
@@ -159,7 +160,8 @@ namespace aspect
                 bool oceanic_crust_present = false;
                 bool oceanic_crust_present_one = false;                
                 bool oceanic_mantle_present = false;
-                bool hazburgite_mantle_present = false;                
+                bool harzburgite_mantle_present = false; 
+                bool herzolite_mantle_present = false;
                 bool weak_zone_present = false;
                 bool weak_zone_present_two = false;                
                 // bool UPM_present = false;
@@ -368,17 +370,17 @@ namespace aspect
                             // }
                             }   
                         }
-                        if (prelim_composition_values[hazburgite_mantle_refinement[0]][p] > 0.1)
+                        if (prelim_composition_values[harzburgite_mantle_refinement[0]][p] > 0.1)
                         {
                             if(vertex(1) > lithosphere_zone_refined)
                             {
                             if (vertex(0) < crust_zone_refined_updated+600000){    
-                            hazburgite_mantle_present = true;
+                            harzburgite_mantle_present = true;
                             break; 
                             }else{
                             oceanic_mantle_out=true;   
                             }
-//                             if (prelim_composition_values[hazburgite_mantle_refinement[0]][p] >= 1.0)
+//                             if (prelim_composition_values[harzburgite_mantle_refinement[0]][p] >= 1.0)
 //                             {
 //                               in_center_of_compo = true;
 //                             }
@@ -389,6 +391,27 @@ namespace aspect
                             // }
                             }   
                         } 
+                        if (prelim_composition_values[herzolite_mantle_refinement[0]][p] > 0.1)
+                        {
+                            if(vertex(1) > lithosphere_zone_refined)
+                            {
+                            if (vertex(0) < crust_zone_refined_updated+600000){    
+                            herzolite_mantle_present = true;
+                            break; 
+                            }else{
+                            oceanic_mantle_out=true;   
+                            }
+//                             if (prelim_composition_values[harzburgite_mantle_refinement[0]][p] >= 1.0)
+//                             {
+//                               in_center_of_compo = true;
+//                             }
+                            // if (prelim_composition_values[oceanic_mantle_refinement[0]][p] < 0.1)
+                            // // if(prelim_composition_values[oceanic_mantle_refinement[0]][p] > 0.35 && prelim_composition_values[oceanic_mantle_refinement[0]][p] < 0.65)
+                            // {
+                            //   refine_border_present = true;
+                            // }
+                            }   
+                        }                        
                         
 
                         
@@ -406,18 +429,26 @@ namespace aspect
                               }
                             }
                           }
-                        if (prelim_composition_values[craton_refinement[0]][p] > 0.1)
-                          {
-                            if(vertex(1) > lithosphere_zone_refined)
-                            {                                   
+                          
+//                         if (prelim_composition_values[craton_refinement[0]][p] > 0.1)
+//                           {
+//                             if(vertex(1) > lithosphere_zone_refined)
+//                             {                                   
+//                             craton_present = true;
+//                           }
+//                           }
+                          
+
+                            if (prelim_composition_values[craton_refinement[0]][p] > 0.1)
+                            {
+                               if (vertex(0) < crust_zone_refined_updated-150000){
+                               lower_crust_present = true; 
+                               }else{
                             craton_present = true;
-//                             if (prelim_composition_values[craton_refinement[0]][p] >= 1.0)
-//                             {
-//                               in_center_of_compo = true;
-//                             }
-//                             }
-                          }
-                          }
+                            }                            
+                            }
+
+                        
                         if (prelim_composition_values[upper_mantle_refinement[0]][p] > 0.80)
                           {
                             if(vertex(1) > lithosphere_zone_refined)
@@ -501,10 +532,10 @@ namespace aspect
                         // std::cout<<refine_border[oceanic_mantle_refinement[0]+1]<<std::endl;
                         // if(refine_border[oceanic_mantle_refinement[0]+1]==1){
                       }
-                    else if (hazburgite_mantle_present)
+                    else if (harzburgite_mantle_present)
                       {
                         // std::cout<<"OM"<<std::endl; 
-                        refinement_level =  hazburgite_mantle_refinement[1];
+                        refinement_level =  harzburgite_mantle_refinement[1];
               
                         // if (in_center_of_compo)
                         // minimum_refinement_level = oceanic_mantle_refinement[1];
@@ -512,7 +543,19 @@ namespace aspect
                         // std::cout<<oceanic_mantle_refinement[0]+1<<std::endl;
                         // std::cout<<refine_border[oceanic_mantle_refinement[0]+1]<<std::endl;
                         // if(refine_border[oceanic_mantle_refinement[0]+1]==1){
-                      }                      
+                      }  
+                    else if (herzolite_mantle_present)
+                      {
+                        // std::cout<<"OM"<<std::endl; 
+                        refinement_level =  herzolite_mantle_refinement[1];
+              
+                        // if (in_center_of_compo)
+                        // minimum_refinement_level = oceanic_mantle_refinement[1];
+                        // maximum_refinement_level = oceanic_mantle_refinement[1];
+                        // std::cout<<oceanic_mantle_refinement[0]+1<<std::endl;
+                        // std::cout<<refine_border[oceanic_mantle_refinement[0]+1]<<std::endl;
+                        // if(refine_border[oceanic_mantle_refinement[0]+1]==1){
+                      }                         
                     // else if(oceanic_mantle_present == true  && refine_border_present == true )
                     //       {
                     //         minimum_refinement_level = border_refinement_level;
@@ -665,7 +708,11 @@ namespace aspect
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
                             "its maximum refinement level.");
-          prm.declare_entry("Hazburgite Mantle refinement","",
+          prm.declare_entry("Harzburgite Mantle refinement","",
+                            Patterns::List (Patterns::Integer(0)),
+                            "The compositional field number of the crust, its minimum refinement level and "
+                            "its maximum refinement level.");  
+           prm.declare_entry("Herzolite Mantle refinement","",
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
                             "its maximum refinement level.");          
@@ -975,25 +1022,42 @@ namespace aspect
                                    "smaller than the minimum level of the whole model. "));
 
           
-          const std::vector<int> hazburgite_mantle
+          const std::vector<int> harzburgite_mantle
             = Utilities::string_to_int(
-                Utilities::split_string_list(prm.get("Hazburgite Mantle refinement")));
+                Utilities::split_string_list(prm.get("Harzburgite Mantle refinement")));
 
-          hazburgite_mantle_refinement = std::vector<unsigned int> (hazburgite_mantle.begin(),hazburgite_mantle.end());
+          harzburgite_mantle_refinement = std::vector<unsigned int> (harzburgite_mantle.begin(),harzburgite_mantle.end());
 
-          AssertThrow (hazburgite_mantle_refinement.size() == 2,
+          AssertThrow (harzburgite_mantle_refinement.size() == 2,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
-          AssertThrow (hazburgite_mantle_refinement[0] < this->n_compositional_fields(),
+          AssertThrow (harzburgite_mantle_refinement[0] < this->n_compositional_fields(),
                        ExcMessage ("The number of compositional field to refine (starting "
                                    "from 0) should be smaller than the number of fields. "));
 
-          AssertThrow (hazburgite_mantle_refinement[1] >= min_level,
+          AssertThrow (harzburgite_mantle_refinement[1] >= min_level,
                        ExcMessage ("The minimum refinement for the crust cannot be "
                                    "smaller than the minimum level of the whole model. "));
          
+          const std::vector<int> herzolite_mantle
+            = Utilities::string_to_int(
+                Utilities::split_string_list(prm.get("Herzolite Mantle refinement")));
 
+          herzolite_mantle_refinement = std::vector<unsigned int> (herzolite_mantle.begin(),herzolite_mantle.end());
+
+          AssertThrow (herzolite_mantle_refinement.size() == 2,
+                       ExcMessage ("The number of refinement data given here must be "
+                                   "equal to 3 (field number + min level + max level). "));
+
+          AssertThrow (herzolite_mantle_refinement[0] < this->n_compositional_fields(),
+                       ExcMessage ("The number of compositional field to refine (starting "
+                                   "from 0) should be smaller than the number of fields. "));
+
+          AssertThrow (herzolite_mantle_refinement[1] >= min_level,
+                       ExcMessage ("The minimum refinement for the crust cannot be "
+                                   "smaller than the minimum level of the whole model. "));
+          
           const std::vector<int> ridge
             = Utilities::string_to_int(
                 Utilities::split_string_list(prm.get("Ridge refinement")));

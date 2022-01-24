@@ -90,7 +90,7 @@ namespace aspect
         std::vector<unsigned int> oceanic_mantle_refinement; 
         std::vector<unsigned int> mantle_refinement;
         std::vector<unsigned int> upper_mantle_refinement;
-        std::vector<unsigned int> herzolite_mantle_refinement;
+        std::vector<unsigned int> lherzolite_mantle_refinement;
         // std::vector<unsigned int> border_refinement_level;
         /**
          * The absolute minimum refinement level
@@ -162,7 +162,7 @@ namespace aspect
                 bool oceanic_crust_present_one = false;                
                 bool oceanic_mantle_present = false;
                 bool harzburgite_mantle_present = false; 
-                bool herzolite_mantle_present = false;
+                bool lherzolite_mantle_present = false;
                 bool weak_zone_present = false;
                 bool weak_zone_present_two = false;                
                 // bool UPM_present = false;
@@ -392,12 +392,12 @@ namespace aspect
                             // }
                             }   
                         } 
-                        if (prelim_composition_values[herzolite_mantle_refinement[0]][p] > 0.1)
+                        if (prelim_composition_values[lherzolite_mantle_refinement[0]][p] > 0.1)
                         {
                             if(vertex(1) > lithosphere_zone_refined)
                             {
                             if (vertex(0) < crust_zone_refined_updated+600000){    
-                            herzolite_mantle_present = true;
+                            lherzolite_mantle_present = true;
                             break; 
                             }else{
                             oceanic_mantle_out=true;   
@@ -549,10 +549,10 @@ namespace aspect
                         // std::cout<<refine_border[oceanic_mantle_refinement[0]+1]<<std::endl;
                         // if(refine_border[oceanic_mantle_refinement[0]+1]==1){
                       }  
-                    else if (herzolite_mantle_present)
+                    else if (lherzolite_mantle_present)
                       {
                         // std::cout<<"OM"<<std::endl; 
-                        refinement_level =  herzolite_mantle_refinement[1];
+                        refinement_level =  lherzolite_mantle_refinement[1];
               
                         // if (in_center_of_compo)
                         // minimum_refinement_level = oceanic_mantle_refinement[1];
@@ -717,7 +717,7 @@ namespace aspect
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
                             "its maximum refinement level.");  
-           prm.declare_entry("Herzolite Mantle refinement","",
+           prm.declare_entry("Lherzolite Mantle refinement","",
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
                             "its maximum refinement level.");          
@@ -1049,21 +1049,21 @@ namespace aspect
                        ExcMessage ("The minimum refinement for the crust cannot be "
                                    "smaller than the minimum level of the whole model. "));
          
-          const std::vector<int> herzolite_mantle
+          const std::vector<int> lherzolite_mantle
             = Utilities::string_to_int(
-                Utilities::split_string_list(prm.get("Herzolite Mantle refinement")));
+                Utilities::split_string_list(prm.get("Lherzolite Mantle refinement")));
 
-          herzolite_mantle_refinement = std::vector<unsigned int> (herzolite_mantle.begin(),herzolite_mantle.end());
+          lherzolite_mantle_refinement = std::vector<unsigned int> (lherzolite_mantle.begin(),lherzolite_mantle.end());
 
-          AssertThrow (herzolite_mantle_refinement.size() == 2,
+          AssertThrow (lherzolite_mantle_refinement.size() == 2,
                        ExcMessage ("The number of refinement data given here must be "
                                    "equal to 3 (field number + min level + max level). "));
 
-          AssertThrow (herzolite_mantle_refinement[0] < this->n_compositional_fields(),
+          AssertThrow (lherzolite_mantle_refinement[0] < this->n_compositional_fields(),
                        ExcMessage ("The number of compositional field to refine (starting "
                                    "from 0) should be smaller than the number of fields. "));
 
-          AssertThrow (herzolite_mantle_refinement[1] >= min_level,
+          AssertThrow (lherzolite_mantle_refinement[1] >= min_level,
                        ExcMessage ("The minimum refinement for the crust cannot be "
                                    "smaller than the minimum level of the whole model. "));
           

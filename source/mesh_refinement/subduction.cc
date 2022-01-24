@@ -100,6 +100,7 @@ namespace aspect
         /**
          * The absolute maximum refinement level
          */
+         bool additional_craton_refinement;
     };
 
 
@@ -442,7 +443,11 @@ namespace aspect
                             if (prelim_composition_values[craton_refinement[0]][p] > 0.1)
                             {
                                if (vertex(0) < crust_zone_refined_updated-150000){
-                               lower_crust_present = true; 
+                                    if(additional_craton_refinement){
+                                        lower_crust_present = true;
+                                    }else{
+                                        craton_present = true;        
+                                    }
                                }else{
                             craton_present = true;
                             }                            
@@ -767,7 +772,10 @@ namespace aspect
          prm.declare_entry ("Refine continental mantle if on top of", "800000", Patterns::Double(0),
                              "the strain rate at which the mesh should start to be refined. Units: $1 / s$");  
          prm.declare_entry ("Overriding plate velocity", "2", Patterns::Double(0),
-                             "The velocity is given in cm/yr. Units: $1 / s$");        
+                             "The velocity is given in cm/yr. Units: $1 / s$");
+         prm.declare_entry("Additional craton refinement", "false",
+                            Patterns::Bool(),
+                             "change the  spcific heat by a factor so it applies later to the conductivity");        
          
         }
         prm.leave_subsection();
@@ -796,6 +804,7 @@ namespace aspect
         oceanic_domain_refined = prm.get_double("Refine oceanic domain if x superior at");
         continental_mantle_refined = prm.get_double("Refine continental mantle if on top of");
         abs_plate_velocity = prm.get_double("Overriding plate velocity");
+        additional_craton_refinement = prm.get_bool ("Additional craton refinement"); 
 
         
 //           const std::vector<double> refine_border

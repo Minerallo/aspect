@@ -137,6 +137,7 @@ namespace aspect
           bool use_compressible_density_only;
           bool use_incompressibility;
           bool use_incompressibility_adiabat;
+          bool use_gms_densities;
           
           bool use_conductivity_temperature_dependent;
           double composition_number_affected;

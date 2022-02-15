@@ -21,6 +21,7 @@
 
 #include <aspect/geometry_model/two_merged_boxes.h>
 #include <aspect/geometry_model/initial_topography_model/zero_topography.h>
+#include <aspect/simulator_signals.h>
 
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/tria_iterator.h>
@@ -33,6 +34,33 @@ namespace aspect
 {
   namespace GeometryModel
   {
+    template <int dim>
+    void
+    TwoMergedBoxes<dim>::initialize ()
+    {
+      // Get pointer to initial topography model
+      topo_model = const_cast<InitialTopographyModel::Interface<dim>*>(&this->get_initial_topography_model());
+      // Check that initial topography is required.
+      // If so, connect the initial topography function
+      // to the right signals: It should be applied after
+      // the final initial adaptive refinement and after a restart.
+      if (Plugins::plugin_type_matches<InitialTopographyModel::ZeroTopography<dim>>(*topo_model) == false)
+        {
+          this->get_signals().pre_set_initial_state.connect(
+            [&](typename parallel::distributed::Triangulation<dim> &tria)
+          {
+            this->topography(tria);
+          }
+          );
+          this->get_signals().post_resume_load_user_data.connect(
+            [&](typename parallel::distributed::Triangulation<dim> &tria)
+          {
+            this->topography(tria);
+          }
+          );
+        }
+    }
+    
     template <int dim>
     void
     TwoMergedBoxes<dim>::
@@ -54,7 +82,7 @@ namespace aspect
 
           if (cell->face(1)->at_boundary())
             // set the lithospheric part of the right boundary to indicator 2*dim+1
-            if (cell->face(1)->vertex(GeometryInfo<dim-1>::vertices_per_cell-1)[dim-1] > height_lith)
+            if (cell->face(1)->vertex(GeometryInfo<dim-1>::vertices_per_cell-1)[dim-1] > height_lith+right_differential_height)
               cell->face(1)->set_boundary_id (2*dim+1);
 
           if (dim==3)
@@ -128,7 +156,46 @@ namespace aspect
         this->set_boundary_indicators(total_coarse_grid);
       });
     }
+    
+    template <int dim>
+    void
+    TwoMergedBoxes<dim>::
+    topography (typename parallel::distributed::Triangulation<dim> &grid) const
+    {
+      // Here we provide GridTools with the function to displace vertices
+      // in the vertical direction by an amount specified by the initial topography model
+      GridTools::transform(
+        [&](const Point<dim> &p) -> Point<dim>
+      {
+        return this->add_topography(p);
+      },
+      grid);
 
+      this->get_pcout() << "   Added initial topography to grid" << std::endl << std::endl;
+    }    
+
+    template <int dim>
+    Point<dim>
+    TwoMergedBoxes<dim>::
+    add_topography (const Point<dim> &x_y_z) const
+    {
+      // Get the surface x (,y) point
+      Point<dim-1> surface_point;
+      for (unsigned int d=0; d<dim-1; d++)
+        surface_point[d] = x_y_z[d];
+
+      // Get the surface topography at this point
+      const double topo = topo_model->value(surface_point);
+
+      // Compute the displacement of the z coordinate
+      const double ztopo = (x_y_z[dim-1] - lower_box_origin[dim-1]) / extents[dim-1] * topo;
+
+      // Compute the new point
+      Point<dim> x_y_ztopo = x_y_z;
+      x_y_ztopo[dim-1] += ztopo;
+
+      return x_y_ztopo;
+    }    
 
     template <int dim>
     std::set<types::boundary_id>
@@ -234,7 +301,17 @@ namespace aspect
     double
     TwoMergedBoxes<dim>::depth(const Point<dim> &position) const
     {
-      const double d = maximal_depth()-(position(dim-1)-lower_box_origin[dim-1]);
+        
+       // Get the surface x (,y) point
+      Point<dim-1> surface_point;
+      for (unsigned int d=0; d<dim-1; ++d)
+        surface_point[d] = position[d];
+
+      // Get the surface topography at this point
+      const double topo = topo_model->value(surface_point);       
+        
+        
+      const double d = maximal_depth() +topo -(position(dim-1)-lower_box_origin[dim-1]);
       return std::min (std::max (d, 0.), maximal_depth());
     }
 
@@ -259,7 +336,14 @@ namespace aspect
 
       // choose a point on the center axis of the domain
       Point<dim> p = extents/2+lower_box_origin;
-      p[dim-1] = extents[dim-1]+lower_box_origin[dim-1]-depth;
+      
+      // We need a dim-1 point to get the topo value.
+      Point<dim-1> surface_point;
+      for (unsigned int d=0; d<dim-1; ++d)
+        surface_point[d] = extents[d]/2+lower_box_origin[d];
+      
+      const double topo = topo_model->value(surface_point);
+      p[dim-1] = extents[dim-1]+lower_box_origin[dim-1]-depth+topo;
 
       return p;
     }
@@ -269,7 +353,7 @@ namespace aspect
     double
     TwoMergedBoxes<dim>::maximal_depth() const
     {
-      return extents[dim-1];
+      return extents[dim-1] + topo_model->max_topography();
     }
 
     template <int dim>
@@ -289,8 +373,8 @@ namespace aspect
                   this->simulator_is_past_initialization() == false,
                   ExcMessage("After displacement of the mesh, this function can no longer be used to determine whether a point lies in the domain or not."));
 
-      AssertThrow(Plugins::plugin_type_matches<const InitialTopographyModel::ZeroTopography<dim>>(this->get_initial_topography_model()),
-                  ExcMessage("After adding topography, this function can no longer be used to determine whether a point lies in the domain or not."));
+//       AssertThrow(Plugins::plugin_type_matches<const InitialTopographyModel::ZeroTopography<dim>>(this->get_initial_topography_model()),
+//                   ExcMessage("After adding topography, this function can no longer be used to determine whether a point lies in the domain or not."));
 
       for (unsigned int d = 0; d < dim; d++)
         if (point[d] > extents[d]+lower_box_origin[d]+std::numeric_limits<double>::epsilon()*extents[d] ||
@@ -344,11 +428,17 @@ namespace aspect
       {
         prm.enter_subsection("Box with lithosphere boundary indicators");
         {
+          prm.declare_entry ("Right border differential height", "0.2",
+                             Patterns::Double (),
+                             "The thickness of the lithosphere used to create "
+                             "additional boundary indicators to set specific "
+                             "boundary conditions for the lithosphere. ");
+          
           prm.declare_entry ("Lithospheric thickness", "0.2",
                              Patterns::Double (0.),
                              "The thickness of the lithosphere used to create "
                              "additional boundary indicators to set specific "
-                             "boundary conditions for the lithosphere. ");
+                             "boundary conditions for the lithosphere. ");          
 
           // Total box extents
           prm.declare_entry ("X extent", "1.",
@@ -433,7 +523,7 @@ namespace aspect
         prm.enter_subsection("Box with lithosphere boundary indicators");
         {
           const double thickness_lith = prm.get_double("Lithospheric thickness");
-
+          right_differential_height = prm.get_double("Right border differential height");
           extents[0]           = prm.get_double ("X extent");
           lower_extents[0]     = extents[0];
           upper_extents[0]     = extents[0];

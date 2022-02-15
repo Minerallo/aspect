@@ -35,7 +35,7 @@ namespace aspect
      * @ingroup MeshRefinement
      */
     template <int dim>
-    class Subduction : public Interface<dim>,
+    class Subductioninterface : public Interface<dim>,
       public SimulatorAccess<dim>
     {
       public:
@@ -59,27 +59,24 @@ namespace aspect
 
       private:
         
-         double Z_zone_refined; 
+         double Z_zone_refined;
          double X_two_zone_refined;
          double X_one_zone_refined;
          double Y_one_zone_refined;
          double Y_two_zone_refined;
-        
+   
         
         /**
          * The compositional field number, min ref level and max ref level
-         * for the crust, compo_else part of the slab lithosphere and the
+         * for the crust, compo_nine part of the slab lithosphere and the
          * overriding plate
          */
-        
-        std::vector<unsigned int> compo_one_refinement;         
-        std::vector<unsigned int> compo_two_refinement;
-        std::vector<unsigned int> compo_three_refinement;
-        std::vector<unsigned int> compo_four_refinement;
-        std::vector<unsigned int> compo_five_refinement;        
-        std::vector<unsigned int> compo_else_refinement;       
+    
+       
         std::vector<unsigned int> interface_refinement;
-   
+        std::vector<unsigned int> additional_refinement_one;
+        std::vector<unsigned int> additional_refinement_two;
+               
 
         // std::vector<unsigned int> border_refinement_level;
         /**
@@ -99,7 +96,7 @@ namespace aspect
 
     template <int dim>
     void
-    Subduction<dim>::tag_additional_cells () const
+    Subductioninterface<dim>::tag_additional_cells () const
     {
       if (this->get_dof_handler().n_locally_owned_dofs() == 0)
         return;        
@@ -136,13 +133,12 @@ namespace aspect
                 bool refine = false;
                 bool clear_refine = false;
                 bool clear_coarsen = false;
-                bool compo_one_present = false;
-                bool compo_two_present = false;
-                bool compo_three_present =false;
-                bool compo_four_present = false;
-                bool compo_five_present = false;                
-                bool compo_else_present =false;
+                // bool compo_seven_border_present = false;
                 bool interface_present = false;
+                bool additional_one_present = false;
+                bool additional_two_present = false;
+
+
 
 
               fe_values.reinit(cell);                     
@@ -167,89 +163,52 @@ namespace aspect
                       {
                            if(vertex(0)>X_one_zone_refined && vertex(0)<X_two_zone_refined && vertex(1)>Y_one_zone_refined && vertex(1)<Y_two_zone_refined && vertex(2) > Z_zone_refined)
                             {
-                         if (prelim_composition_values[interface_refinement[0]][p] >= 0.005)
-                          {    
+                         if (prelim_composition_values[interface_refinement[0]][p] >= 0.05)
+                          {
+
                                 interface_present = true;
                                 break;
+
+                              
+                          }   
+                        if (prelim_composition_values[additional_refinement_one[0]][p] >= 0.5)
+                          {
+
+                                additional_one_present = true;
+                                
+                              
+                          }
+                         if (prelim_composition_values[additional_refinement_two[0]][p] >= 0.5)
+                          {
+
+                                additional_two_present = true;
+                                
                               
                           }                         
-                        if (prelim_composition_values[compo_one_refinement[0]][p] > 0.01)
-                          {                         
-    
-                              compo_one_present = true;
-   
-                          }
-                        if (prelim_composition_values[compo_two_refinement[0]][p] > 0.01)
-                          {
-                                    
-                            compo_two_present = true;
-
-                            
-                          }
-                        if (prelim_composition_values[compo_three_refinement[0]][p] > 0.01)
-                          {
-                                   
-                            compo_three_present = true;
-                            
-                          }
-                        if (prelim_composition_values[compo_four_refinement[0]][p] > 0.01)
-                          {
-                                        
-                            compo_four_present = true;
-                                                                                                    
-                            }
-                        if (prelim_composition_values[compo_five_refinement[0]][p] > 0.01)
-                          {
-                                        
-                            compo_five_present = true;
-                                                                                                    
-                            }                            
-                            }
-                            else 
-                          {
-                            compo_else_present = true;
-                          }
-                      
-                            
                                                                                                                                                           
                       }
                   }
+                }
                 }
         
                //Only continue if at least one is true
 
                     int refinement_level = min_level;              
 
-                    if (compo_one_present)
-                      {
-                        refinement_level = compo_one_refinement[1];
-                      }                    
-                    else if (compo_two_present)
-                      {
-                        refinement_level = compo_two_refinement[1];
-
-                      }                       
-                    else if (compo_three_present)
-                      {
-                        refinement_level = compo_three_refinement[1];
-
-                      }
-                     else if (compo_four_present)
-                      {
-                        refinement_level = compo_four_refinement[1];
-                      }  
-                     else if (compo_five_present)
-                      {
-                        refinement_level = compo_five_refinement[1];
-                      }                       
-                    else if (interface_present)
+                    if (interface_present)
                       {
                         refinement_level = interface_refinement[1];
-                      }                                                                                                                                                                                                     
-                    else if (compo_else_present)
-                      {
-                        refinement_level = compo_else_refinement[0];
                       }
+                      else if (additional_one_present)
+                      {
+                          refinement_level = additional_refinement_one[1];
+                          
+                    }else if (additional_two_present) {
+                         refinement_level = additional_refinement_two[1];
+                        
+                    }
+                              
+
                     
 
                     const int cell_level = cell->level();
@@ -300,45 +259,30 @@ namespace aspect
         }
     }
 
+
     template <int dim>
     void
-    Subduction<dim>::
+    Subductioninterface<dim>::
     declare_parameters (ParameterHandler &prm)
     {
       prm.enter_subsection("Mesh refinement");
       {
-        prm.enter_subsection("Subduction");
+        prm.enter_subsection("Subduction interface");
         {
            prm.declare_entry("Interface refinement","",
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
-                            "its maximum refinement level.");                 
-          prm.declare_entry("Compo 1 refinement","",
+                            "its maximum refinement level.");        
+           prm.declare_entry("Additional refinement one","",
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
-                            "its maximum refinement level.");  
-            prm.declare_entry("Compo 2 refinement","",
+                            "its maximum refinement level.");       
+           prm.declare_entry("Additional refinement two","",
                             Patterns::List (Patterns::Integer(0)),
                             "The compositional field number of the crust, its minimum refinement level and "
-                            "its maximum refinement level.");           
-          prm.declare_entry("Compo 3 refinement","",
-                            Patterns::List (Patterns::Integer(0)),
-                            "The compositional field number of the crust, its minimum refinement level and "
-                            "its maximum refinement level."); 
-          prm.declare_entry("Compo 4 refinement","",
-                            Patterns::List (Patterns::Integer(0)),
-                            "The compositional field number of the crust, its minimum refinement level and "
-                            "its maximum refinement level."); 
-          prm.declare_entry("Compo 5 refinement","",
-                            Patterns::List (Patterns::Integer(0)),
-                            "The compositional field number of the crust, its minimum refinement level and "
-                            "its maximum refinement level."); 
-          prm.declare_entry("Compo else refinement","",
-                            Patterns::List (Patterns::Integer(0)),
-                            "The compositional field number of the crust, its minimum refinement level and "
-                            "its maximum refinement level.");          
-         prm.declare_entry ("Apply refinements if on top of", "250000", Patterns::Double(0),
-                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");
+                            "its maximum refinement level.");                
+               
+        
          prm.declare_entry ("Refine domain if x inferior at", "1670000", Patterns::Double(0),
                              "the strain rate at which the mesh should start to be refined. Units: $1 / s$"); 
          prm.declare_entry ("Refine domain if x superior at", "350000", Patterns::Double(0),
@@ -346,7 +290,9 @@ namespace aspect
          prm.declare_entry ("Refine domain if y inferior at", "1670000", Patterns::Double(0),
                              "the strain rate at which the mesh should start to be refined. Units: $1 / s$"); 
          prm.declare_entry ("Refine domain if y superior at", "350000", Patterns::Double(0),
-                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");       
+                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");
+         prm.declare_entry ("Apply refinements if on top of", "50000", Patterns::Double(0),
+                             "the strain rate at which the mesh should start to be refined. Units: $1 / s$");         
          
         }
         prm.leave_subsection();
@@ -356,129 +302,21 @@ namespace aspect
 
     template <int dim>
     void
-    Subduction<dim>::parse_parameters (ParameterHandler &prm)
+    Subductioninterface<dim>::parse_parameters (ParameterHandler &prm)
     {
       prm.enter_subsection("Mesh refinement");
       {
         min_level = prm.get_integer("Minimum refinement level");
         max_level = prm.get_integer("Initial adaptive refinement") + prm.get_integer("Initial global refinement");
-        prm.enter_subsection("Subduction");
+        prm.enter_subsection("Subduction interface");
         {
-        Z_zone_refined = prm.get_double("Apply refinements if on top of");       
+        Z_zone_refined = prm.get_double("Apply refinements if on top of");      
         X_two_zone_refined = prm.get_double("Refine domain if x inferior at");
         X_one_zone_refined = prm.get_double("Refine domain if x superior at");
         Y_one_zone_refined = prm.get_double("Refine domain if y superior at");
         Y_two_zone_refined = prm.get_double("Refine domain if y inferior at");
-    
+  
         
-
-
-          const std::vector<int> compo_one
-            = Utilities::string_to_int(
-                Utilities::split_string_list(prm.get("Compo 1 refinement")));
-
-          compo_one_refinement = std::vector<unsigned int> (compo_one.begin(),compo_one.end());
-
-          AssertThrow (compo_one_refinement.size() == 2,
-                       ExcMessage ("The number of refinement data given here must be "
-                                   "equal to 3 (field number + min level + max level). "));
-
-          AssertThrow (compo_one_refinement[0] < this->n_compositional_fields(),
-                       ExcMessage ("The number of compositional field to refine (starting "
-                                   "from 0) should be smaller than the number of fields. "));
-
-          AssertThrow (compo_one_refinement[1] >= min_level,
-                       ExcMessage ("The minimum refinement for the crust cannot be "
-                                   "smaller than the minimum level of the whole model. "));
-
-
-                    const std::vector<int> compo_two
-            = Utilities::string_to_int(
-                Utilities::split_string_list(prm.get("Compo 2 refinement")));
-
-          compo_two_refinement = std::vector<unsigned int> (compo_two.begin(),compo_two.end());
-
-          AssertThrow (compo_two_refinement.size() == 2,
-                       ExcMessage ("The number of refinement data given here must be "
-                                   "equal to 3 (field number + min level + max level). "));
-
-          AssertThrow (compo_two_refinement[0] < this->n_compositional_fields(),
-                       ExcMessage ("The number of compositional field to refine (starting "
-                                   "from 0) should be smaller than the number of fields. "));
-
-          AssertThrow (compo_two_refinement[1] >= min_level,
-                       ExcMessage ("The minimum refinement for the crust cannot be "
-                                   "smaller than the minimum level of the whole model. "));
-          
-          const std::vector<int> compo_three
-            = Utilities::string_to_int(
-                Utilities::split_string_list(prm.get("Compo 3 refinement")));
-
-          compo_three_refinement = std::vector<unsigned int> (compo_three.begin(),compo_three.end());
-
-          AssertThrow (compo_three_refinement.size() == 2,
-                       ExcMessage ("The number of refinement data given here must be "
-                                   "equal to 3 (field number + min level + max level). "));
-
-          AssertThrow (compo_three_refinement[0] < this->n_compositional_fields(),
-                       ExcMessage ("The number of compositional field to refine (starting "
-                                   "from 0) should be smaller than the number of fields. "));
-
-          AssertThrow (compo_three_refinement[1] >= min_level,
-                       ExcMessage ("The minimum refinement for the crust cannot be "
-                                   "smaller than the minimum level of the whole model. "));  
-          
-          const std::vector<int> compo_four
-            = Utilities::string_to_int(
-                Utilities::split_string_list(prm.get("Compo 4 refinement")));
-
-          compo_four_refinement = std::vector<unsigned int> (compo_four.begin(),compo_four.end());
-
-          AssertThrow (compo_four_refinement.size() == 2,
-                       ExcMessage ("The number of refinement data given here must be "
-                                   "equal to 3 (field number + min level + max level). "));
-
-          AssertThrow (compo_four_refinement[0] < this->n_compositional_fields(),
-                       ExcMessage ("The number of compositional field to refine (starting "
-                                   "from 0) should be smaller than the number of fields. "));
-
-          AssertThrow (compo_four_refinement[1] >= min_level,
-                       ExcMessage ("The minimum refinement for the crust cannot be "
-                                   "smaller than the minimum level of the whole model. ")); 
-          
-           const std::vector<int> compo_five
-            = Utilities::string_to_int(
-                Utilities::split_string_list(prm.get("Compo 5 refinement")));
-
-          compo_five_refinement = std::vector<unsigned int> (compo_four.begin(),compo_four.end());
-
-          AssertThrow (compo_five_refinement.size() == 2,
-                       ExcMessage ("The number of refinement data given here must be "
-                                   "equal to 3 (field number + min level + max level). "));
-
-          AssertThrow (compo_five_refinement[0] < this->n_compositional_fields(),
-                       ExcMessage ("The number of compositional field to refine (starting "
-                                   "from 0) should be smaller than the number of fields. "));
-
-          AssertThrow (compo_five_refinement[1] >= min_level,
-                       ExcMessage ("The minimum refinement for the crust cannot be "
-                                   "smaller than the minimum level of the whole model. "));          
-          
-          
-           const std::vector<int> compo_else
-            = Utilities::string_to_int(
-                Utilities::split_string_list(prm.get("Compo else refinement")));
-
-          compo_else_refinement = std::vector<unsigned int> (compo_else.begin(),compo_else.end());
-
-          AssertThrow (compo_else_refinement.size() == 1,
-                       ExcMessage ("The number of refinement data given here must be "
-                                   "equal to 3 (field number + min level + max level). "));
-
-          AssertThrow (compo_else_refinement[0] < this->n_compositional_fields(),
-                       ExcMessage ("The number of compositional field to refine (starting "
-                                   "from 0) should be smaller than the number of fields. "));
-      
           
             
           const std::vector<int> interface
@@ -500,7 +338,41 @@ namespace aspect
                                    "smaller than the minimum level of the whole model. "));
 
 
+            const std::vector<int> additional_one
+            = Utilities::string_to_int(
+                Utilities::split_string_list(prm.get("Additional refinement one")));
 
+          additional_refinement_one = std::vector<unsigned int> (additional_one.begin(),additional_one.end());
+
+          AssertThrow (additional_refinement_one.size() == 2,
+                       ExcMessage ("The number of refinement data given here must be "
+                                   "equal to 3 (field number + min level + max level). "));
+
+          AssertThrow (additional_refinement_one[0] < this->n_compositional_fields(),
+                       ExcMessage ("The number of compositional field to refine (starting "
+                                   "from 0) should be smaller than the number of fields. "));
+
+          AssertThrow (additional_refinement_one[1] >= min_level,
+                       ExcMessage ("The minimum refinement for the crust cannot be "
+                                   "smaller than the minimum level of the whole model. "));
+          
+            const std::vector<int> additional_two
+            = Utilities::string_to_int(
+                Utilities::split_string_list(prm.get("Additional refinement two")));
+
+          additional_refinement_two = std::vector<unsigned int> (additional_two.begin(),additional_two.end());
+
+          AssertThrow (additional_refinement_two.size() == 2,
+                       ExcMessage ("The number of refinement data given here must be "
+                                   "equal to 3 (field number + min level + max level). "));
+
+          AssertThrow (additional_refinement_two[0] < this->n_compositional_fields(),
+                       ExcMessage ("The number of compositional field to refine (starting "
+                                   "from 0) should be smaller than the number of fields. "));
+
+          AssertThrow (additional_refinement_two[1] >= min_level,
+                       ExcMessage ("The minimum refinement for the crust cannot be "
+                                   "smaller than the minimum level of the whole model. "));
 
         }
         prm.leave_subsection();
@@ -518,8 +390,8 @@ namespace aspect
 {
   namespace MeshRefinement
   {
-    ASPECT_REGISTER_MESH_REFINEMENT_CRITERION(Subduction,
-                                              "subduction",
-                                              "subduction refinement")
+    ASPECT_REGISTER_MESH_REFINEMENT_CRITERION(Subductioninterface,
+                                              "subduction interface",
+                                              "Subduction interface refinement")
   }
 }

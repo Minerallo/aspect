@@ -126,6 +126,16 @@ namespace aspect
             out.entropy_derivative_pressure[c] = 0.0;
             out.entropy_derivative_temperature[c] = 0.0;
           }            
+        }else if(use_gms_densities){
+            for (unsigned int c=0; c < out.densities.size(); ++c)
+            {
+                out.densities[c] = reference_densities[c];
+                out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c];
+                out.specific_heat_capacities[c] = isochoric_specific_heats[c];
+                out.compressibilities[c] = 0.0;
+                out.entropy_derivative_pressure[c] = 0.0;
+                out.entropy_derivative_temperature[c] = 0.0;
+            }            
         }
       }
     
@@ -197,7 +207,10 @@ namespace aspect
                              "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");
         prm.declare_entry("Use incompressibility with adiabat", "false",
                             Patterns::Bool(),
-                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");  
+                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");
+        prm.declare_entry("Use GMS densities", "false",
+                            Patterns::Bool(),
+                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");         
 
         prm.declare_entry("Use conductivity temperature dependent", "false",
                             Patterns::Bool(),
@@ -274,6 +287,7 @@ namespace aspect
         use_compressible_density_only = prm.get_bool ("Use compressible density only");
         use_incompressibility = prm.get_bool ("Use incompressibility");
         use_incompressibility_adiabat=prm.get_bool ("Use incompressibility with adiabat");
+        use_gms_densities==prm.get_bool ("Use GMS densities");
         
         use_conductivity_temperature_dependent = prm.get_bool("Use conductivity temperature dependent");
         composition_number_affected = prm.get_double("Composition number affected");

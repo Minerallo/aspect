@@ -217,15 +217,15 @@ namespace aspect
       return cohesions;
     }
 
-      template <int dim>
-      void
-      ViscoPlastic<dim>::get_trench_position()
-      {
-      aspect::MeshDeformation::FastScape<dim> obj;
-      Ptrench= obj.trench_position();  
-      // std::cout<<"here we get the Ptrench Yiahh "<<Ptrench<<std::endl;
-      // return Ptrench2;
-      }
+//       template <int dim>
+//       void
+//       ViscoPlastic<dim>::get_trench_position()
+//       {
+//       aspect::MeshDeformation::FastScape<dim> obj;
+//       Ptrench= obj.trench_position();  
+//       // std::cout<<"here we get the Ptrench Yiahh "<<Ptrench<<std::endl;
+//       // return Ptrench2;
+//       }
 
     template <int dim>
     std::pair<std::vector<double>, std::vector<bool> >

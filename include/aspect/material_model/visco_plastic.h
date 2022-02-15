@@ -250,7 +250,7 @@ namespace aspect
         void evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
                       MaterialModel::MaterialModelOutputs<dim> &out) const override;
         
-        void get_trench_position(); 
+//         void get_trench_position(); 
 
         /**
          * Return whether the model is compressible or not.  Incompressibility
@@ -302,7 +302,7 @@ namespace aspect
 
       private:
 
-        double Ptrench; 
+//         double Ptrench; 
         double min_strain_rate;
         double ref_strain_rate;
         

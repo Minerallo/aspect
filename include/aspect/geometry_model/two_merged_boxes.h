@@ -40,6 +40,26 @@ namespace aspect
     class TwoMergedBoxes : public Interface<dim>, public SimulatorAccess<dim>
     {
       public:
+          
+        /**
+         * Initialization function. This function is called once at the
+         * beginning of the program after parse_parameters is run and after
+         * the SimulatorAccess (if applicable) is initialized.
+         */
+        void initialize () override;    
+        
+        
+        /**
+         * Add initial topography to the mesh.
+         */
+        void topography (typename parallel::distributed::Triangulation<dim> &grid) const;  
+        
+        /**
+         * Relocate the vertical coordinate of the given point based on
+         * the topography at the surface specified by the initial topography
+         * model.
+         */
+        Point<dim> add_topography (const Point<dim> &x_y_z) const;        
 
         /**
          * Generate a coarse mesh for the geometry described by this class.
@@ -231,6 +251,12 @@ namespace aspect
          * (so in positive z-direction).
          */
         double height_lith;
+        double right_differential_height;
+        
+        /**
+         * A pointer to the initial topography model.
+         */
+        InitialTopographyModel::Interface<dim> *topo_model;        
 
         /**
          * Bind boundary indicators to child cells after each mesh refinement round.

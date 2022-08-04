@@ -278,7 +278,8 @@ namespace aspect
                              if (vertex(0) < crust_zone_refined_updated){  
                                upper_crust_present = true; 
                              }else{
-                                 box_out=true;
+                                 upper_crust_present_two=true;
+//                                  box_out=true;
                             }
                             }
                           }else if(vertex(1) < continental_mantle_refined)
@@ -288,7 +289,7 @@ namespace aspect
                             if (vertex(0) < crust_zone_refined_updated){   
                             upper_crust_present = true;
                                 
-                            }else{
+                            }else{                               
                                 box_out=true;
                             }
                            }
@@ -304,7 +305,8 @@ namespace aspect
                                if (vertex(0) < crust_zone_refined_updated){
                                lower_crust_present = true; 
                                }else{
-                            box_out = true;
+                                   lower_crust_present_two = true;
+//                             box_out = true;
                             }                            
                             }
                           }else if(vertex(1) < continental_mantle_refined)
@@ -323,11 +325,12 @@ namespace aspect
                           {
                             if(vertex(1) > lithosphere_zone_refined)
                             {
-                                if (vertex(0) < crust_zone_refined_updated){
-                            sediments_present = true;}
-                            else{
-                                box_out=true;
-                            }
+//                                 if (vertex(0) < crust_zone_refined_updated){
+                            sediments_present = true;
+//                                     }
+//                             else{
+//                                 box_out=true;
+//                             }
                             // break;
                             }
                           }
@@ -442,16 +445,17 @@ namespace aspect
 
                             if (prelim_composition_values[craton_refinement[0]][p] > 0.1)
                             {
-                               if (vertex(0) < crust_zone_refined_updated-150000){
-                                    if(additional_craton_refinement){
-                                        lower_crust_present = true;
-                                    }else{
+//                                if (vertex(0) < crust_zone_refined_updated-150000){
+//                                     if(additional_craton_refinement){
+//                                         lower_crust_present = true;
+//                                     }else{
                                         craton_present = true;        
-                                    }
-                               }else{
-                            craton_present = true;
-                            }                            
+//                                     }
+//                                }else{
+//                             craton_present = true;
+//                             }                            
                             }
+                                        
 
                         
                         if (prelim_composition_values[upper_mantle_refinement[0]][p] > 0.80)

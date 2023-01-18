@@ -131,6 +131,29 @@ namespace aspect
           // Calculate the square root of the second moment invariant for the deviatoric strain rate tensor.
           edot_ii = std::max(std::sqrt(std::max(-second_invariant(deviator(in.strain_rate[i])), 0.)),
                              min_strain_rate);
+          
+     double min_visc=0;
+      // Set the minimum viscosity depending on time
+      if(change_min_visc)
+      {
+        if(this->get_time()/ year_in_seconds>=time_change_min_visc_second)     
+        {
+          min_visc=min_visc_third;
+          // [1]; 
+        }
+        else if(this->get_time()/year_in_seconds>=time_change_min_visc) 
+        {
+          min_visc=min_visc_second;
+          // [1]; 
+        }
+        else 
+        {
+          min_visc=min_visc_first;
+        // [0];
+        }    
+      }else{
+          min_visc=min_visc_first;        
+      }           
 
         // Calculate viscosities for each of the individual compositional phases
         for (unsigned int j=0; j < volume_fractions.size(); ++j)
@@ -269,7 +292,8 @@ namespace aspect
                                                                       n_phases_per_composition);
             const double current_cohesion = drucker_prager_parameters.cohesion * weakening_factors[0];
             double current_friction = drucker_prager_parameters.angle_internal_friction * weakening_factors[1];
-
+            
+            
             // Steb 4b: calculate friction angle dependent on strain rate if specified
             // apply the strain rate dependence to the friction angle (including strain weakening  if present)
             // Note: Maybe this should also be turned around to first apply strain rate dependence and then
@@ -333,6 +357,7 @@ namespace aspect
                   break;
                 }
               }
+              
 
             // Step 6: limit the viscosity with specified minimum and maximum bounds
             const double maximum_viscosity_for_composition = MaterialModel::MaterialUtilities::phase_average_value(
@@ -349,7 +374,9 @@ namespace aspect
                                                                j,
                                                                MaterialModel::MaterialUtilities::PhaseUtilities::logarithmic
                                                              );
-            output_parameters.composition_viscosities[j] = std::min(std::max(viscosity_yield, minimum_viscosity_for_composition), maximum_viscosity_for_composition);
+//              output_parameters.composition_viscosities[j] = std::min(std::max(viscosity_yield, minimum_viscosity_for_composition), maximum_viscosity_for_composition);
+                output_parameters.composition_viscosities[j] = std::min(std::max(viscosity_yield, std::max(min_visc,minimum_viscosity_for_composition)), maximum_viscosity_for_composition);
+            
           }
         return output_parameters;
       }
@@ -508,11 +535,33 @@ namespace aspect
                            "Stabilizes strain dependent viscosity. Units: \\si{\\per\\second}.");
         prm.declare_entry ("Reference strain rate","1.0e-15",Patterns::Double (0.),
                            "Reference strain rate for first time step. Units: \\si{\\per\\second}.");
-        prm.declare_entry ("Minimum viscosity", "1e17", Patterns::Anything(),
+          
+          
+          prm.declare_entry ("Minimum viscosity", "1e17", Patterns::Anything(),
                            "Lower cutoff for effective viscosity. Units: \\si{\\pascal\\second}. "
                            "List with as many components as active "
                            "compositional fields (material data is assumed to "
                            "be in order with the ordering of the fields). ");
+          prm.declare_entry ("Minimum viscosity first", "4e19", Patterns::Double (0.),
+                           "Lower cutoff for effective viscosity. Units: $Pa \\, s$");
+             
+          prm.declare_entry ("Minimum viscosity second", "4e19", Patterns::Double (0.),
+                             "Lower cutoff for effective viscosity. Units: $Pa \\, s$");
+          prm.declare_entry ("Minimum viscosity third", "2e18", Patterns::Double (0.),
+                             "Lower cutoff for effective viscosity. Units: $Pa \\, s$");            
+          // prm.declare_entry ("Minimum viscosity", "1e17", Patterns::List(Patterns::Double (0.)),
+          //                    "Lower cutoff for effective viscosity. Units: $Pa \\, s$");
+          prm.declare_entry("Switch minimum viscosity", "false",
+                            Patterns::Bool(),
+                             "If you want to switch the minimum viscosity");   
+          prm.declare_entry("Switch minimum viscosity second", "false",
+                            Patterns::Bool(),
+                            "If you want to switch the minimum viscosity");
+          
+          prm.declare_entry ("Time minimum viscosity switch", "1e6", Patterns::Double (0.),
+                             "Time to switch the minimum viscosity. Units: $Pa \\, s$");   
+          prm.declare_entry ("Time minimum viscosity switch second", "2e6", Patterns::Double (0.),
+                             "Time to switch the minimum viscosity. Units: $Pa \\, s$");             
         prm.declare_entry ("Maximum viscosity", "1e28", Patterns::Anything(),
                            "Upper cutoff for effective viscosity. Units: \\si{\\pascal\\second}. "
                            "List with as many components as active "
@@ -627,10 +676,24 @@ namespace aspect
             elastic_rheology.initialize_simulator (this->get_simulator());
             elastic_rheology.parse_parameters(prm);
           }
+                   
 
         // Reference and minimum/maximum values
         min_strain_rate = prm.get_double("Minimum strain rate");
         ref_strain_rate = prm.get_double("Reference strain rate");
+        
+          // Allow a vector for the minimum viscosity in order to change it later in time
+           min_visc_first = prm.get_double ("Minimum viscosity first");
+           min_visc_second = prm.get_double ("Minimum viscosity second");
+           min_visc_third = prm.get_double ("Minimum viscosity third");
+          //  const std::vector<double> min_visc = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Minimum viscosity"))),                                                                      
+          //                                                                  "Minimum viscosity");
+                                                                           
+          change_min_visc = prm.get_bool ("Switch minimum viscosity"); 
+//           change_min_visc_second = prm.get_bool ("Switch minimum viscosity second");   
+          time_change_min_visc = prm.get_double("Time minimum viscosity switch"); 
+          time_change_min_visc_second = prm.get_double("Time minimum viscosity switch second"); 
+          
         minimum_viscosity = Utilities::parse_map_to_double_array (prm.get("Minimum viscosity"),
                                                                   list_of_composition_names,
                                                                   has_background_field,

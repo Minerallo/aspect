@@ -534,6 +534,7 @@ namespace aspect
           std::vector<double> transition_widths;
           std::vector<double> transition_pressure_widths;
           std::vector<double> transition_slopes;
+          std::vector<double> kinetic_temperatures_activation;
 
           /**
            * Whether to define the phase transitions based on depth, or pressure.

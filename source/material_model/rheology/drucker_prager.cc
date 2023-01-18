@@ -45,21 +45,30 @@ namespace aspect
         DruckerPragerParameters drucker_prager_parameters;
 
         drucker_prager_parameters.max_yield_stress = max_yield_stress;
-
-        if (phase_function_values == std::vector<double>())
-          {
-            // no phases
-            drucker_prager_parameters.angle_internal_friction = angles_internal_friction[composition];
-            drucker_prager_parameters.cohesion = cohesions[composition];
-          }
-        else
-          {
-            // Average among phases
-            drucker_prager_parameters.angle_internal_friction = MaterialModel::MaterialUtilities::phase_average_value(phase_function_values, n_phases_per_composition,
-                                                                angles_internal_friction, composition);
-            drucker_prager_parameters.cohesion = MaterialModel::MaterialUtilities::phase_average_value(phase_function_values, n_phases_per_composition,
-                                                 cohesions, composition);
-          }
+        
+        //switch of frictional angle at defined time for a composition
+        double internal_change=0;
+            if(this->get_time()/ year_in_seconds>time_switch_layer_friction  && composition==layer_number && switch_layer_friction==true)
+            {
+                internal_change=new_friction*numbers::PI/180.0;
+                drucker_prager_parameters.angle_internal_friction = internal_change;
+            }else
+            { 
+                if (phase_function_values == std::vector<double>())
+                {
+                    // no phases
+                    drucker_prager_parameters.angle_internal_friction = angles_internal_friction[composition];
+                    drucker_prager_parameters.cohesion = cohesions[composition];
+                }
+                else
+                {
+                    // Average among phases
+                    drucker_prager_parameters.angle_internal_friction = MaterialModel::MaterialUtilities::phase_average_value(phase_function_values, n_phases_per_composition,
+                                                                        angles_internal_friction, composition);
+                    drucker_prager_parameters.cohesion = MaterialModel::MaterialUtilities::phase_average_value(phase_function_values, n_phases_per_composition,
+                                                        cohesions, composition);
+                }
+            }
         return drucker_prager_parameters;
       }
 
@@ -169,6 +178,18 @@ namespace aspect
       void
       DruckerPrager<dim>::declare_parameters (ParameterHandler &prm)
       {
+          
+         prm.declare_entry("Switch layer friction", "false",
+                            Patterns::Bool(),
+                             "Change for a new internal angle of friction"); 
+          prm.declare_entry ("Time to swtich layer friction", "2e6", Patterns::Double (0.),
+                             "Change for a new internal angle of friction. Units:degrees");          
+          prm.declare_entry ("Layer number", "3", Patterns::Double (0.),
+                             "Change for a new internal angle of friction. Units:degrees");
+          prm.declare_entry ("New internal friction angle", "3", Patterns::Double (0.),
+                             "Change for a new internal angle of friction. Units:degrees");
+
+          
         prm.declare_entry ("Angles of internal friction", "0.",
                            Patterns::Anything(),
                            "List of angles of internal friction, $\\phi$, for background material and compositional fields, "
@@ -208,6 +229,12 @@ namespace aspect
         const std::vector<std::string> list_of_composition_names = this->introspection().get_composition_names();
         // Establish that a background field is required here
         const bool has_background_field = true;
+        
+           switch_layer_friction=prm.get_bool("Switch layer friction");
+          time_switch_layer_friction=prm.get_double ("Time to swtich layer friction");
+          layer_number= prm.get_double ("Layer number");
+          new_friction=prm.get_double ("New internal friction angle");
+                
 
         angles_internal_friction = Utilities::parse_map_to_double_array(prm.get("Angles of internal friction"),
                                                                         list_of_composition_names,

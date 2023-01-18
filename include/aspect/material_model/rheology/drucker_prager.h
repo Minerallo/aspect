@@ -124,6 +124,13 @@ namespace aspect
                               const double effective_strain_rate) const;
 
         private:
+            
+          bool switch_layer_friction;
+          double time_switch_layer_friction;
+          double layer_number;
+          double new_friction;
+                  
+            
 
           std::vector<double> angles_internal_friction;
           std::vector<double> cohesions;

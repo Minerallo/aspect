@@ -66,7 +66,7 @@ namespace aspect
          * zero and one. A value of zero means no stabilization. See Kaus
          * et. al. 2010 for more details.
          */
-        const double free_surface_theta;
+        const double surface_theta;
     };
   }
 
@@ -301,7 +301,8 @@ namespace aspect
         /**
          * Return the stabilization parameter for the free surface.
          */
-        double get_free_surface_theta () const;
+        double get_surface_theta () const;
+
 
         /**
          * Return the initial topography stored on

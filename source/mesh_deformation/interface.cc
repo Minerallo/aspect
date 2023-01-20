@@ -48,7 +48,7 @@ namespace aspect
     template <int dim>
     ApplyStabilization<dim>::ApplyStabilization(const double stabilization_theta)
       :
-      free_surface_theta(stabilization_theta)
+      surface_theta(stabilization_theta)
     {}
 
     template <int dim>
@@ -66,7 +66,7 @@ namespace aspect
 
       if (this->get_parameters().include_melt_transport)
         {
-          this->get_melt_handler().apply_free_surface_stabilization_with_melt (free_surface_theta,
+          this->get_melt_handler().apply_free_surface_stabilization_with_melt (surface_theta,
                                                                                scratch.cell,
                                                                                scratch,
                                                                                data);
@@ -132,7 +132,7 @@ namespace aspect
 
                   const double pressure_perturbation = scratch.face_material_model_outputs.densities[q_point] *
                                                        this->get_timestep() *
-                                                       free_surface_theta *
+                                                       surface_theta *
                                                        g_norm;
 
                   // see Kaus et al 2010 for details of the stabilization term
@@ -370,22 +370,18 @@ namespace aspect
                            "\n\n"
                            "The format is id1: object1 \\& object2, id2: object3 \\& object2, where "
                            "objects are one of " + std::get<dim>(registered_plugins).get_description_string());
+         prm.declare_entry("Surface stabilization theta", "0.5",
+                          Patterns::Double(0., 1.),
+                          "Theta parameter described in \\cite{KMM2010}. "
+                          "An unstabilized free surface can overshoot its "
+                          "equilibrium position quite easily and generate "
+                          "unphysical results.  One solution is to use a "
+                          "quasi-implicit correction term to the forces near the "
+                          "free surface.  This parameter describes how much "
+                          "the free surface is stabilized with this term, "
+                          "where zero is no stabilization, and one is fully "
+                          "implicit.");
 
-        prm.enter_subsection ("Free surface");
-        {
-          prm.declare_entry("Free surface stabilization theta", "0.5",
-                            Patterns::Double(0., 1.),
-                            "Theta parameter described in \\cite{KMM2010}. "
-                            "An unstabilized free surface can overshoot its "
-                            "equilibrium position quite easily and generate "
-                            "unphysical results.  One solution is to use a "
-                            "quasi-implicit correction term to the forces near the "
-                            "free surface.  This parameter describes how much "
-                            "the free surface is stabilized with this term, "
-                            "where zero is no stabilization, and one is fully "
-                            "implicit.");
-        }
-        prm.leave_subsection ();
       }
       prm.leave_subsection ();
 
@@ -406,6 +402,7 @@ namespace aspect
 
         for (const auto &entry : x_mesh_deformation_boundary_indicators)
           {
+            surface_theta = prm.get_double("Surface stabilization theta");
             // each entry has the format (white space is optional):
             // <boundary_id> : <object_name & object_name, ...>
             const std::vector<std::string> split_parts = Utilities::split_string_list (entry, ':');
@@ -501,12 +498,6 @@ namespace aspect
 
         for (const auto &boundary_id : tangential_mesh_deformation_boundary_indicators)
           zero_mesh_deformation_boundary_indicators.erase(boundary_id);
-
-        prm.enter_subsection ("Free surface");
-        {
-          surface_theta = prm.get_double("Free surface stabilization theta");
-        }
-        prm.leave_subsection ();
 
       }
       prm.leave_subsection ();
@@ -1479,7 +1470,7 @@ namespace aspect
 
 
     template <int dim>
-    double MeshDeformationHandler<dim>::get_free_surface_theta()const
+    double MeshDeformationHandler<dim>::get_surface_theta()const
     {
       return surface_theta;
     }

@@ -1488,7 +1488,7 @@ namespace aspect
                                                                 && !sim.mesh_deformation->get_free_surface_boundary_indicators().empty();
       if (active_cell_data.apply_stabilization_free_surface_faces == true)
         {
-          const double free_surface_theta = sim.mesh_deformation->get_free_surface_theta();
+          const double free_surface_theta = sim.mesh_deformation->get_surface_theta();
 
           const Quadrature<dim-1> &face_quadrature_formula = sim.introspection.face_quadratures.velocities;
 

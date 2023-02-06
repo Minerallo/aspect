@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2016 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2016 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -61,8 +61,8 @@ namespace aspect
 
       // evaluate the solution at all of our evaluation points
       std::vector<Vector<double>>
-                               current_point_values (evaluation_points_cartesian.size(),
-                                                     Vector<double> (this->introspection().n_components));
+      current_point_values (evaluation_points_cartesian.size(),
+                            Vector<double> (this->introspection().n_components));
 
       for (unsigned int p=0; p<evaluation_points_cartesian.size(); ++p)
         {
@@ -237,14 +237,14 @@ namespace aspect
 
           std::vector<std::array<double,dim>> evaluation_points;
 
-          for (unsigned int p=0; p<point_list.size(); ++p)
+          for (const auto &p : point_list)
             {
               const std::vector<std::string> coordinates
-                = Utilities::split_string_list(point_list[p], ',');
+                = Utilities::split_string_list(p, ',');
               AssertThrow (coordinates.size() == dim,
                            ExcMessage ("In setting up the list of evaluation points for the <Point values> "
                                        "postprocessor, one of the evaluation points reads <"
-                                       + point_list[p] +
+                                       + p +
                                        ">, but this does not correspond to a list of numbers with "
                                        "as many coordinates as you run your simulation in."));
 

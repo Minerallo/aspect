@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2016 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2016 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -121,14 +121,6 @@ namespace aspect
         }
     }
 
-
-    template <int dim>
-    double
-    AsciiReferenceProfile<dim>::
-    reference_viscosity () const
-    {
-      return viscosity;
-    }
 
 
     template <int dim>

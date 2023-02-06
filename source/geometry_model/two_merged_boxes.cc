@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -109,7 +109,7 @@ namespace aspect
 
       // tell p4est about the periodicity of the mesh.
       std::vector<GridTools::PeriodicFacePair<typename parallel::distributed::Triangulation<dim>::cell_iterator>>
-          periodicity_vector;
+      periodicity_vector;
       for (int i=0; i<dim+dim-1; ++i)
         {
           if (periodic[i])
@@ -193,11 +193,11 @@ namespace aspect
 
 
     template <int dim>
-    std::set< std::pair< std::pair<types::boundary_id, types::boundary_id>, unsigned int>>
-        TwoMergedBoxes<dim>::
-        get_periodic_boundary_pairs () const
+    std::set<std::pair<std::pair<types::boundary_id, types::boundary_id>, unsigned int>>
+    TwoMergedBoxes<dim>::
+    get_periodic_boundary_pairs () const
     {
-      std::set< std::pair< std::pair<types::boundary_id, types::boundary_id>, unsigned int>> periodic_boundaries;
+      std::set<std::pair<std::pair<types::boundary_id, types::boundary_id>, unsigned int>> periodic_boundaries;
       for ( unsigned int i=0; i<dim+dim-1; ++i)
         if (periodic[i])
           {
@@ -475,7 +475,7 @@ namespace aspect
 
           extents[1]           = prm.get_double ("Y extent");
           lower_box_origin[1]  = prm.get_double ("Box origin Y coordinate");
-          periodic[1]          = prm.get_bool ("Y periodic");;
+          periodic[1]          = prm.get_bool ("Y periodic");
           lower_repetitions[1] = prm.get_integer ("Y repetitions");
 
           if (dim == 2)

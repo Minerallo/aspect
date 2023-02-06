@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2020 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2020 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -40,20 +40,19 @@ namespace aspect
         std::vector<std::string> names;
         names.emplace_back("current_cohesions");
         names.emplace_back("current_friction_angles");
+        names.emplace_back("current_yield_stresses");
         names.emplace_back("plastic_yielding");
         return names;
       }
     }
 
-
-
     template <int dim>
-    PlasticAdditionalOutputs<dim>::PlasticAdditionalOutputs (const unsigned int n_points)
-      :
-      NamedAdditionalMaterialOutputs<dim>(make_plastic_additional_outputs_names()),
-      cohesions(n_points, numbers::signaling_nan<double>()),
-      friction_angles(n_points, numbers::signaling_nan<double>()),
-      yielding(n_points, numbers::signaling_nan<double>())
+    PlasticAdditionalOutputs<dim>::PlasticAdditionalOutputs(const unsigned int n_points)
+      : NamedAdditionalMaterialOutputs<dim>(make_plastic_additional_outputs_names()),
+        cohesions(n_points, numbers::signaling_nan<double>()),
+        friction_angles(n_points, numbers::signaling_nan<double>()),
+        yield_stresses(n_points, numbers::signaling_nan<double>()),
+        yielding(n_points, numbers::signaling_nan<double>())
     {}
 
 
@@ -62,7 +61,7 @@ namespace aspect
     std::vector<double>
     PlasticAdditionalOutputs<dim>::get_nth_output(const unsigned int idx) const
     {
-      AssertIndexRange (idx, 3);
+      AssertIndexRange (idx, 4);
       switch (idx)
         {
           case 0:
@@ -72,6 +71,9 @@ namespace aspect
             return friction_angles;
 
           case 2:
+            return yield_stresses;
+
+          case 3:
             return yielding;
 
           default:
@@ -88,7 +90,7 @@ namespace aspect
 
       template <int dim>
       ViscoPlastic<dim>::ViscoPlastic ()
-      {}
+        = default;
 
 
 
@@ -106,6 +108,8 @@ namespace aspect
         // Initialize or fill variables used to calculate viscosities
         output_parameters.composition_yielding.resize(volume_fractions.size(), false);
         output_parameters.composition_viscosities.resize(volume_fractions.size(), numbers::signaling_nan<double>());
+        output_parameters.current_friction_angles.resize(volume_fractions.size(), numbers::signaling_nan<double>());
+        output_parameters.current_cohesions.resize(volume_fractions.size(), numbers::signaling_nan<double>());
 
         // Assemble stress tensor if elastic behavior is enabled
         SymmetricTensor<2,dim> stress_old = numbers::signaling_nan<SymmetricTensor<2,dim>>();
@@ -126,8 +130,31 @@ namespace aspect
           edot_ii = ref_strain_rate;
         else
           // Calculate the square root of the second moment invariant for the deviatoric strain rate tensor.
-          edot_ii = std::max(std::sqrt(std::fabs(second_invariant(deviator(in.strain_rate[i])))),
+          edot_ii = std::max(std::sqrt(std::max(-second_invariant(deviator(in.strain_rate[i])), 0.)),
                              min_strain_rate);
+          
+     double min_visc=0;
+      // Set the minimum viscosity depending on time
+      if(change_min_visc)
+      {
+        if(this->get_time()/ year_in_seconds>=time_change_min_visc_second)     
+        {
+          min_visc=min_visc_third;
+          // [1]; 
+        }
+        else if(this->get_time()/year_in_seconds>=time_change_min_visc) 
+        {
+          min_visc=min_visc_second;
+          // [1]; 
+        }
+        else 
+        {
+          min_visc=min_visc_first;
+        // [0];
+        }    
+      }else{
+          min_visc=min_visc_first;        
+      }           
 
         // Calculate viscosities for each of the individual compositional phases
         for (unsigned int j=0; j < volume_fractions.size(); ++j)
@@ -241,6 +268,9 @@ namespace aspect
                   current_edot_ii = ref_strain_rate;
                 else
                   {
+                    Assert(std::isfinite(in.strain_rate[i].norm()),
+                           ExcMessage("Invalid strain_rate in the MaterialModelInputs. This is likely because it was "
+                                      "not filled by the caller."));
                     const double viscoelastic_strain_rate_invariant = elastic_rheology.calculate_viscoelastic_strain_rate(in.strain_rate[i],
                                                                       stress_old,
                                                                       elastic_shear_moduli[j]);
@@ -257,7 +287,7 @@ namespace aspect
             // Step 3b: calculate current (viscous or viscous + elastic) stress magnitude
             double current_stress = 2. * viscosity_pre_yield * current_edot_ii;
 
-            // Step 4: calculate strain-weakened friction, cohesion
+            // Step 4a: calculate strain-weakened friction and cohesion
             const DruckerPragerParameters drucker_prager_parameters = drucker_prager_plasticity.compute_drucker_prager_parameters(j,
                                                                       phase_function_values,
                                                                       n_phases_per_composition);
@@ -348,7 +378,9 @@ namespace aspect
                                                                j,
                                                                MaterialModel::MaterialUtilities::PhaseUtilities::logarithmic
                                                              );
-            output_parameters.composition_viscosities[j] = std::min(std::max(viscosity_yield, minimum_viscosity_for_composition), maximum_viscosity_for_composition);
+//              output_parameters.composition_viscosities[j] = std::min(std::max(viscosity_yield, minimum_viscosity_for_composition), maximum_viscosity_for_composition);
+                output_parameters.composition_viscosities[j] = std::min(std::max(viscosity_yield, std::max(min_visc,minimum_viscosity_for_composition)), maximum_viscosity_for_composition);
+            
           }
         return output_parameters;
       }
@@ -379,6 +411,10 @@ namespace aspect
 
             // A new material model inputs variable that uses the strain rate and pressure difference.
             MaterialModel::MaterialModelInputs<dim> in_derivatives = in;
+
+            Assert(std::isfinite(in.strain_rate[i].norm()),
+                   ExcMessage("Invalid strain_rate in the MaterialModelInputs. This is likely because it was "
+                              "not filled by the caller."));
 
             // For each independent component, compute the derivative.
             for (unsigned int component = 0; component < SymmetricTensor<2,dim>::n_independent_components; ++component)
@@ -415,9 +451,7 @@ namespace aspect
                   }
               }
 
-            /**
-             * Now compute the derivative of the viscosity to the pressure
-             */
+            // Now compute the derivative of the viscosity to the pressure
             const double pressure_difference = in.pressure[i] + (std::fabs(in.pressure[i]) * finite_difference_accuracy);
 
             in_derivatives.pressure[i] = pressure_difference;
@@ -496,6 +530,8 @@ namespace aspect
       {
         Rheology::StrainDependent<dim>::declare_parameters (prm);
 
+        Rheology::FrictionModels<dim>::declare_parameters (prm);
+
         Rheology::Elasticity<dim>::declare_parameters (prm);
 
         // Reference and minimum/maximum values
@@ -503,37 +539,38 @@ namespace aspect
                            "Stabilizes strain dependent viscosity. Units: \\si{\\per\\second}.");
         prm.declare_entry ("Reference strain rate","1.0e-15",Patterns::Double (0.),
                            "Reference strain rate for first time step. Units: \\si{\\per\\second}.");
-        prm.declare_entry ("Minimum viscosity", "1e17", Patterns::Anything(),
+          
+          
+          prm.declare_entry ("Minimum viscosity", "1e17", Patterns::Anything(),
                            "Lower cutoff for effective viscosity. Units: \\si{\\pascal\\second}. "
                            "List with as many components as active "
                            "compositional fields (material data is assumed to "
                            "be in order with the ordering of the fields). ");
+          prm.declare_entry ("Minimum viscosity first", "4e19", Patterns::Double (0.),
+                           "Lower cutoff for effective viscosity. Units: $Pa \\, s$");
+             
+          prm.declare_entry ("Minimum viscosity second", "4e19", Patterns::Double (0.),
+                             "Lower cutoff for effective viscosity. Units: $Pa \\, s$");
+          prm.declare_entry ("Minimum viscosity third", "2e18", Patterns::Double (0.),
+                             "Lower cutoff for effective viscosity. Units: $Pa \\, s$");            
+          // prm.declare_entry ("Minimum viscosity", "1e17", Patterns::List(Patterns::Double (0.)),
+          //                    "Lower cutoff for effective viscosity. Units: $Pa \\, s$");
+          prm.declare_entry("Switch minimum viscosity", "false",
+                            Patterns::Bool(),
+                             "If you want to switch the minimum viscosity");   
+          prm.declare_entry("Switch minimum viscosity second", "false",
+                            Patterns::Bool(),
+                            "If you want to switch the minimum viscosity");
+          
+          prm.declare_entry ("Time minimum viscosity switch", "1e6", Patterns::Double (0.),
+                             "Time to switch the minimum viscosity. Units: $Pa \\, s$");   
+          prm.declare_entry ("Time minimum viscosity switch second", "2e6", Patterns::Double (0.),
+                             "Time to switch the minimum viscosity. Units: $Pa \\, s$");             
         prm.declare_entry ("Maximum viscosity", "1e28", Patterns::Anything(),
                            "Upper cutoff for effective viscosity. Units: \\si{\\pascal\\second}. "
                            "List with as many components as active "
                            "compositional fields (material data is assumed to "
                            "be in order with the ordering of the fields). ");
-        prm.declare_entry ("Reference viscosity", "1e22", Patterns::Double (0.),
-                           "Reference viscosity for nondimensionalization. "
-                           "To understand how pressure scaling works, take a look at "
-                           "\\cite{KHB12}. In particular, the value of this parameter "
-                           "would not affect the solution computed by \\aspect{} if "
-                           "we could do arithmetic exactly; however, computers do "
-                           "arithmetic in finite precision, and consequently we need to "
-                           "scale quantities in ways so that their magnitudes are "
-                           "roughly the same. As explained in \\cite{KHB12}, we scale "
-                           "the pressure during some computations (never visible by "
-                           "users) by a factor that involves a reference viscosity. This "
-                           "parameter describes this reference viscosity."
-                           "\n\n"
-                           "For problems with a constant viscosity, you will generally want "
-                           "to choose the reference viscosity equal to the actual viscosity. "
-                           "For problems with a variable viscosity, the reference viscosity "
-                           "should be a value that adequately represents the order of "
-                           "magnitude of the viscosities that appear, such as an average "
-                           "value or the value one would use to compute a Rayleigh number."
-                           "\n\n"
-                           "Units: \\si{\\pascal\\second}.");
 
         // Rheological parameters
         prm.declare_entry ("Viscosity averaging scheme", "harmonic",
@@ -633,6 +670,9 @@ namespace aspect
         strain_rheology.initialize_simulator (this->get_simulator());
         strain_rheology.parse_parameters(prm);
 
+        friction_models.initialize_simulator (this->get_simulator());
+        friction_models.parse_parameters(prm);
+
         use_elasticity = prm.get_bool ("Include viscoelasticity");
 
         if (use_elasticity)
@@ -640,6 +680,7 @@ namespace aspect
             elastic_rheology.initialize_simulator (this->get_simulator());
             elastic_rheology.parse_parameters(prm);
           }
+                   
 
         //read in friction angle
         angles_internal_friction = Utilities::parse_map_to_double_array(prm.get("Angles of internal friction"),
@@ -652,7 +693,19 @@ namespace aspect
         // Reference and minimum/maximum values
         min_strain_rate = prm.get_double("Minimum strain rate");
         ref_strain_rate = prm.get_double("Reference strain rate");
-        ref_visc = prm.get_double ("Reference viscosity");
+        
+          // Allow a vector for the minimum viscosity in order to change it later in time
+           min_visc_first = prm.get_double ("Minimum viscosity first");
+           min_visc_second = prm.get_double ("Minimum viscosity second");
+           min_visc_third = prm.get_double ("Minimum viscosity third");
+          //  const std::vector<double> min_visc = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Minimum viscosity"))),                                                                      
+          //                                                                  "Minimum viscosity");
+                                                                           
+          change_min_visc = prm.get_bool ("Switch minimum viscosity"); 
+//           change_min_visc_second = prm.get_bool ("Switch minimum viscosity second");   
+          time_change_min_visc = prm.get_double("Time minimum viscosity switch"); 
+          time_change_min_visc_second = prm.get_double("Time minimum viscosity switch second"); 
+          
         minimum_viscosity = Utilities::parse_map_to_double_array (prm.get("Minimum viscosity"),
                                                                   list_of_composition_names,
                                                                   has_background_field,
@@ -764,8 +817,6 @@ namespace aspect
           }
       }
 
-
-
       template <int dim>
       void
       ViscoPlastic<dim>::
@@ -774,19 +825,32 @@ namespace aspect
                            const bool plastic_yielding,
                            const MaterialModel::MaterialModelInputs<dim> &in,
                            MaterialModel::MaterialModelOutputs<dim> &out,
-                           const std::vector<double> &phase_function_values,
-                           const std::vector<unsigned int> &n_phases_per_composition) const
+                           const IsostrainViscosities &isostrain_viscosities) const
       {
         PlasticAdditionalOutputs<dim> *plastic_out = out.template get_additional_output<PlasticAdditionalOutputs<dim>>();
 
         if (plastic_out != nullptr)
           {
+            AssertThrow(in.requests_property(MaterialProperties::viscosity),
+                        ExcMessage("The PlasticAdditionalOutputs cannot be filled when the viscosity has not been computed."));
+
             plastic_out->cohesions[i] = 0;
             plastic_out->friction_angles[i] = 0;
+            plastic_out->yield_stresses[i] = 0;
             plastic_out->yielding[i] = plastic_yielding ? 1 : 0;
 
-            // set to weakened values, or unweakened values when strain weakening is not used
-            for (unsigned int j=0; j < volume_fractions.size(); ++j)
+            const std::vector<double> friction_angles_RAD = isostrain_viscosities.current_friction_angles;
+            const std::vector<double> cohesions = isostrain_viscosities.current_cohesions;
+
+            // The max yield stress is the same for each composition, so we give the 0th field value.
+            const double max_yield_stress = drucker_prager_plasticity.compute_drucker_prager_parameters(0).max_yield_stress;
+
+            double pressure_for_plasticity = in.pressure[i];
+            if (allow_negative_pressures_in_plasticity == false)
+              pressure_for_plasticity = std::max(in.pressure[i], 0.0);
+
+            // average over the volume volume fractions
+            for (unsigned int j = 0; j < volume_fractions.size(); ++j)
               {
                 // Calculate the strain weakening factors and weakened values
                 const std::array<double, 3> weakening_factors = strain_rheology.compute_strain_weakening_factors(j, in.composition[i]);
@@ -814,7 +878,14 @@ namespace aspect
                current_friction = std::min(1.5*drucker_prager_parameters.angle_internal_friction, current_friction);
 
                 // Also convert radians to degrees
-                plastic_out->friction_angles[i] += 180.0/numbers::PI * volume_fractions[j] * current_friction;
+               // plastic_out->friction_angles[i] += 180.0/numbers::PI * volume_fractions[j] * current_friction;
+                //plastic_out->cohesions[i]   += volume_fractions[j] * cohesions[j];
+                // Also convert radians to degrees
+              //  plastic_out->friction_angles[i] += 180.0/numbers::PI * volume_fractions[j] * friction_angles_RAD[j];
+                plastic_out->yield_stresses[i] += volume_fractions[j] * drucker_prager_plasticity.compute_yield_stress(cohesions[j],
+                                                  friction_angles_RAD[j],
+                                                  pressure_for_plasticity,
+                                                  max_yield_stress);
               }
           }
       }

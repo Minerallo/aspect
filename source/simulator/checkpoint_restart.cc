@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -332,9 +332,9 @@ namespace aspect
         {
           uLongf compressed_data_length = compressBound (oss.str().length());
           std::vector<char *> compressed_data (compressed_data_length);
-          int err = compress2 ((Bytef *) &compressed_data[0],
+          int err = compress2 (reinterpret_cast<Bytef *>(&compressed_data[0]),
                                &compressed_data_length,
-                               (const Bytef *) oss.str().data(),
+                               reinterpret_cast<const Bytef *>(oss.str().data()),
                                oss.str().length(),
                                Z_BEST_COMPRESSION);
           (void)err;
@@ -349,8 +349,8 @@ namespace aspect
               }; /* list of compressed sizes of blocks */
 
           std::ofstream f ((parameters.output_directory + "restart.resume.z.new").c_str());
-          f.write((const char *)compression_header, 4 * sizeof(compression_header[0]));
-          f.write((char *)&compressed_data[0], compressed_data_length);
+          f.write(reinterpret_cast<const char *>(compression_header), 4 * sizeof(compression_header[0]));
+          f.write(reinterpret_cast<char *>(&compressed_data[0]), compressed_data_length);
           f.close();
 
           // We check the fail state of the stream _after_ closing the file to
@@ -440,7 +440,21 @@ namespace aspect
   template <int dim>
   void Simulator<dim>::resume_from_snapshot()
   {
-    // first check existence of the two restart files
+    // By definition, a checkpoint is past the first time step. As a consequence,
+    // the Simulator object will not need the initial conditions objects, and
+    // we can release the pointers to these objects that we have created in
+    // the constructor of this class. If some of the other plugins created there
+    // still need access to these initial conditions, they will have created
+    // their own shared pointers.
+    initial_temperature_manager.reset();
+    initial_composition_manager.reset();
+#ifdef ASPECT_WITH_WORLD_BUILDER
+    // The same applies to the world builder object:
+    world_builder.reset();
+#endif
+
+    // Then start with the actual deserialization.
+    // First check existence of the two restart files
     AssertThrow (Utilities::fexists(parameters.output_directory + "restart.mesh"),
                  ExcMessage ("You are trying to restart a previous computation, "
                              "but the restart file <"
@@ -459,7 +473,7 @@ namespace aspect
 
     pcout << "*** Resuming from snapshot!" << std::endl << std::endl;
 
-    // read resume.z to set up the state of the model
+    // Read resume.z to set up the state of the model
     try
       {
 #ifdef DEAL_II_WITH_ZLIB
@@ -470,7 +484,7 @@ namespace aspect
         std::istringstream ifs (restart_data);
 
         uint32_t compression_header[4];
-        ifs.read((char *)compression_header, 4 * sizeof(compression_header[0]));
+        ifs.read(reinterpret_cast<char *>(compression_header), 4 * sizeof(compression_header[0]));
         Assert(compression_header[0]==1, ExcInternalError());
 
         std::vector<char> compressed(compression_header[3]);
@@ -478,8 +492,8 @@ namespace aspect
         ifs.read(&compressed[0],compression_header[3]);
         uLongf uncompressed_size = compression_header[1];
 
-        const int err = uncompress((Bytef *)&uncompressed[0], &uncompressed_size,
-                                   (Bytef *)&compressed[0], compression_header[3]);
+        const int err = uncompress(reinterpret_cast<Bytef *>(&uncompressed[0]), &uncompressed_size,
+                                   reinterpret_cast<Bytef *>(&compressed[0]), compression_header[3]);
         AssertThrow (err == Z_OK,
                      ExcMessage (std::string("Uncompressing the data buffer resulted in an error with code <")
                                  +

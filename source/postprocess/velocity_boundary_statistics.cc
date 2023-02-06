@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -37,7 +37,7 @@ namespace aspect
     VelocityBoundaryStatistics<dim>::execute (TableHandler &statistics)
     {
       // create a quadrature formula for the velocity.
-      const QGauss<dim-1> quadrature_formula (this->introspection().polynomial_degree.velocities+1);
+      const Quadrature<dim-1> &quadrature_formula = this->introspection().face_quadratures.velocities;
 
       FEFaceValues<dim> fe_face_values (this->get_mapping(),
                                         this->get_fe(),

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2020 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2020 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -25,6 +25,7 @@
 #include <aspect/material_model/interface.h>
 #include <aspect/material_model/utilities.h>
 #include <aspect/material_model/rheology/strain_dependent.h>
+#include <aspect/material_model/rheology/friction_models.h>
 #include <aspect/material_model/rheology/diffusion_creep.h>
 #include <aspect/material_model/rheology/dislocation_creep.h>
 #include <aspect/material_model/rheology/frank_kamenetskii.h>
@@ -71,15 +72,21 @@ namespace aspect
         std::vector<double> friction_angles;
 
         /**
+         * The plastic yield stress.
+         */
+        std::vector<double> yield_stresses;
+
+        /**
          * The area where the viscous stress exceeds the plastic yield stress,
          * and viscosity is rescaled back to the yield envelope.
          */
         std::vector<double> yielding;
+
     };
 
     /**
-       * A data structure with the output of calculate_isostrain_viscosities.
-       */
+     * A data structure with the output of calculate_isostrain_viscosities.
+     */
     struct IsostrainViscosities
     {
       /**
@@ -91,6 +98,16 @@ namespace aspect
        * The composition yielding.
        */
       std::vector<bool> composition_yielding;
+
+      /**
+       * The current friction angle.
+       */
+      std::vector<double> current_friction_angles;
+
+      /**
+       * The current cohesion.
+       */
+      std::vector<double> current_cohesions;
     };
 
     namespace Rheology
@@ -169,24 +186,18 @@ namespace aspect
            * MaterialModelOutputs object that is handed over, if it exists.
            * Does nothing otherwise.
            */
-          void fill_plastic_outputs (const unsigned int point_index,
-                                     const std::vector<double> &volume_fractions,
-                                     const bool plastic_yielding,
-                                     const MaterialModel::MaterialModelInputs<dim> &in,
-                                     MaterialModel::MaterialModelOutputs<dim> &out,
-                                     const std::vector<double> &phase_function_values = std::vector<double>(),
-                                     const std::vector<unsigned int> &n_phases_per_composition = std::vector<unsigned int>()) const;
-
-
-          /**
-           * Reference viscosity used by material models using this rheology.
-           */
-          double ref_visc;
+          void fill_plastic_outputs(const unsigned int point_index,
+                                    const std::vector<double> &volume_fractions,
+                                    const bool plastic_yielding,
+                                    const MaterialModel::MaterialModelInputs<dim> &in,
+                                    MaterialModel::MaterialModelOutputs<dim> &out,
+                                    const IsostrainViscosities &isostrain_viscosities) const;
 
           /**
            * Minimum strain rate used to stabilize the strain rate dependent rheology.
            */
           double min_strain_rate;
+          
 
           /**
            * Enumeration for selecting which viscosity averaging scheme to use.
@@ -197,6 +208,11 @@ namespace aspect
            * Object for computing the strain dependence of the rheology model.
            */
           Rheology::StrainDependent<dim> strain_rheology;
+
+          /**
+           * Object for computing the friction dependence of the rheology model.
+           */
+          Rheology::FrictionModels<dim> friction_models;
 
           /**
            * Object for computing viscoelastic viscosities and stresses.
@@ -217,6 +233,17 @@ namespace aspect
            * in the first time step.
            */
           double ref_strain_rate;
+        
+
+        double min_visc_first;
+        double min_visc_second;
+        double min_visc_third;
+        // std::vector<double> min_visc;
+        bool change_min_visc;
+        double time_change_min_visc;
+
+//         bool change_min_visc_second;
+        double time_change_min_visc_second;          
 
           /**
            * Minimum and maximum viscosities used to improve the

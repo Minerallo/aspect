@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -32,8 +32,11 @@ namespace aspect
       SurfaceDynamicTopography ()
         :
         DataPostprocessorScalar<dim> ("surface_dynamic_topography",
-                                      update_quadrature_points)
+                                      update_quadrature_points),
+        Interface<dim>("m")
       {}
+
+
 
       template <int dim>
       void
@@ -42,9 +45,9 @@ namespace aspect
                             std::vector<Vector<double>> &computed_quantities) const
       {
         // Initialize everything to zero, so that we can ignore faces we are
-        // not interested in (namely, those not labeled as 'top' or 'bottom'
-        for (unsigned int q=0; q<computed_quantities.size(); ++q)
-          computed_quantities[q](0) = 0;
+        // not interested in (namely, those not labeled as 'top' or 'bottom')
+        for (auto &quantity : computed_quantities)
+          quantity(0) = 0;
 
         const Postprocess::DynamicTopography<dim> &dynamic_topography =
           this->get_postprocess_manager().template get_matching_postprocessor<Postprocess::DynamicTopography<dim>>();
@@ -139,7 +142,9 @@ namespace aspect
                                                   "plugin really only evaluates the dynamic topography at faces of cells "
                                                   "that are adjacent to `bottom' and `top' boundaries, and only outputs "
                                                   "information on the surface of the domain, rather than padding the "
-                                                  "information with zeros in the interior of the domain.")
+                                                  "information with zeros in the interior of the domain."
+                                                  "\n\n"
+                                                  "Physical units: \\si{\\meter}.")
     }
   }
 }

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -119,7 +119,7 @@ namespace aspect
     register_material_model (const std::string &name,
                              const std::string &description,
                              void (*declare_parameters_function) (ParameterHandler &),
-                             Interface<dim> *(*factory_function) ())
+                             std::unique_ptr<Interface<dim>> (*factory_function) ())
     {
       std::get<dim>(registered_plugins).register_plugin (name,
                                                          description,
@@ -129,18 +129,16 @@ namespace aspect
 
 
     template <int dim>
-    Interface<dim> *
+    std::unique_ptr<Interface<dim>>
     create_material_model (const std::string &model_name)
     {
-      Interface<dim> *plugin = std::get<dim>(registered_plugins).create_plugin (model_name,
-                                                                                "Material model::Model name");
-      return plugin;
+      return std::get<dim>(registered_plugins).create_plugin (model_name, "Material model::Model name");
     }
 
 
 
     template <int dim>
-    Interface<dim> *
+    std::unique_ptr<Interface<dim>>
     create_material_model (ParameterHandler &prm)
     {
       std::string model_name;
@@ -283,7 +281,9 @@ namespace aspect
       requested_properties(MaterialProperties::all_properties)
     {
       if (compute_strain_rate == false)
-        this->strain_rate.resize(0);
+        {
+          requested_properties = MaterialProperties::Property(requested_properties & ~MaterialProperties::viscosity);
+        }
 
       for (unsigned int q=0; q<input_data.solution_values.size(); ++q)
         {
@@ -359,30 +359,41 @@ namespace aspect
                                      const LinearAlgebra::BlockVector &solution_vector,
                                      const bool compute_strain_rate)
     {
-      // Populate the newly allocated arrays
+      // Populate the arrays that hold solution values and gradients
       fe_values[introspection.extractors.temperature].get_function_values (solution_vector, this->temperature);
       fe_values[introspection.extractors.velocities].get_function_values (solution_vector, this->velocity);
       fe_values[introspection.extractors.pressure].get_function_values (solution_vector, this->pressure);
       fe_values[introspection.extractors.pressure].get_function_gradients (solution_vector, this->pressure_gradient);
+
+      // Only the viscosity in the material can depend on the strain_rate
+      // if this is not needed, we can save some time here.
       if (compute_strain_rate)
-        fe_values[introspection.extractors.velocities].get_function_symmetric_gradients (solution_vector,this->strain_rate);
+        {
+          fe_values[introspection.extractors.velocities].get_function_symmetric_gradients (solution_vector,this->strain_rate);
+          requested_properties = requested_properties | MaterialProperties::viscosity;
+        }
       else
-        this->strain_rate.resize(0);
+        {
+          requested_properties = MaterialProperties::Property(requested_properties & ~MaterialProperties::viscosity);
+        }
 
       // Vectors for evaluating the compositional field parts of the finite element solution
-      std::vector<std::vector<double>> composition_values (introspection.n_compositional_fields, std::vector<double> (fe_values.n_quadrature_points));
+      std::vector<std::vector<double>> composition_values (introspection.n_compositional_fields,
+                                                            std::vector<double> (fe_values.n_quadrature_points));
       for (unsigned int c=0; c<introspection.n_compositional_fields; ++c)
-        {
-          fe_values[introspection.extractors.compositional_fields[c]].get_function_values(solution_vector,composition_values[c]);
-        }
+        fe_values[introspection.extractors.compositional_fields[c]]
+        .get_function_values(solution_vector,composition_values[c]);
 
-      for (unsigned int i=0; i<fe_values.n_quadrature_points; ++i)
+      // Then copy these values to exchange the inner and outer vector, because for the material
+      // model we need a vector with values of all the compositional fields for every quadrature point
+      for (unsigned int q=0; q<fe_values.n_quadrature_points; ++q)
         {
-          this->position[i] = fe_values.quadrature_point(i);
           for (unsigned int c=0; c<introspection.n_compositional_fields; ++c)
-            this->composition[i][c] = composition_values[c][i];
+            this->composition[q][c] = composition_values[c][q];
         }
 
+      // Finally also record quadrature point positions and the cell
+      this->position = fe_values.get_quadrature_points();
       this->current_cell = cell_x;
     }
 
@@ -401,14 +412,6 @@ namespace aspect
     bool
     MaterialModelInputs<dim>::requests_property(const MaterialProperties::Property &property) const
     {
-      //TODO: Remove this once all callers set requested_properties correctly
-      if ((property & MaterialProperties::Property::viscosity) != 0)
-        return (strain_rate.size() != 0);
-
-      //TODO: Remove this once all callers set requested_properties correctly
-      if ((property & MaterialProperties::Property::reaction_terms) != 0)
-        return (strain_rate.size() != 0);
-
       // Note that this means 'requested_properties' can include other properties than
       // just 'property', but in any case it at least requests 'property'.
       return (requested_properties & property) != 0;
@@ -890,7 +893,7 @@ namespace aspect
     template <int dim>
     NamedAdditionalMaterialOutputs<dim>::
     ~NamedAdditionalMaterialOutputs()
-    {}
+      = default;
 
 
 
@@ -1107,11 +1110,11 @@ namespace aspect
     {
       template <>
       std::list<internal::Plugins::PluginList<MaterialModel::Interface<2>>::PluginInfo> *
-                                                                        internal::Plugins::PluginList<MaterialModel::Interface<2>>::plugins = nullptr;
+      internal::Plugins::PluginList<MaterialModel::Interface<2>>::plugins = nullptr;
 
       template <>
       std::list<internal::Plugins::PluginList<MaterialModel::Interface<3>>::PluginInfo> *
-                                                                        internal::Plugins::PluginList<MaterialModel::Interface<3>>::plugins = nullptr;
+      internal::Plugins::PluginList<MaterialModel::Interface<3>>::plugins = nullptr;
     }
   }
 
@@ -1125,7 +1128,7 @@ namespace aspect
   register_material_model<dim> (const std::string &, \
                                 const std::string &, \
                                 void ( *) (ParameterHandler &), \
-                                Interface<dim> *( *) ()); \
+                                std::unique_ptr<Interface<dim>>( *) ()); \
   \
   template \
   std::string \
@@ -1136,7 +1139,7 @@ namespace aspect
   declare_parameters<dim> (ParameterHandler &); \
   \
   template \
-  Interface<dim> * \
+  std::unique_ptr<Interface<dim>> \
   create_material_model<dim> (const std::string &model_name); \
   \
   template \
@@ -1144,7 +1147,7 @@ namespace aspect
   write_plugin_graph<dim> (std::ostream &); \
   \
   template \
-  Interface<dim> * \
+  std::unique_ptr<Interface<dim>> \
   create_material_model<dim> (ParameterHandler &prm); \
   \
   template struct MaterialModelInputs<dim>; \

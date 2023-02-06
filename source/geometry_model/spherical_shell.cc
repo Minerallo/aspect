@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -36,11 +36,15 @@ namespace aspect
       template <int dim>
       void append_face_to_subcell_data(SubCellData &subcell_data, const CellData<dim-1> & face);
 
+
+
       template <>
       void append_face_to_subcell_data<2>(SubCellData &subcell_data, const CellData<1> &face)
       {
         subcell_data.boundary_lines.push_back(face);
       }
+
+
 
       template <>
       void append_face_to_subcell_data<3>(SubCellData &subcell_data, const CellData<2> &face)
@@ -50,11 +54,14 @@ namespace aspect
     }
 
 
+
     template <int dim>
     SphericalShell<dim>::SphericalShell()
       :
       spherical_manifold()
     {}
+
+
 
     template <int dim>
     void
@@ -216,7 +223,7 @@ namespace aspect
             {
               // Tell p4est about the periodicity of the mesh.
               std::vector<GridTools::PeriodicFacePair<typename parallel::distributed::Triangulation<dim>::cell_iterator>>
-                  matched_pairs;
+              matched_pairs;
               FullMatrix<double> rotation_matrix(dim);
               rotation_matrix[0][1] = 1.;
               rotation_matrix[1][0] = -1.;
@@ -261,6 +268,7 @@ namespace aspect
     }
 
 
+
     template <int dim>
     std::set<types::boundary_id>
     SphericalShell<dim>::
@@ -286,6 +294,7 @@ namespace aspect
           return std::set<types::boundary_id>(std::begin(s), std::end(s));
         }
     }
+
 
 
     template <int dim>
@@ -349,11 +358,11 @@ namespace aspect
 
 
     template <int dim>
-    std::set< std::pair< std::pair<types::boundary_id, types::boundary_id>, unsigned int>>
-        SphericalShell<dim>::
-        get_periodic_boundary_pairs () const
+    std::set<std::pair<std::pair<types::boundary_id, types::boundary_id>, unsigned int>>
+    SphericalShell<dim>::
+    get_periodic_boundary_pairs () const
     {
-      std::set< std::pair< std::pair<types::boundary_id, types::boundary_id>, unsigned int>> periodic_boundaries;
+      std::set<std::pair<std::pair<types::boundary_id, types::boundary_id>, unsigned int>> periodic_boundaries;
       if (periodic)
         {
           periodic_boundaries.insert( std::make_pair( std::pair<types::boundary_id, types::boundary_id>(2, 3), 1) );
@@ -429,12 +438,15 @@ namespace aspect
       return std::min (std::max (R1-position.norm(), 0.), maximal_depth());
     }
 
+
+
     template <int dim>
     double
     SphericalShell<dim>::height_above_reference_surface(const Point<dim> &position) const
     {
       return position.norm()-outer_radius();
     }
+
 
 
     template <int dim>
@@ -454,6 +466,8 @@ namespace aspect
     {
       return R1-R0;
     }
+
+
 
     template <int dim>
     double SphericalShell<dim>::inner_radius () const
@@ -477,12 +491,15 @@ namespace aspect
       return phi;
     }
 
+
+
     template <int dim>
     bool
     SphericalShell<dim>::has_curved_elements () const
     {
       return true;
     }
+
 
 
     template <int dim>
@@ -560,7 +577,7 @@ namespace aspect
       if (periodic)
         {
           std::vector<GridTools::PeriodicFacePair<typename DoFHandler<dim>::cell_iterator>>
-                                                                                         matched_pairs;
+          matched_pairs;
           FullMatrix<double> rotation_matrix(dim);
           rotation_matrix[0][1] = 1.;
           rotation_matrix[1][0] = -1.;

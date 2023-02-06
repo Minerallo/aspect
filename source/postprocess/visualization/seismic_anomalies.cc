@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2019 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -34,6 +34,15 @@ namespace aspect
     namespace VisualizationPostprocessors
     {
       template <int dim>
+      SeismicVsAnomaly<dim>::
+      SeismicVsAnomaly ()
+        :
+        CellDataVectorCreator<dim>("")  // no physical units
+      {}
+
+
+
+      template <int dim>
       std::pair<std::string, Vector<float> *>
       SeismicVsAnomaly<dim>::execute() const
       {
@@ -59,6 +68,7 @@ namespace aspect
 
         MaterialModel::MaterialModelInputs<dim> in(n_q_points, this->n_compositional_fields());
         MaterialModel::MaterialModelOutputs<dim> out(n_q_points, this->n_compositional_fields());
+        in.requested_properties = MaterialModel::MaterialProperties::additional_outputs;
 
         std::vector<std::vector<double>> composition_values (this->n_compositional_fields(),std::vector<double> (quadrature_formula.size()));
 
@@ -158,13 +168,21 @@ namespace aspect
 
                     // Compute the percentage deviation from the average
                     const double Vs_average = (1. - fractional_slice)*padded_Vs_depth_average[idx] + fractional_slice*padded_Vs_depth_average[idx+1];
-                    (*return_value.second)(cell->active_cell_index()) = (Vs - Vs_average)/Vs_average*1e2;
+                    (*return_value.second)(cell->active_cell_index()) = (Vs - Vs_average)/Vs_average * 100 /* per cent */;
                   }
               break;
             }
           }
         return return_value;
       }
+
+
+      template <int dim>
+      SeismicVpAnomaly<dim>::
+      SeismicVpAnomaly ()
+        :
+        CellDataVectorCreator<dim>("")   // no physical units
+      {}
 
 
 
@@ -194,6 +212,7 @@ namespace aspect
 
         MaterialModel::MaterialModelInputs<dim> in(n_q_points, this->n_compositional_fields());
         MaterialModel::MaterialModelOutputs<dim> out(n_q_points, this->n_compositional_fields());
+        in.requested_properties = MaterialModel::MaterialProperties::additional_outputs;
 
         std::vector<std::vector<double>> composition_values (this->n_compositional_fields(),std::vector<double> (quadrature_formula.size()));
 
@@ -236,7 +255,7 @@ namespace aspect
                     const double adiabatic_Vp = adiabatic_seismic_outputs->vp[0];
 
                     // Compute the percentage deviation from the average
-                    (*return_value.second)(cell->active_cell_index()) = (Vp - adiabatic_Vp)/adiabatic_Vp*1e2;
+                    (*return_value.second)(cell->active_cell_index()) = (Vp - adiabatic_Vp)/adiabatic_Vp * 100 /* per cent */;
                   }
               break;
             }
@@ -279,9 +298,6 @@ namespace aspect
                     fe_values[this->introspection().extractors.pressure].get_function_gradients (this->get_solution(),
                                                                                                  in.pressure_gradient);
                     in.position = fe_values.get_quadrature_points();
-
-                    // we do not need the strain rate
-                    in.strain_rate.resize(0);
 
                     // Loop over compositional fields to get composition values
                     for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
@@ -515,7 +531,10 @@ namespace aspect
                                                   "maintain a reasonable number of evaluation points per slice. "
                                                   "Bear in mind that lateral averaging subsamples the "
                                                   "finite element mesh. Note that this plugin requires a "
-                                                  "material model that provides seismic velocities.")
+                                                  "material model that provides seismic velocities."
+                                                  "\n\n"
+                                                  "Physical units: None, the quantity being output is a "
+                                                  "fractional change provided as a percentage.")
 
       ASPECT_REGISTER_VISUALIZATION_POSTPROCESSOR(SeismicVpAnomaly,
                                                   "Vp anomaly",
@@ -538,7 +557,10 @@ namespace aspect
                                                   "maintain a reasonable number of evaluation points per slice. "
                                                   "Bear in mind that lateral averaging subsamples the "
                                                   "finite element mesh. Note that this plugin requires a "
-                                                  "material model that provides seismic velocities.")
+                                                  "material model that provides seismic velocities."
+                                                  "\n\n"
+                                                  "Physical units: None, the quantity being output is a "
+                                                  "fractional change provided as a percentage.")
     }
   }
 }

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2020 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2020 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -64,7 +64,7 @@ namespace aspect
 
       template <int dim>
       CompositeViscoPlastic<dim>::CompositeViscoPlastic ()
-      {}
+        = default;
 
 
 
@@ -130,7 +130,7 @@ namespace aspect
         // to prevent a division-by-zero, and a floating point exception.
         // Otherwise, calculate the square-root of the norm of the second invariant of the deviatoric-
         // strain rate (often simplified as epsilondot_ii)
-        const double edot_ii = std::max(std::sqrt(std::fabs(second_invariant(deviator(strain_rate)))),
+        const double edot_ii = std::max(std::sqrt(std::max(-second_invariant(deviator(strain_rate)), 0.)),
                                         min_strain_rate);
 
         Rheology::DiffusionCreepParameters diffusion_creep_parameters;

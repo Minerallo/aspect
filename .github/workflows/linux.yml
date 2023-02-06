@@ -1,10 +1,18 @@
 name: linux
 
-on: [push, pull_request]
+on: pull_request
 
 concurrency:
   group: ${{ github.actor }}-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  OMPI_MCA_btl_base_warn_component_unused: 0
+  OMPI_MCA_mpi_yield_when_idle: 1
+  OMPI_MCA_rmaps_base_oversubscribe: 1
+  OMPI_ALLOW_RUN_AS_ROOT: 1
+  OMPI_ALLOW_RUN_AS_ROOT_CONFIRM: 1
+  OMPI_MCA_btl_vader_single_copy_mechanism: none
 
 jobs:
   linux-nounity:
@@ -16,8 +24,9 @@ jobs:
     - uses: actions/checkout@v2
     - name: setup
       run: |
+        sudo apt-get update
         sudo apt-get install -y software-properties-common
-        sudo add-apt-repository ppa:ginggs/deal.ii-9.3.0-backports
+        sudo add-apt-repository ppa:ginggs/deal.ii-9.3.2-backports
         sudo apt-get update
         sudo apt-get install -yq --no-install-recommends libdeal.ii-dev
     - name: compile
@@ -37,10 +46,11 @@ jobs:
     - uses: actions/checkout@v2
     - name: setup
       run: |
-        sudo apt-get install -y software-properties-common
-        sudo add-apt-repository ppa:ginggs/deal.ii-9.3.0-backports
         sudo apt-get update
-        sudo apt-get install -yq --no-install-recommends texlive-plain-generic texlive-base texlive-latex-recommended texlive-latex-base texlive-fonts-recommended texlive-bibtex-extra lmodern texlive-latex-extra texlive-science graphviz python3-pip python-setuptools libdeal.ii-dev doxygen
+        sudo apt-get install -y software-properties-common
+        sudo add-apt-repository ppa:ginggs/deal.ii-9.3.2-backports
+        sudo apt-get update
+        sudo apt-get install -yq --no-install-recommends texlive-plain-generic texlive-base texlive-latex-recommended texlive-latex-base texlive-fonts-recommended texlive-bibtex-extra lmodern texlive-latex-extra texlive-science graphviz python3-pip python-setuptools libdeal.ii-dev doxygen inkscape
         doxygen --version
 
         wget https://github.com/tjhei/astyle/releases/download/v2.04/astyle_2.04_linux.tar.gz
@@ -50,9 +60,17 @@ jobs:
         cd
         rm -rf astyle*
         astyle --version
-    - name: indent
+    - name: make indent
       run: |
         ./contrib/utilities/indent
+        git diff > changes-astyle.diff
+    - name: archive indent results
+      uses: actions/upload-artifact@v2
+      with:
+        name: changes-astyle.diff
+        path: changes-astyle.diff
+    - name: check indentation
+      run: |
         git diff --exit-code
     - name: compile
       run: |
@@ -73,36 +91,33 @@ jobs:
         name: manual.log
         path: doc/manual/manual.log
 
-  dealii-dev:
-    # linux build with deal.II dev
-    name: test-dealii-dev
-    runs-on: [ubuntu-18.04]
-    container:
-      image: dealii/dealii:master-focal
-      options: --user 0
-    steps:
-    - uses: actions/checkout@v2
-    - name: compile
-      run: |
-        mkdir build
-        cd build
-        cmake \
-        -G 'Ninja' \
-        -D CMAKE_CXX_FLAGS='-Werror' \
-        -D ASPECT_TEST_GENERATOR='Ninja' \
-        -D ASPECT_PRECOMPILE_HEADERS=ON \
-        -D ASPECT_UNITY_BUILD=ON \
-        ..
-        ninja
-        cat detailed.log
-        ./aspect -v
-        ./aspect --test
-
   tests:
     #linux build including tests
     name: tests
     runs-on: [ubuntu-latest]
-    container: geodynamics/aspect-tester:focal-dealii-9.3-v1
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: "geodynamics/aspect-tester:focal-dealii-9.3-v2"
+            run-tests: "ON"
+            compare-tests: "ON"
+            result-file: "changes-test-results-9.3.diff"
+            container-options: '--name container'
+          - image: "geodynamics/aspect-tester:focal-dealii-9.4-v2"
+            run-tests: "ON"
+            compare-tests: "OFF"
+            result-file: "changes-test-results-9.4.diff"
+            container-options: '--name container'
+          - image: "geodynamics/aspect-tester:focal-dealii-master"
+            run-tests: "ON"
+            compare-tests: "OFF"
+            result-file: "changes-test-results-master.diff"
+            container-options: '--user 0 --name container'
+
+    container: 
+      image: ${{ matrix.image }}
+      options: ${{ matrix.container-options }}
 
     steps:
     - uses: actions/checkout@v2
@@ -117,9 +132,11 @@ jobs:
         -D ASPECT_TEST_GENERATOR='Ninja' \
         -D ASPECT_PRECOMPILE_HEADERS=ON \
         -D ASPECT_UNITY_BUILD=ON \
-        -D ASPECT_RUN_ALL_TESTS='ON' \
+        -D ASPECT_RUN_ALL_TESTS='${{ matrix.run-tests }}' \
+        -D ASPECT_COMPARE_TEST_RESULTS='${{ matrix.compare-tests }}' \
+        -D CMAKE_UNITY_BUILD_BATCH_SIZE=8 \
         ..
-        ninja
+        ninja -j 2
         ./aspect --test
     - name: prebuild tests
       run: |
@@ -143,7 +160,7 @@ jobs:
     - name: archive test results
       uses: actions/upload-artifact@v2
       with:
-        name: changes-test-results.diff
+        name: ${{ matrix.result-file }}
         path: build/changes-test-results.diff
     - name: check test results
       run: |

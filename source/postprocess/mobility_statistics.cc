@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2019 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -52,8 +52,7 @@ namespace aspect
         return std::pair<std::string,std::string>();
 
       // create a quadrature formula for the velocity for the volume of cells
-      const QGauss<dim> quadrature_formula (this->get_fe()
-                                            .base_element(this->introspection().base_elements.velocities).degree+1);
+      const Quadrature<dim> &quadrature_formula = this->introspection().quadratures.velocities;
       const unsigned int n_q_points = quadrature_formula.size();
 
       FEValues<dim> fe_values (this->get_mapping(),
@@ -66,7 +65,8 @@ namespace aspect
       std::vector<Tensor<1,dim>> velocity_values(n_q_points);
 
       // create a quadrature formula for the velocity for the surface of cells
-      const QGauss<dim-1> quadrature_formula_face (this->introspection().polynomial_degree.velocities+1);
+      const Quadrature<dim-1> &quadrature_formula_face
+        = this->introspection().face_quadratures.velocities;
       const unsigned int n_q_points_face = quadrature_formula_face.size();
 
       FEFaceValues<dim> fe_face_values (this->get_mapping(),

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2016 - 2019 by the authors of the ASPECT code.
+  Copyright (C) 2016 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -32,7 +32,8 @@ namespace aspect
       VolumeOfFluidValues<dim>::
       VolumeOfFluidValues ()
         :
-        DataPostprocessor<dim> ()
+        DataPostprocessor<dim> (),
+        Interface<dim>("")  // physical units of a fractional volume, so units of "1"
       {}
 
 
@@ -200,7 +201,9 @@ namespace aspect
                                                   "volume of fluid values",
                                                   "A visualization output object that outputs the volume fraction "
                                                   "and optionally a level set field and the interface normal "
-                                                  "vectors of volume of fluid fields.")
+                                                  "vectors of volume of fluid fields."
+                                                  "\n\n"
+                                                  "Physical units: None.")
     }
   }
 }

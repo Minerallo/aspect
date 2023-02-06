@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2015 - 2020 by the authors of the ASPECT code.
+ Copyright (C) 2015 - 2022 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -39,7 +39,7 @@ namespace aspect
   {
     template <int dim>
     std::pair<std::vector<double>,std::vector<double>>
-                                                    Geoid<dim>::to_spherical_harmonic_coefficients(const std::vector<std::vector<double>> &spherical_function) const
+    Geoid<dim>::to_spherical_harmonic_coefficients(const std::vector<std::vector<double>> &spherical_function) const
     {
       std::vector<double> cosi(spherical_function.size(),0);
       std::vector<double> sini(spherical_function.size(),0);
@@ -82,7 +82,7 @@ namespace aspect
 
     template <int dim>
     std::pair<std::vector<double>,std::vector<double>>
-                                                    Geoid<dim>::density_contribution (const double &/*outer_radius*/) const
+    Geoid<dim>::density_contribution (const double &/*outer_radius*/) const
     {
       Assert(false, ExcNotImplemented());
       return std::make_pair(std::vector<double>(), std::vector<double>());
@@ -91,7 +91,7 @@ namespace aspect
 
     template <>
     std::pair<std::vector<double>,std::vector<double>>
-                                                    Geoid<3>::density_contribution (const double &outer_radius) const
+    Geoid<3>::density_contribution (const double &outer_radius) const
     {
       const unsigned int quadrature_degree = this->introspection().polynomial_degree.temperature;
 
@@ -108,8 +108,10 @@ namespace aspect
 
       MaterialModel::MaterialModelInputs<3> in(fe_values.n_quadrature_points, this->n_compositional_fields());
       MaterialModel::MaterialModelOutputs<3> out(fe_values.n_quadrature_points, this->n_compositional_fields());
+      in.requested_properties = MaterialModel::MaterialProperties::density;
 
-      std::vector<std::vector<double>> composition_values (this->n_compositional_fields(),std::vector<double> (quadrature_formula.size()));
+      std::vector<std::vector<double>>
+      composition_values(this->n_compositional_fields(), std::vector<double>(quadrature_formula.size()));
 
       // Directly do the global 3D integral over each quadrature point of every cell (different from traditional way to do layer integral).
       // This is necessary because of ASPECT's adaptive mesh refinement feature.
@@ -348,33 +350,33 @@ namespace aspect
       std::vector<std::vector<double>> surface_topo_spherical_function;
       std::vector<std::vector<double>> CMB_topo_spherical_function;
 
-      for (unsigned int i=0; i<surface_stored_values.size(); ++i)
+      for (const auto &surface_stored_value : surface_stored_values)
         {
-          const std::array<double,3> scoord = aspect::Utilities::Coordinates::cartesian_to_spherical_coordinates(surface_stored_values[i].first);
+          const std::array<double,3> scoord = aspect::Utilities::Coordinates::cartesian_to_spherical_coordinates(surface_stored_value.first);
 
           // Calculate spherical infinitesimal sin(theta)*d_theta*d_phi by infinitesimal_area/radius^2
-          const double infinitesimal = surface_stored_values[i].second.first/(outer_radius*outer_radius);
+          const double infinitesimal = surface_stored_value.second.first/(outer_radius*outer_radius);
 
           // Theta, phi, spherical infinitesimal, and surface topography
           surface_topo_spherical_function.emplace_back(std::vector<double> {scoord[2],
                                                                             scoord[1],
                                                                             infinitesimal,
-                                                                            surface_stored_values[i].second.second
+                                                                            surface_stored_value.second.second
                                                                            });
         }
 
-      for (unsigned int i=0; i<CMB_stored_values.size(); ++i)
+      for (const auto &CMB_stored_value : CMB_stored_values)
         {
-          const std::array<double,3> scoord = aspect::Utilities::Coordinates::cartesian_to_spherical_coordinates(CMB_stored_values[i].first);
+          const std::array<double,3> scoord = aspect::Utilities::Coordinates::cartesian_to_spherical_coordinates(CMB_stored_value.first);
 
           // Calculate spherical infinitesimal sin(theta)*d_theta*d_phi by infinitesimal_area/radius^2
-          const double infinitesimal = CMB_stored_values[i].second.first/(inner_radius*inner_radius);
+          const double infinitesimal = CMB_stored_value.second.first/(inner_radius*inner_radius);
 
           // Theta, phi, spherical infinitesimal, and CMB dynamic topography
           CMB_topo_spherical_function.emplace_back(std::vector<double> {scoord[2],
                                                                         scoord[1],
                                                                         infinitesimal,
-                                                                        CMB_stored_values[i].second.second
+                                                                        CMB_stored_value.second.second
                                                                        });
         }
 
@@ -537,7 +539,7 @@ namespace aspect
 
       // Compute the grid geoid anomaly based on spherical harmonics.
       std::vector<double> geoid_anomaly;
-      for (unsigned int i=0; i<surface_cell_spherical_coordinates.size(); ++i)
+      for (const auto &surface_cell_spherical_coordinate : surface_cell_spherical_coordinates)
         {
           int ind = 0;
           double geoid_value = 0;
@@ -546,7 +548,7 @@ namespace aspect
               for (unsigned int iord = 0; iord < ideg+1; ++iord)
                 {
                   // Normalization after Dahlen and Tromp (1986) Appendix B.6.
-                  const std::pair<double,double> sph_harm_vals = aspect::Utilities::real_spherical_harmonic(ideg,iord,surface_cell_spherical_coordinates.at(i).first,surface_cell_spherical_coordinates.at(i).second);
+                  const std::pair<double,double> sph_harm_vals = aspect::Utilities::real_spherical_harmonic(ideg,iord,surface_cell_spherical_coordinate.first,surface_cell_spherical_coordinate.second);
                   const double cos_component = sph_harm_vals.first; // real / cos part
                   const double sin_component = sph_harm_vals.second; // imaginary / sin part
 
@@ -807,7 +809,7 @@ namespace aspect
           std::vector<double> gravity_anomaly;
           gravity_anomaly.reserve(surface_cell_spherical_coordinates.size());
 
-          for (unsigned int i=0; i<surface_cell_spherical_coordinates.size(); ++i)
+          for (const auto &surface_cell_spherical_coordinate : surface_cell_spherical_coordinates)
             {
               int ind = 0;
               double gravity_value = 0;
@@ -816,7 +818,7 @@ namespace aspect
                   for (unsigned int iord = 0; iord < ideg+1; ++iord)
                     {
                       // Normalization after Dahlen and Tromp (1986) Appendix B.6.
-                      const std::pair<double,double> sph_harm_vals = aspect::Utilities::real_spherical_harmonic(ideg,iord,surface_cell_spherical_coordinates.at(i).first,surface_cell_spherical_coordinates.at(i).second);
+                      const std::pair<double,double> sph_harm_vals = aspect::Utilities::real_spherical_harmonic(ideg,iord,surface_cell_spherical_coordinate.first,surface_cell_spherical_coordinate.second);
                       const double cos_component = sph_harm_vals.first; // real / cos part
                       const double sin_component = sph_harm_vals.second; // imaginary / sin part
 

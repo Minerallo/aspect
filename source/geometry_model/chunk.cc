@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -364,8 +364,8 @@ namespace aspect
 
       template <int dim>
       std::unique_ptr<Manifold<dim,dim>>
-                                      ChunkGeometry<dim>::
-                                      clone() const
+      ChunkGeometry<dim>::
+      clone() const
       {
         return std::make_unique<ChunkGeometry>(*this);
       }

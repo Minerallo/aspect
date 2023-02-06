@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -48,9 +48,14 @@
 #include <locale>
 #include <string>
 #include <sys/stat.h>
+#include <iostream>
+#include <regex>
 
 #include <boost/math/special_functions/spherical_harmonic.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/iostreams/filtering_stream.hpp>
+#include <boost/iostreams/filter/gzip.hpp>
+#include <boost/iostreams/copy.hpp>
 
 namespace aspect
 {
@@ -208,6 +213,7 @@ namespace aspect
     }
 
 
+
     template <typename T>
     Table<2,T>
     parse_input_table (const std::string &input_string,
@@ -238,6 +244,8 @@ namespace aspect
 
       return input_table;
     }
+
+
 
     namespace
     {
@@ -352,6 +360,7 @@ namespace aspect
         return parsed_map;
       }
     }
+
 
 
     std::vector<double>
@@ -523,6 +532,7 @@ namespace aspect
     }
 
 
+
     /**
     * This is an internal deal.II function stolen from dof_tools.cc
     *
@@ -558,6 +568,7 @@ namespace aspect
 
       return local_component_association;
     }
+
 
 
     template <int dim>
@@ -670,6 +681,8 @@ namespace aspect
         return ecoord;
       }
 
+
+
       template <int dim>
       std::array<double,dim>
       cartesian_to_spherical_coordinates(const Point<dim> &position)
@@ -689,6 +702,8 @@ namespace aspect
           }
         return scoord;
       }
+
+
 
       template <int dim>
       Point<dim>
@@ -719,6 +734,8 @@ namespace aspect
         return ccoord;
       }
 
+
+
       template <int dim>
       std::array<double,3>
       cartesian_to_ellipsoidal_coordinates(const Point<3> &x,
@@ -744,6 +761,8 @@ namespace aspect
         return phi_theta_d;
       }
 
+
+
       template <int dim>
       Point<3>
       ellipsoidal_to_cartesian_coordinates(const std::array<double,3> &phi_theta_d,
@@ -762,6 +781,7 @@ namespace aspect
                          ((1 - eccentricity * eccentricity) * R_bar + d) * std::sin(theta));
 
       }
+
 
 
       template <int dim>
@@ -833,9 +853,9 @@ namespace aspect
 
         return Coordinates::invalid;
       }
-
-
     }
+
+
 
     template <int dim>
     bool
@@ -937,6 +957,8 @@ namespace aspect
       return (wn != 0);
     }
 
+
+
     template <int dim>
     double
     signed_distance_to_polygon(const std::vector<Point<2>> &point_list,
@@ -974,7 +996,7 @@ namespace aspect
 
       for (unsigned int i = 0; i < n_poly_points; ++i)
         {
-          const std::array<Point<2>,2 > list = {{point_list[i], shifted_point_list[i]}};
+          const std::array<Point<2>,2> list = {{point_list[i], shifted_point_list[i]}};
           distances[i] = distance_to_line(list, point);
         }
 
@@ -982,8 +1004,10 @@ namespace aspect
       return *std::min_element(distances.begin(),distances.end()) * sign;
     }
 
+
+
     double
-    distance_to_line(const std::array<dealii::Point<2>,2 > &point_list,
+    distance_to_line(const std::array<dealii::Point<2>,2> &point_list,
                      const dealii::Point<2> &point)
     {
 
@@ -1028,6 +1052,8 @@ namespace aspect
       const Point<2> point_on_segment = point_list[0] + (c1/c2) * vector_segment;
       return (Tensor<1,2> (point - point_on_segment)).norm();
     }
+
+
 
     template <int dim>
     std::array<Tensor<1,dim>,dim-1>
@@ -1204,6 +1230,7 @@ namespace aspect
     }
 
 
+
     bool
     fexists(const std::string &filename)
     {
@@ -1213,6 +1240,7 @@ namespace aspect
       // success requires the file to exist and to be readable
       return static_cast<bool>(ifile);
     }
+
 
 
     bool
@@ -1351,7 +1379,12 @@ namespace aspect
             }
           else
             {
-              std::ifstream filestream(filename.c_str());
+              std::ifstream filestream;
+              const bool filename_ends_in_gz = std::regex_search(filename, std::regex("\\.gz$"));
+              if (filename_ends_in_gz == true)
+                filestream.open(filename.c_str(), std::ios_base::in | std::ios_base::binary);
+              else
+                filestream.open(filename.c_str());
 
               if (!filestream)
                 {
@@ -1363,21 +1396,26 @@ namespace aspect
                                ExcMessage (std::string("Could not open file <") + filename + ">."));
                 }
 
-
               // Read data from disk
               std::stringstream datastream;
-              filestream >> datastream.rdbuf();
 
-              if (!filestream.eof())
+              try
+                {
+                  boost::iostreams::filtering_istreambuf in;
+                  if (filename_ends_in_gz == true)
+                    in.push(boost::iostreams::gzip_decompressor());
+
+                  in.push(filestream);
+                  boost::iostreams::copy(in, datastream);
+                }
+              catch (const std::ios::failure &)
                 {
                   // broadcast failure state, then throw
                   std::size_t invalid_filesize = numbers::invalid_size_type;
                   const int ierr = MPI_Bcast(&invalid_filesize, 1, Utilities::internal::MPI::mpi_type_id(&filesize), 0, comm);
                   AssertThrowMPI(ierr);
                   AssertThrow (false,
-                               ExcMessage (std::string("Reading of file ") + filename + " finished " +
-                                           "before the end of file was reached. Is the file corrupted or "
-                                           "too large for the input buffer?"));
+                               ExcMessage (std::string("Could not read file content from <") + filename + ">."));
                 }
 
               data_string = datastream.str();
@@ -1388,12 +1426,7 @@ namespace aspect
           int ierr = MPI_Bcast(&filesize, 1, Utilities::internal::MPI::mpi_type_id(&filesize), 0, comm);
           AssertThrowMPI(ierr);
 
-          AssertThrow (filesize < static_cast<std::size_t>(std::numeric_limits<signed int>::max()),
-                       ExcMessage ("You are trying to broadcast a file that is larger than what "
-                                   "MPI can handle in a single MPI_Bcast call. This is not currently "
-                                   "supported"));
-          ierr = MPI_Bcast(&data_string[0], filesize, MPI_CHAR, 0, comm);
-          AssertThrowMPI(ierr);
+          big_mpi::broadcast(&data_string[0], filesize, 0, comm);
         }
       else
         {
@@ -1406,16 +1439,8 @@ namespace aspect
 
           data_string.resize(filesize);
 
-          // Check whether the size is small enough to be handled in a single Bcast call.
-          // If not, error out for now. We may fix this later. (We error out by throwing
-          // a quiet exception; the root rank will throw a more information exception,
-          // see above.)
-          if (filesize >= static_cast<std::size_t>(std::numeric_limits<signed int>::max()))
-            throw QuietException();
-
           // Receive and store data
-          ierr = MPI_Bcast(&data_string[0], filesize, MPI_CHAR, 0, comm);
-          AssertThrowMPI(ierr);
+          big_mpi::broadcast(&data_string[0], filesize, 0, comm);
         }
 
       return data_string;
@@ -1452,6 +1477,8 @@ namespace aspect
 
       return 0;
     }
+
+
 
     void create_directory(const std::string &pathname,
                           const MPI_Comm &comm,
@@ -1499,6 +1526,8 @@ namespace aspect
         }
     }
 
+
+
 // tk does the cubic spline interpolation that can be used between different spherical layers in the mantle.
 // This interpolation is based on the script spline.h, which was downloaded from
 // http://kluge.in-chemnitz.de/opensource/spline/spline.h   //
@@ -1516,16 +1545,23 @@ namespace aspect
            * Constructor, see resize()
            */
           band_matrix(int dim, int n_u, int n_l);
+
+
+
           /**
            * Resize to a @p dim by @dim matrix with given number
            * of off-diagonals.
            */
           void resize(int dim, int n_u, int n_l);
 
+
+
           /**
            * Return the dimension of the matrix
            */
           int dim() const;
+
+
 
           /**
            * Number of off-diagonals above.
@@ -1535,6 +1571,8 @@ namespace aspect
             return m_upper.size()-1;
           }
 
+
+
           /**
            * Number of off-diagonals below.
            */
@@ -1543,40 +1581,57 @@ namespace aspect
             return m_lower.size()-1;
           }
 
+
+
           /**
            * Writeable access to element A(i,j), indices going from
            * i=0,...,dim()-1
            */
           double &operator () (int i, int j);
+
+
+
           /**
            * Read-only access
            */
           double operator () (int i, int j) const;
+
+
 
           /**
            * second diagonal (used in LU decomposition), saved in m_lower[0]
            */
           double &saved_diag(int i);
 
+
+
           /**
            * second diagonal (used in LU decomposition), saved in m_lower[0]
            */
           double saved_diag(int i) const;
+
+
 
           /**
            * LU-Decomposition of a band matrix
            */
           void lu_decompose();
 
+
+
           /**
            * solves Ux=y
            */
           std::vector<double> r_solve(const std::vector<double> &b) const;
 
+
+
           /**
            * solves Ly=b
            */
           std::vector<double> l_solve(const std::vector<double> &b) const;
+
+
 
           /**
            * Solve Ax=b and builds LU decomposition using lu_decompose()
@@ -1584,21 +1639,29 @@ namespace aspect
            */
           std::vector<double> lu_solve(const std::vector<double> &b,
                                        bool is_lu_decomposed=false);
+
+
+
         private:
           /**
            * diagonal and off-diagonals above
            */
-          std::vector< std::vector<double>> m_upper;
+          std::vector<std::vector<double>> m_upper;
+
           /**
            * diagonals below the diagonal
            */
-          std::vector< std::vector<double>> m_lower;
+          std::vector<std::vector<double>> m_lower;
       };
+
+
 
       band_matrix::band_matrix(int dim, int n_u, int n_l)
       {
         resize(dim, n_u, n_l);
       }
+
+
 
       void band_matrix::resize(int dim, int n_u, int n_l)
       {
@@ -1607,15 +1670,13 @@ namespace aspect
         assert(n_l >= 0);
         m_upper.resize(n_u+1);
         m_lower.resize(n_l+1);
-        for (size_t i=0; i<m_upper.size(); i++)
-          {
-            m_upper[i].resize(dim);
-          }
-        for (size_t i=0; i<m_lower.size(); i++)
-          {
-            m_lower[i].resize(dim);
-          }
+        for (auto &x : m_upper)
+          x.resize(dim);
+        for (auto &x : m_lower)
+          x.resize(dim);
       }
+
+
 
       int band_matrix::dim() const
       {
@@ -1629,6 +1690,8 @@ namespace aspect
           }
       }
 
+
+
       double &band_matrix::operator () (int i, int j)
       {
         int k = j - i;       // what band is the entry
@@ -1640,6 +1703,8 @@ namespace aspect
         else
           return m_lower[-k][i];
       }
+
+
 
       double band_matrix::operator () (int i, int j) const
       {
@@ -1653,17 +1718,23 @@ namespace aspect
           return m_lower[-k][i];
       }
 
+
+
       double band_matrix::saved_diag(int i) const
       {
         assert( (i >= 0) && (i < dim()) );
         return m_lower[0][i];
       }
 
+
+
       double &band_matrix::saved_diag(int i)
       {
         assert( (i >= 0) && (i < dim()) );
         return m_lower[0][i];
       }
+
+
 
       void band_matrix::lu_decompose()
       {
@@ -1705,6 +1776,8 @@ namespace aspect
           }
       }
 
+
+
       std::vector<double> band_matrix::l_solve(const std::vector<double> &b) const
       {
         assert( this->dim() == static_cast<int>(b.size()) );
@@ -1720,6 +1793,7 @@ namespace aspect
           }
         return x;
       }
+
 
 
       std::vector<double> band_matrix::r_solve(const std::vector<double> &b) const
@@ -1738,6 +1812,8 @@ namespace aspect
         return x;
       }
 
+
+
       std::vector<double> band_matrix::lu_solve(const std::vector<double> &b,
                                                 bool is_lu_decomposed)
       {
@@ -1753,6 +1829,7 @@ namespace aspect
         x = this->r_solve(y);
         return x;
       }
+
 
 
       void spline::set_points(const std::vector<double> &x,
@@ -1883,6 +1960,8 @@ namespace aspect
           }
       }
 
+
+
       double spline::operator() (double x) const
       {
         size_t n = m_x.size();
@@ -1910,8 +1989,8 @@ namespace aspect
           }
         return interpol;
       }
-
     } // namespace tk
+
 
 
     std::string
@@ -1922,6 +2001,8 @@ namespace aspect
                                           ASPECT_SOURCE_DIR);
     }
 
+
+
     std::string parenthesize_if_nonempty (const std::string &s)
     {
       if (s.size() > 0)
@@ -1930,13 +2011,14 @@ namespace aspect
         return "";
     }
 
+
+
     bool
     has_unique_entries (const std::vector<std::string> &strings)
     {
       const std::set<std::string> set_of_strings(strings.begin(),strings.end());
       return (set_of_strings.size() == strings.size());
     }
-
 
 
 
@@ -2243,7 +2325,7 @@ namespace aspect
       if ((strain_rate.norm() == 0) || (dviscosities_dstrain_rate.norm() == 0))
         return 1;
 
-      const double norm_a_b = std::sqrt((strain_rate*strain_rate)*(dviscosities_dstrain_rate*dviscosities_dstrain_rate));;//std::sqrt((deviator(strain_rate)*deviator(strain_rate))*(dviscosities_dstrain_rate*dviscosities_dstrain_rate));
+      const double norm_a_b = std::sqrt((strain_rate*strain_rate)*(dviscosities_dstrain_rate*dviscosities_dstrain_rate));//std::sqrt((deviator(strain_rate)*deviator(strain_rate))*(dviscosities_dstrain_rate*dviscosities_dstrain_rate));
       const double contract_b_a = (dviscosities_dstrain_rate*strain_rate);
       const double one_minus_part = 1 - (contract_b_a / norm_a_b);
       const double denom = one_minus_part * one_minus_part * norm_a_b;
@@ -2392,6 +2474,8 @@ namespace aspect
       return symmetrize(result);
     }
 
+
+
     template <int dim>
     NaturalCoordinate<dim>::NaturalCoordinate(Point<dim> &position,
                                               const GeometryModel::Interface<dim> &geometry_model)
@@ -2399,6 +2483,8 @@ namespace aspect
       coordinate_system = geometry_model.natural_coordinate_system();
       coordinates = geometry_model.cartesian_to_natural_coordinates(position);
     }
+
+
 
     template <int dim>
     NaturalCoordinate<dim>::NaturalCoordinate(const std::array<double, dim> &coord,
@@ -2452,6 +2538,8 @@ namespace aspect
       return coordinate;
     }
 
+
+
     template <>
     std::array<double,2> NaturalCoordinate<3>::get_surface_coordinates() const
     {
@@ -2481,6 +2569,8 @@ namespace aspect
       return coordinate;
     }
 
+
+
     template <int dim>
     double NaturalCoordinate<dim>::get_depth_coordinate() const
     {
@@ -2501,6 +2591,7 @@ namespace aspect
 
       return 0;
     }
+
 
 
     template <int dim, typename VectorType>
@@ -2574,7 +2665,6 @@ namespace aspect
             cell->set_dof_values (local_projection, vec_result);
           }
     }
-
 
 
 

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2022 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -29,9 +29,9 @@ namespace aspect
     {
       template <int dim>
       std::vector<std::vector<double>>
-                                    Interface<dim>::properties_at_points(const ParticleHandler<dim> &particle_handler,
-                                                                         const std::vector<Point<dim>> &positions,
-                                                                         const typename parallel::distributed::Triangulation<dim>::active_cell_iterator &cell) const
+      Interface<dim>::properties_at_points(const ParticleHandler<dim> &particle_handler,
+                                           const std::vector<Point<dim>> &positions,
+                                           const typename parallel::distributed::Triangulation<dim>::active_cell_iterator &cell) const
       {
         return properties_at_points(particle_handler,positions,ComponentMask(), cell);
       }
@@ -71,7 +71,7 @@ namespace aspect
       register_particle_interpolator (const std::string &name,
                                       const std::string &description,
                                       void (*declare_parameters_function) (ParameterHandler &),
-                                      Interface<dim> *(*factory_function) ())
+                                      std::unique_ptr<Interface<dim>> (*factory_function) ())
       {
         std::get<dim>(registered_plugins).register_plugin (name,
                                                            description,
@@ -82,7 +82,7 @@ namespace aspect
 
 
       template <int dim>
-      Interface<dim> *
+      std::unique_ptr<Interface<dim>>
       create_particle_interpolator (ParameterHandler &prm)
       {
         std::string name;
@@ -149,10 +149,10 @@ namespace aspect
     {
       template <>
       std::list<internal::Plugins::PluginList<Particle::Interpolator::Interface<2>>::PluginInfo> *
-                                                                                 internal::Plugins::PluginList<Particle::Interpolator::Interface<2>>::plugins = nullptr;
+      internal::Plugins::PluginList<Particle::Interpolator::Interface<2>>::plugins = nullptr;
       template <>
       std::list<internal::Plugins::PluginList<Particle::Interpolator::Interface<3>>::PluginInfo> *
-                                                                                 internal::Plugins::PluginList<Particle::Interpolator::Interface<3>>::plugins = nullptr;
+      internal::Plugins::PluginList<Particle::Interpolator::Interface<3>>::plugins = nullptr;
     }
   }
 
@@ -168,7 +168,7 @@ namespace aspect
   register_particle_interpolator<dim> (const std::string &, \
                                        const std::string &, \
                                        void ( *) (ParameterHandler &), \
-                                       Interface<dim> *( *) ()); \
+                                       std::unique_ptr<Interface<dim>>( *) ()); \
   \
   template  \
   void \
@@ -179,7 +179,7 @@ namespace aspect
   write_plugin_graph<dim> (std::ostream &); \
   \
   template \
-  Interface<dim> * \
+  std::unique_ptr<Interface<dim>> \
   create_particle_interpolator<dim> (ParameterHandler &prm);
 
       ASPECT_INSTANTIATE(INSTANTIATE)

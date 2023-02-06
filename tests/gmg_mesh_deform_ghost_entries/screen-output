@@ -6,7 +6,7 @@ Number of degrees of freedom: 9,287 (3,362+441+441+1,681+1,681+1,681)
 Number of mesh deformation degrees of freedom: 882
    Solving mesh displacement system... 0 iterations.
 *** Timestep 0:  t=0 years, dt=0 years
-   Solving mesh displacement system... 1 iterations.
+   Solving mesh displacement system... 4 iterations.
    Solving temperature system... 0 iterations.
    Skipping ve_stress_xx composition solve because RHS is zero.
    Skipping ve_stress_yy composition solve because RHS is zero.
@@ -19,7 +19,7 @@ Number of degrees of freedom: 12,838 (4,652+604+604+2,326+2,326+2,326)
 Number of mesh deformation degrees of freedom: 1208
    Solving mesh displacement system... 0 iterations.
 *** Timestep 0:  t=0 years, dt=0 years
-   Solving mesh displacement system... 1 iterations.
+   Solving mesh displacement system... 5 iterations.
    Solving temperature system... 0 iterations.
    Skipping ve_stress_xx composition solve because RHS is zero.
    Skipping ve_stress_yy composition solve because RHS is zero.
@@ -42,18 +42,18 @@ Number of mesh deformation degrees of freedom: 1156
 
 
 *** Timestep 1:  t=10 years, dt=10 years
-   Solving mesh displacement system... 1 iterations.
+   Solving mesh displacement system... 5 iterations.
    Solving temperature system... 0 iterations.
    Solving ve_stress_xx system ... 18 iterations.
    Solving ve_stress_yy system ... 18 iterations.
    Solving ve_stress_xy system ... 18 iterations.
-   Solving Stokes system... 34+0 iterations.
+   Solving Stokes system... 43+0 iterations.
 
    Postprocessing:
      Compositions min/max/mass: -1.533e+05/2.687e+05/-2.453e+10 // -2.687e+05/1.533e+05/2.453e+10 // -6.333e+04/3.277e+05/1.178e+16
      Temperature min/avg/max:   293 K, 293 K, 293 K
      Topography min/max:        -0.04 m, 0.01 m
-     RMS, max velocity:         0.142 m/year, 0.448 m/year
+     RMS, max velocity:         0.129 m/year, 0.408 m/year
 
 Number of active cells: 505 (on 3 levels)
 Number of degrees of freedom: 12,017 (4,354+566+566+2,177+2,177+2,177)

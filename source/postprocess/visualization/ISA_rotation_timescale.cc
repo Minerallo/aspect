@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2019 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -33,6 +33,15 @@ namespace aspect
   {
     namespace VisualizationPostprocessors
     {
+      template <int dim>
+      ISARotationTimescale<dim>::
+      ISARotationTimescale ()
+        :
+        CellDataVectorCreator<dim>("s")
+      {}
+
+
+
       template<int dim>
       std::pair<std::string, Vector<float> *> ISARotationTimescale<dim>::execute() const
       {
@@ -98,7 +107,9 @@ namespace aspect
                                                   "where $\\dot{\\epsilon}$ is the largest eigenvalue "
                                                   "of the strain rate tensor. It can be used, "
                                                   "along with the grain lag angle $\\Theta$, "
-                                                  "to calculate the grain orientation lag parameter.")
+                                                  "to calculate the grain orientation lag parameter."
+                                                  "\n\n"
+                                                  "Physical units: \\si{\\second}.")
     }
   }
 }

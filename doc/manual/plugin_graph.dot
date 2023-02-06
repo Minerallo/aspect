@@ -311,9 +311,6 @@ SimulatorAccess -> N6aspect13MaterialModel20DiffusionDislocationILi2EEE [style="
 N6aspect13MaterialModel13DruckerPragerILi2EEE [label="drucker prager", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
 N6aspect13MaterialModel13DruckerPragerILi2EEE -> N6aspect13MaterialModel9InterfaceILi2EEE [len=3, weight=50];
 SimulatorAccess -> N6aspect13MaterialModel13DruckerPragerILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
-N6aspect13MaterialModel15DynamicFrictionILi2EEE [label="dynamic\nfriction", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
-N6aspect13MaterialModel15DynamicFrictionILi2EEE -> N6aspect13MaterialModel9InterfaceILi2EEE [len=3, weight=50];
-SimulatorAccess -> N6aspect13MaterialModel15DynamicFrictionILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
 N6aspect13MaterialModel9GrainSizeILi2EEE [label="grain size", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
 N6aspect13MaterialModel9GrainSizeILi2EEE -> N6aspect13MaterialModel9InterfaceILi2EEE [len=3, weight=50];
 SimulatorAccess -> N6aspect13MaterialModel9GrainSizeILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
@@ -323,6 +320,9 @@ SimulatorAccess -> N6aspect13MaterialModel10LatentHeatILi2EEE [style="dotted", a
 N6aspect13MaterialModel14LatentHeatMeltILi2EEE [label="latent heat\nmelt", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
 N6aspect13MaterialModel14LatentHeatMeltILi2EEE -> N6aspect13MaterialModel9InterfaceILi2EEE [len=3, weight=50];
 SimulatorAccess -> N6aspect13MaterialModel14LatentHeatMeltILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
+N6aspect13MaterialModel11MeltBoukareILi2EEE [label="melt boukare", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
+N6aspect13MaterialModel11MeltBoukareILi2EEE -> N6aspect13MaterialModel9InterfaceILi2EEE [len=3, weight=50];
+SimulatorAccess -> N6aspect13MaterialModel11MeltBoukareILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
 N6aspect13MaterialModel10MeltGlobalILi2EEE [label="melt global", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
 N6aspect13MaterialModel10MeltGlobalILi2EEE -> N6aspect13MaterialModel9InterfaceILi2EEE [len=3, weight=50];
 SimulatorAccess -> N6aspect13MaterialModel10MeltGlobalILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
@@ -486,6 +486,9 @@ N6aspect8Particle8Property9InterfaceILi2EEE [label="Particle property interface"
 N6aspect8Particle8Property11CompositionILi2EEE [label="composition", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
 N6aspect8Particle8Property11CompositionILi2EEE -> N6aspect8Particle8Property9InterfaceILi2EEE [len=3, weight=50];
 SimulatorAccess -> N6aspect8Particle8Property11CompositionILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
+N6aspect8Particle8Property27CrystalPreferredOrientationILi2EEE [label="crystal\npreferred\norientation", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
+N6aspect8Particle8Property27CrystalPreferredOrientationILi2EEE -> N6aspect8Particle8Property9InterfaceILi2EEE [len=3, weight=50];
+SimulatorAccess -> N6aspect8Particle8Property27CrystalPreferredOrientationILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
 N6aspect8Particle8Property13ElasticStressILi2EEE [label="elastic stress", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
 N6aspect8Particle8Property13ElasticStressILi2EEE -> N6aspect8Particle8Property9InterfaceILi2EEE [len=3, weight=50];
 SimulatorAccess -> N6aspect8Particle8Property13ElasticStressILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
@@ -512,6 +515,9 @@ N6aspect8Particle8Property8PositionILi2EEE [label="position", height=.8,width=.8
 N6aspect8Particle8Property8PositionILi2EEE -> N6aspect8Particle8Property9InterfaceILi2EEE [len=3, weight=50];
 N6aspect8Particle8Property17ReferencePositionILi2EEE [label="reference\nposition", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
 N6aspect8Particle8Property17ReferencePositionILi2EEE -> N6aspect8Particle8Property9InterfaceILi2EEE [len=3, weight=50];
+N6aspect8Particle8Property10StrainRateILi2EEE [label="strain rate", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
+N6aspect8Particle8Property10StrainRateILi2EEE -> N6aspect8Particle8Property9InterfaceILi2EEE [len=3, weight=50];
+SimulatorAccess -> N6aspect8Particle8Property10StrainRateILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
 N6aspect8Particle8Property8VelocityILi2EEE [label="velocity", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
 N6aspect8Particle8Property8VelocityILi2EEE -> N6aspect8Particle8Property9InterfaceILi2EEE [len=3, weight=50];
 SimulatorAccess -> N6aspect8Particle8Property8VelocityILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
@@ -533,6 +539,9 @@ SimulatorAccess -> N6aspect11Postprocess17BoundaryDensitiesILi2EEE [style="dotte
 N6aspect11Postprocess17BoundaryPressuresILi2EEE [label="boundary\npressures", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
 N6aspect11Postprocess17BoundaryPressuresILi2EEE -> N6aspect11Postprocess9InterfaceILi2EEE [len=3, weight=50];
 SimulatorAccess -> N6aspect11Postprocess17BoundaryPressuresILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
+N6aspect11Postprocess36BoundaryStrainRateResidualStatisticsILi2EEE [label="boundary strain\nrate residual\nstatistics", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
+N6aspect11Postprocess36BoundaryStrainRateResidualStatisticsILi2EEE -> N6aspect11Postprocess9InterfaceILi2EEE [len=3, weight=50];
+SimulatorAccess -> N6aspect11Postprocess36BoundaryStrainRateResidualStatisticsILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
 N6aspect11Postprocess34BoundaryVelocityResidualStatisticsILi2EEE [label="boundary\nvelocity\nresidual\nstatistics", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
 N6aspect11Postprocess34BoundaryVelocityResidualStatisticsILi2EEE -> N6aspect11Postprocess9InterfaceILi2EEE [len=3, weight=50];
 SimulatorAccess -> N6aspect11Postprocess34BoundaryVelocityResidualStatisticsILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
@@ -542,12 +551,18 @@ SimulatorAccess -> N6aspect11Postprocess7CommandILi2EEE [style="dotted", arrowhe
 N6aspect11Postprocess21CompositionStatisticsILi2EEE [label="composition\nstatistics", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
 N6aspect11Postprocess21CompositionStatisticsILi2EEE -> N6aspect11Postprocess9InterfaceILi2EEE [len=3, weight=50];
 SimulatorAccess -> N6aspect11Postprocess21CompositionStatisticsILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
+N6aspect11Postprocess29CompositionVelocityStatisticsILi2EEE [label="composition\nvelocity\nstatistics", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
+N6aspect11Postprocess29CompositionVelocityStatisticsILi2EEE -> N6aspect11Postprocess9InterfaceILi2EEE [len=3, weight=50];
+SimulatorAccess -> N6aspect11Postprocess29CompositionVelocityStatisticsILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
 N6aspect11Postprocess14CoreStatisticsILi2EEE [label="core\nstatistics", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
 N6aspect11Postprocess14CoreStatisticsILi2EEE -> N6aspect11Postprocess9InterfaceILi2EEE [len=3, weight=50];
 SimulatorAccess -> N6aspect11Postprocess14CoreStatisticsILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
 N6aspect11Postprocess12DepthAverageILi2EEE [label="depth average", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
 N6aspect11Postprocess12DepthAverageILi2EEE -> N6aspect11Postprocess9InterfaceILi2EEE [len=3, weight=50];
 SimulatorAccess -> N6aspect11Postprocess12DepthAverageILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
+N6aspect11Postprocess12DomainVolumeILi2EEE [label="domain volume\nstatistics", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
+N6aspect11Postprocess12DomainVolumeILi2EEE -> N6aspect11Postprocess9InterfaceILi2EEE [len=3, weight=50];
+SimulatorAccess -> N6aspect11Postprocess12DomainVolumeILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
 N6aspect11Postprocess17DynamicTopographyILi2EEE [label="dynamic\ntopography", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
 N6aspect11Postprocess17DynamicTopographyILi2EEE -> N6aspect11Postprocess9InterfaceILi2EEE [len=3, weight=50];
 SimulatorAccess -> N6aspect11Postprocess17DynamicTopographyILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
@@ -662,6 +677,9 @@ SimulatorAccess -> N6aspect11Postprocess27VisualizationPostprocessors30Artificia
 N6aspect11Postprocess27VisualizationPostprocessors17BoundaryIndicatorILi2EEE [label="boundary\nindicators", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
 N6aspect11Postprocess27VisualizationPostprocessors17BoundaryIndicatorILi2EEE -> N6aspect11Postprocess27VisualizationPostprocessors9InterfaceILi2EEE [len=3, weight=50];
 SimulatorAccess -> N6aspect11Postprocess27VisualizationPostprocessors17BoundaryIndicatorILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
+N6aspect11Postprocess27VisualizationPostprocessors26BoundaryStrainRateResidualILi2EEE [label="boundary strain\nrate residual", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
+N6aspect11Postprocess27VisualizationPostprocessors26BoundaryStrainRateResidualILi2EEE -> N6aspect11Postprocess27VisualizationPostprocessors9InterfaceILi2EEE [len=3, weight=50];
+SimulatorAccess -> N6aspect11Postprocess27VisualizationPostprocessors26BoundaryStrainRateResidualILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];
 N6aspect11Postprocess27VisualizationPostprocessors24BoundaryVelocityResidualILi2EEE [label="boundary\nvelocity\nresidual", height=.8,width=.8,shape="circle",fillcolor="lightblue"];
 N6aspect11Postprocess27VisualizationPostprocessors24BoundaryVelocityResidualILi2EEE -> N6aspect11Postprocess27VisualizationPostprocessors9InterfaceILi2EEE [len=3, weight=50];
 SimulatorAccess -> N6aspect11Postprocess27VisualizationPostprocessors24BoundaryVelocityResidualILi2EEE [style="dotted", arrowhead="empty", constraint=false, color="gray", len=20, weight=0.1];

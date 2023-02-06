@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2018 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -26,6 +26,8 @@
 #include <aspect/melt.h>
 #include <aspect/newton.h>
 
+#include <deal.II/base/signaling_nan.h>
+
 #include <deal.II/dofs/dof_renumbering.h>
 #include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/dofs/dof_tools.h>
@@ -36,331 +38,17 @@
 #include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/fe_values.h>
 
-#include <deal.II/base/signaling_nan.h>
 #include <deal.II/lac/solver_gmres.h>
 #include <deal.II/lac/read_write_vector.templates.h>
-
 #include <deal.II/lac/solver_idr.h>
 
+#include <deal.II/grid/manifold.h>
 
 
 namespace aspect
 {
   namespace internal
   {
-
-    /**
-     * Here we define the function(s) to make no normal flux boundary constraints for
-     * MG levels.
-     */
-    namespace TangentialBoundaryFunctions
-    {
-      template <int dim>
-      void
-      add_constraint(const std::array<types::global_dof_index,dim> &dof_indices,
-                     const Tensor<1, dim> &constraining_vector,
-                     AffineConstraints<double> &constraints,
-                     const double inhomogeneity = 0)
-      {
-        // This function is modified from an internal deal.II function in vector_tools.templates.h
-        switch (dim)
-          {
-            case 2:
-            {
-              if (std::fabs(constraining_vector[0]) >
-                  std::fabs(constraining_vector[1]) + 1e-10)
-                {
-                  if (!constraints.is_constrained(dof_indices[0]) &&
-                      constraints.can_store_line(dof_indices[0]))
-                    {
-                      constraints.add_line(dof_indices[0]);
-
-                      if (std::fabs(constraining_vector[1] /
-                                    constraining_vector[0]) >
-                          std::numeric_limits<double>::epsilon())
-                        constraints.add_entry(dof_indices[0],
-                                              dof_indices[1],
-                                              -constraining_vector[1] /
-                                              constraining_vector[0]);
-
-                      if (std::fabs(inhomogeneity / constraining_vector[0]) >
-                          std::numeric_limits<double>::epsilon())
-                        constraints.set_inhomogeneity(
-                          dof_indices[0],
-                          inhomogeneity / constraining_vector[0]);
-                    }
-                }
-              else
-                {
-                  if (!constraints.is_constrained(dof_indices[1]) &&
-                      constraints.can_store_line(dof_indices[1]))
-                    {
-                      constraints.add_line(dof_indices[1]);
-
-                      if (std::fabs(constraining_vector[0] /
-                                    constraining_vector[1]) >
-                          std::numeric_limits<double>::epsilon())
-                        constraints.add_entry(dof_indices[1],
-                                              dof_indices[0],
-                                              -constraining_vector[0] /
-                                              constraining_vector[1]);
-
-                      if (std::fabs(inhomogeneity / constraining_vector[1]) >
-                          std::numeric_limits<double>::epsilon())
-                        constraints.set_inhomogeneity(
-                          dof_indices[1],
-                          inhomogeneity / constraining_vector[1]);
-                    }
-                }
-              break;
-            }
-
-            case 3:
-            {
-              if ((std::fabs(constraining_vector[0]) >=
-                   std::fabs(constraining_vector[1]) + 1e-10) &&
-                  (std::fabs(constraining_vector[0]) >=
-                   std::fabs(constraining_vector[2]) + 2e-10))
-                {
-                  if (!constraints.is_constrained(dof_indices[0]) &&
-                      constraints.can_store_line(dof_indices[0]))
-                    {
-                      constraints.add_line(dof_indices[0]);
-
-                      if (std::fabs(constraining_vector[1] /
-                                    constraining_vector[0]) >
-                          std::numeric_limits<double>::epsilon())
-                        constraints.add_entry(dof_indices[0],
-                                              dof_indices[1],
-                                              -constraining_vector[1] /
-                                              constraining_vector[0]);
-
-                      if (std::fabs(constraining_vector[2] /
-                                    constraining_vector[0]) >
-                          std::numeric_limits<double>::epsilon())
-                        constraints.add_entry(dof_indices[0],
-                                              dof_indices[2],
-                                              -constraining_vector[2] /
-                                              constraining_vector[0]);
-
-                      if (std::fabs(inhomogeneity / constraining_vector[0]) >
-                          std::numeric_limits<double>::epsilon())
-                        constraints.set_inhomogeneity(
-                          dof_indices[0],
-                          inhomogeneity / constraining_vector[0]);
-                    }
-                }
-              else if ((std::fabs(constraining_vector[1]) + 1e-10 >=
-                        std::fabs(constraining_vector[0])) &&
-                       (std::fabs(constraining_vector[1]) >=
-                        std::fabs(constraining_vector[2]) + 1e-10))
-                {
-                  if (!constraints.is_constrained(dof_indices[1]) &&
-                      constraints.can_store_line(dof_indices[1]))
-                    {
-                      constraints.add_line(dof_indices[1]);
-
-                      if (std::fabs(constraining_vector[0] /
-                                    constraining_vector[1]) >
-                          std::numeric_limits<double>::epsilon())
-                        constraints.add_entry(dof_indices[1],
-                                              dof_indices[0],
-                                              -constraining_vector[0] /
-                                              constraining_vector[1]);
-
-                      if (std::fabs(constraining_vector[2] /
-                                    constraining_vector[1]) >
-                          std::numeric_limits<double>::epsilon())
-                        constraints.add_entry(dof_indices[1],
-                                              dof_indices[2],
-                                              -constraining_vector[2] /
-                                              constraining_vector[1]);
-
-                      if (std::fabs(inhomogeneity / constraining_vector[1]) >
-                          std::numeric_limits<double>::epsilon())
-                        constraints.set_inhomogeneity(
-                          dof_indices[1],
-                          inhomogeneity / constraining_vector[1]);
-                    }
-                }
-              else
-                {
-                  if (!constraints.is_constrained(dof_indices[2]) &&
-                      constraints.can_store_line(dof_indices[2]))
-                    {
-                      constraints.add_line(dof_indices[2]);
-
-                      if (std::fabs(constraining_vector[0] /
-                                    constraining_vector[2]) >
-                          std::numeric_limits<double>::epsilon())
-                        constraints.add_entry(dof_indices[2],
-                                              dof_indices[0],
-                                              -constraining_vector[0] /
-                                              constraining_vector[2]);
-
-                      if (std::fabs(constraining_vector[1] /
-                                    constraining_vector[2]) >
-                          std::numeric_limits<double>::epsilon())
-                        constraints.add_entry(dof_indices[2],
-                                              dof_indices[1],
-                                              -constraining_vector[1] /
-                                              constraining_vector[2]);
-
-                      if (std::fabs(inhomogeneity / constraining_vector[2]) >
-                          std::numeric_limits<double>::epsilon())
-                        constraints.set_inhomogeneity(
-                          dof_indices[2],
-                          inhomogeneity / constraining_vector[2]);
-                    }
-                }
-
-              break;
-            }
-
-            default:
-              Assert(false, ExcNotImplemented());
-          }
-      }
-
-
-      template <int dim, int spacedim>
-      void compute_no_normal_flux_constraints_shell(const DoFHandler<dim,spacedim> &dof_handler,
-                                                    const MGConstrainedDoFs        &mg_constrained_dofs,
-                                                    const Mapping<dim> &mapping,
-                                                    const unsigned int level,
-                                                    const unsigned int first_vector_component,
-                                                    const std::set<types::boundary_id> &boundary_ids,
-                                                    AffineConstraints<double> &constraints)
-      {
-        // TODO: This is a simplification of compute_no_normal_flux_constraints() from deal.II.
-        // The differences are:
-        // - It works on a specific level so we can ignore hanging nodes
-        // - We use the normal vector given by the manifold (instead of averaging surface vectors)
-        //
-        // This should go into deal.II at some point, but it is too specific right now.
-
-        const IndexSet &refinement_edge_indices = mg_constrained_dofs.get_refinement_edge_indices(level);
-
-        const auto &fe = dof_handler.get_fe();
-        const std::vector<Point<dim - 1>> &unit_support_points = fe.get_unit_face_support_points();
-        const Quadrature<dim - 1> quadrature(unit_support_points);
-        const unsigned int dofs_per_face = fe.dofs_per_face;
-        std::vector<types::global_dof_index> face_dofs(dofs_per_face);
-
-
-        FEFaceValues<dim, spacedim> fe_face_values(mapping,
-                                                   fe,
-                                                   quadrature,
-                                                   update_quadrature_points |
-                                                   update_normal_vectors);
-
-        std::set<types::boundary_id>::iterator b_id;
-        for (const auto &cell : dof_handler.cell_iterators_on_level(level))
-          if (cell->level_subdomain_id() != numbers::artificial_subdomain_id
-              &&
-              cell->level_subdomain_id() != numbers::invalid_subdomain_id)
-            for (const unsigned int face_no : cell->face_indices())
-              if ((b_id = boundary_ids.find(cell->face(face_no)->boundary_id())) !=
-                  boundary_ids.end())
-                {
-                  typename DoFHandler<dim, spacedim>::level_face_iterator face = cell->face(face_no);
-                  face->get_mg_dof_indices(level, face_dofs);
-                  fe_face_values.reinit(cell, face_no);
-
-                  for (unsigned int i = 0; i < face_dofs.size(); ++i)
-                    if (fe.face_system_to_component_index(i).first ==
-                        first_vector_component)
-                      // Refinement edge indices are going to be constrained to 0 during a
-                      // multigrid cycle and do not need no-normal-flux constraints, so skip them:
-                      if (!refinement_edge_indices.is_element(face_dofs[i]))
-                        {
-                          const Point<dim> position = fe_face_values.quadrature_point(i);
-                          std::array<types::global_dof_index,dim> dof_indices;
-                          dof_indices[0] = face_dofs[i];
-                          for (unsigned int k = 0; k < dofs_per_face; ++k)
-                            if ((k != i) &&
-                                (quadrature.point(k) == quadrature.point(i)) &&
-                                (fe.face_system_to_component_index(k).first >=
-                                 first_vector_component) &&
-                                (fe.face_system_to_component_index(k).first <
-                                 first_vector_component + dim))
-                              dof_indices
-                              [fe.face_system_to_component_index(k).first -
-                               first_vector_component] = face_dofs[k];
-
-                          Tensor<1, dim> normal_vector =
-                            cell->face(face_no)->get_manifold().normal_vector(
-                              cell->face(face_no), position);
-
-                          // remove small entries:
-                          for (unsigned int d = 0; d < dim; ++d)
-                            if (std::fabs(normal_vector[d]) < 1e-13)
-                              normal_vector[d] = 0;
-                          normal_vector /= normal_vector.norm();
-
-                          add_constraint<dim>(dof_indices, normal_vector, constraints, 0.0);
-                        }
-                }
-      }
-
-      template <int dim>
-      void compute_no_normal_flux_constraints_box (const DoFHandler<dim>    &dof,
-                                                   const types::boundary_id  bid,
-                                                   const unsigned int first_vector_component,
-                                                   MGConstrainedDoFs         &mg_constrained_dofs)
-      {
-        // For a given boundary id, find which vector component is on the boundary
-        // and set a zero boundary constraint for those degrees of freedom.
-        std::set<types::boundary_id> bid_set;
-        bid_set.insert(bid);
-
-        const unsigned int n_components = dof.get_fe_collection().n_components();
-        Assert(first_vector_component + dim <= n_components,
-               ExcIndexRange(first_vector_component, 0, n_components - dim + 1));
-
-        ComponentMask comp_mask(n_components, false);
-
-
-        typename Triangulation<dim>::face_iterator
-        face = dof.get_triangulation().begin_face(),
-        endf = dof.get_triangulation().end_face();
-        for (; face != endf; ++face)
-          if (face->boundary_id() == bid)
-            for (unsigned int d = 0; d < dim; ++d)
-              {
-                Tensor<1, dim, double> unit_vec;
-                unit_vec[d] = 1.0;
-
-                const bool respect_manifold = true;
-                const Tensor<1, dim> normal_vec =
-                  face->get_manifold().normal_vector(face, face->center(respect_manifold));
-
-                if (std::abs(std::abs(unit_vec * normal_vec) - 1.0) < 1e-10)
-                  comp_mask.set(d + first_vector_component, true);
-                else
-                  Assert(
-                    std::abs(unit_vec * normal_vec) < 1e-10,
-                    ExcMessage(
-                      "We can currently only support no normal flux conditions "
-                      "for a specific boundary id if all faces are normal to the "
-                      "x, y, or z axis."));
-              }
-
-        Assert(comp_mask.n_selected_components() == 1,
-               ExcMessage(
-                 "We can currently only support no normal flux conditions "
-                 "for a specific boundary id if all faces are facing in the "
-                 "same direction, i.e., a boundary normal to the x-axis must "
-                 "have a different boundary id than a boundary normal to the "
-                 "y- or z-axis and so on. If the mesh here was produced using "
-                 "GridGenerator::..., setting colorize=true during mesh generation "
-                 "and calling make_no_normal_flux_constraints() for each no normal "
-                 "flux boundary will fulfill the condition."));
-
-        mg_constrained_dofs.make_zero_boundary_constraints(dof, bid_set, comp_mask);
-      }
-    }
-
     /**
      * Matrix-free operators must use deal.II defined vectors, while the rest of the ASPECT
      * software is based on Trilinos vectors. Here we define functions which copy between the
@@ -561,6 +249,11 @@ namespace aspect
           ptmp.reinit(src);
         }
 
+      // This needs to be done explicitly, as GMRES does not
+      // initialize the data of the vector dst before calling
+      // us. Otherwise we might use random data as our initial guess.
+      dst = 0.0;
+
       // either solve with the Schur complement matrix (if do_solve_Schur_complement==true)
       // or just apply one preconditioner sweep (for the first few
       // iterations of our two-stage outer GMRES iteration)
@@ -581,7 +274,6 @@ namespace aspect
             {
               try
                 {
-                  dst.block(1) = 0.0;
                   solver.solve(Schur_complement_block,
                                dst.block(1), src.block(1),
                                Schur_complement_preconditioner);
@@ -625,7 +317,6 @@ namespace aspect
           SolverCG<dealii::LinearAlgebra::distributed::Vector<double>> solver(solver_control);
           try
             {
-              dst.block(0) = 0.0;
               solver.solve(A_block, dst.block(0), utmp.block(0),
                            A_block_preconditioner);
               n_iterations_A_ += solver_control.last_step();
@@ -752,7 +443,7 @@ namespace aspect
               viscosity_x_2 = 2.0*cell_data->viscosity(cell, q);
 
             SymmetricTensor<2,dim,VectorizedArray<number>> sym_grad_u =
-                                                          velocity.get_symmetric_gradient (q);
+              velocity.get_symmetric_gradient (q);
             const VectorizedArray<number> pres = pressure.get_value(q);
             const VectorizedArray<number> div = trace(sym_grad_u);
 
@@ -783,8 +474,8 @@ namespace aspect
                 const SymmetricTensor<2,dim,VectorizedArray<number>> grads_phi_u_i = velocity.get_symmetric_gradient (q);
 
                 SymmetricTensor<2,dim,VectorizedArray<number>> newton_velocity_term =
-                                                              (grads_phi_u_i * cell_data->strain_rate_table(cell,q))
-                                                              * cell_data->newton_factor_wrt_strain_rate_table(cell,q);
+                  (grads_phi_u_i * cell_data->strain_rate_table(cell,q))
+                  * cell_data->newton_factor_wrt_strain_rate_table(cell,q);
 
                 if (cell_data->symmetrize_newton_system)
                   newton_velocity_term +=
@@ -862,19 +553,19 @@ namespace aspect
   {
     if (cell_data->apply_stabilization_free_surface_faces)
       MatrixFreeOperators::Base<dim, dealii::LinearAlgebra::distributed::BlockVector<number>>::
-          data->loop(&StokesOperator::local_apply,
-                     &StokesOperator::local_apply_face,
-                     &StokesOperator::local_apply_boundary_face,
-                     this,
-                     dst,
-                     src,
-                     false, /*zero_dst_vector*/
-                     MatrixFree<dim, number>::DataAccessOnFaces::values,
-                     MatrixFree<dim, number>::DataAccessOnFaces::values);
+      data->loop(&StokesOperator::local_apply,
+                 &StokesOperator::local_apply_face,
+                 &StokesOperator::local_apply_boundary_face,
+                 this,
+                 dst,
+                 src,
+                 false, /*zero_dst_vector*/
+                 MatrixFree<dim, number>::DataAccessOnFaces::values,
+                 MatrixFree<dim, number>::DataAccessOnFaces::values);
 
     else
       MatrixFreeOperators::Base<dim, dealii::LinearAlgebra::distributed::BlockVector<number>>::
-          data->cell_loop(&StokesOperator::local_apply, this, dst, src);
+      data->cell_loop(&StokesOperator::local_apply, this, dst, src);
   }
 
   /**
@@ -966,7 +657,7 @@ namespace aspect
                const dealii::LinearAlgebra::distributed::Vector<number> &src) const
   {
     MatrixFreeOperators::Base<dim,dealii::LinearAlgebra::distributed::Vector<number>>::
-                                                                                   data->cell_loop(&MassMatrixOperator::local_apply, this, dst, src);
+    data->cell_loop(&MassMatrixOperator::local_apply, this, dst, src);
   }
 
 
@@ -1136,7 +827,7 @@ namespace aspect
               viscosity_x_2 = 2.0*cell_data->viscosity(cell, q);
 
             SymmetricTensor<2,dim,VectorizedArray<number>> sym_grad_u =
-                                                          velocity.get_symmetric_gradient (q);
+              velocity.get_symmetric_gradient (q);
             sym_grad_u *= viscosity_x_2;
 
             if (cell_data->is_compressible)
@@ -1162,7 +853,7 @@ namespace aspect
                const dealii::LinearAlgebra::distributed::Vector<number> &src) const
   {
     MatrixFreeOperators::Base<dim,dealii::LinearAlgebra::distributed::Vector<number>>::
-                                                                                   data->cell_loop(&ABlockOperator::local_apply, this, dst, src);
+    data->cell_loop(&ABlockOperator::local_apply, this, dst, src);
   }
 
 
@@ -1233,7 +924,7 @@ namespace aspect
                   viscosity_x_2 = 2.0*cell_data->viscosity(cell, q);
 
                 SymmetricTensor<2,dim,VectorizedArray<number>> sym_grad_u =
-                                                              velocity.get_symmetric_gradient (q);
+                  velocity.get_symmetric_gradient (q);
 
                 sym_grad_u *= viscosity_x_2;
 
@@ -1365,17 +1056,16 @@ namespace aspect
     parse_parameters(prm);
     CitationInfo::add("mf");
 
-    AssertThrow(!(sim.parameters.mesh_deformation_enabled
-                  && !sim.mesh_deformation->get_free_surface_boundary_indicators().empty()
-                  && sim.parameters.enable_elasticity),
-                ExcMessage("The matrix-free Stokes solver does not support free surface boundaries + GMG + elasticity."));
+#if !DEAL_II_VERSION_GTE(9,3,2)
+    AssertThrow(!sim.parameters.mesh_deformation_enabled,
+                ExcMessage("Mesh deformation with the GMG solver requires deal.II 9.3.2 or newer."));
+#endif
 
     // Sorry, not any time soon:
     AssertThrow(!sim.parameters.include_melt_transport, ExcNotImplemented());
     // Not very difficult to do, but will require a different mass matrix
     // operator:
     AssertThrow(!sim.parameters.use_locally_conservative_discretization, ExcNotImplemented());
-
 
     // sanity check:
     Assert(sim.introspection.variable("velocity").block_index==0, ExcNotImplemented());
@@ -1444,7 +1134,7 @@ namespace aspect
     dealii::LinearAlgebra::distributed::Vector<double> active_viscosity_vector(dof_handler_projection.locally_owned_dofs(),
                                                                                sim.triangulation.get_communicator());
 
-    const QGauss<dim> quadrature_formula (sim.parameters.stokes_velocity_degree+1);
+    const Quadrature<dim> &quadrature_formula = sim.introspection.quadratures.velocities;
 
     double minimum_viscosity_local = std::numeric_limits<double>::max();
     double maximum_viscosity_local = std::numeric_limits<double>::lowest();
@@ -1460,6 +1150,7 @@ namespace aspect
                                update_JxW_values);
 
       MaterialModel::MaterialModelInputs<dim> in(fe_values.n_quadrature_points, sim.introspection.n_compositional_fields);
+      in.requested_properties = MaterialModel::MaterialProperties::viscosity;
       MaterialModel::MaterialModelOutputs<dim> out(fe_values.n_quadrature_points, sim.introspection.n_compositional_fields);
 
       // This function call computes a cellwise projection of data defined at quadrature points to
@@ -1601,12 +1292,9 @@ namespace aspect
     MGTransferMatrixFree<dim,GMGNumberType> transfer;
     transfer.build(dof_handler_projection);
 
-    // Explicitly pick the version with template argument double to convert
-    // double-valued active_viscosity_vector to GMGNumberType-valued
-    // level_viscosity_vector:
-    transfer.template interpolate_to_mg<double>(dof_handler_projection,
-                                                level_viscosity_vector,
-                                                active_viscosity_vector);
+    transfer.interpolate_to_mg(dof_handler_projection,
+                               level_viscosity_vector,
+                               active_viscosity_vector);
 
     for (unsigned int level=0; level<n_levels; ++level)
       {
@@ -1721,13 +1409,18 @@ namespace aspect
                                                                                 &(sim.dof_handler));
 
                   fe_values.reinit(simulator_cell);
-                  in.reinit(fe_values, simulator_cell, sim.introspection, sim.current_linearization_point);
+                  in.reinit(fe_values, simulator_cell, sim.introspection, sim.current_linearization_point,
+                            true /* = compute_strain_rate */);
 
-                  sim.material_model->evaluate(in, out);
                   sim.material_model->fill_additional_material_model_inputs(in, sim.current_linearization_point, fe_values, sim.introspection);
+                  sim.material_model->evaluate(in, out);
+
+                  Assert(std::isfinite(in.strain_rate[0].norm()),
+                         ExcMessage("Invalid strain_rate in the MaterialModelInputs. This is likely because it was "
+                                    "not filled by the caller."));
 
                   const MaterialModel::MaterialModelDerivatives<dim> *derivatives
-                    = out.template get_additional_output<MaterialModel::MaterialModelDerivatives<dim> >();
+                    = out.template get_additional_output<MaterialModel::MaterialModelDerivatives<dim>>();
 
                   Assert(derivatives != nullptr,
                          ExcMessage ("Error: The Newton method requires the material to "
@@ -1795,11 +1488,9 @@ namespace aspect
                                                                 && !sim.mesh_deformation->get_free_surface_boundary_indicators().empty();
       if (active_cell_data.apply_stabilization_free_surface_faces == true)
         {
-          const double free_surface_theta =
-            sim.mesh_deformation->template get_matching_mesh_deformation_object<MeshDeformation::FreeSurface<dim>>()
-          .get_free_surface_theta();
+          const double free_surface_theta = sim.mesh_deformation->get_surface_theta();
 
-          const QGauss<dim-1> face_quadrature_formula (sim.parameters.stokes_velocity_degree+1);
+          const Quadrature<dim-1> &face_quadrature_formula = sim.introspection.face_quadratures.velocities;
 
           const unsigned int n_face_q_points = face_quadrature_formula.size();
 
@@ -1819,6 +1510,7 @@ namespace aspect
             sim.mesh_deformation->get_free_surface_boundary_indicators();
 
           MaterialModel::MaterialModelInputs<dim> face_material_inputs(n_face_q_points, sim.introspection.n_compositional_fields);
+          face_material_inputs.requested_properties = MaterialModel::MaterialProperties::density;
           MaterialModel::MaterialModelOutputs<dim> face_material_outputs(n_face_q_points, sim.introspection.n_compositional_fields);
 
           active_cell_data.free_surface_stabilization_term_table.reinit(n_faces_boundary, n_face_q_points);
@@ -1850,16 +1542,12 @@ namespace aspect
 
                   fe_face_values.reinit(simulator_cell, cell_face_pair.second);
 
-                  face_material_inputs.reinit(fe_face_values,
-                                              simulator_cell,
-                                              sim.introspection,
-                                              sim.solution);
-
-                  sim.compute_material_model_input_values(sim.solution,
-                                                          fe_face_values,
-                                                          simulator_cell,
-                                                          false,
-                                                          face_material_inputs);
+                  face_material_inputs.reinit  (fe_face_values,
+                                                simulator_cell,
+                                                sim.introspection,
+                                                sim.solution,
+                                                false);
+                  face_material_inputs.requested_properties = MaterialModel::MaterialProperties::density;
                   sim.material_model->evaluate(face_material_inputs, face_material_outputs);
 
                   for (unsigned int q = 0; q < n_face_q_points; ++q)
@@ -1940,7 +1628,7 @@ namespace aspect
               viscosity_x_2 = 2.0*active_cell_data.viscosity(cell, q);
 
             SymmetricTensor<2,dim,VectorizedArray<double>> sym_grad_u =
-                                                          velocity.get_symmetric_gradient (q);
+              velocity.get_symmetric_gradient (q);
             const VectorizedArray<double> pres = pressure.get_value(q);
             const VectorizedArray<double> div = trace(sym_grad_u);
             pressure.submit_value(sim.pressure_scaling*div, q);
@@ -2129,34 +1817,34 @@ namespace aspect
     mg_interface_matrices_A.resize(0, sim.triangulation.n_global_levels()-1);
     for (unsigned int level=0; level<sim.triangulation.n_global_levels(); ++level)
       mg_interface_matrices_A[level].initialize(mg_matrices_A_block[level]);
-    mg::Matrix<VectorType > mg_interface_A(mg_interface_matrices_A);
+    mg::Matrix<VectorType> mg_interface_A(mg_interface_matrices_A);
 
     // Schur complement matrix GMG
     MGLevelObject<MatrixFreeOperators::MGInterfaceOperator<GMGSchurComplementMatrixType>> mg_interface_matrices_Schur;
     mg_interface_matrices_Schur.resize(0, sim.triangulation.n_global_levels()-1);
     for (unsigned int level=0; level<sim.triangulation.n_global_levels(); ++level)
       mg_interface_matrices_Schur[level].initialize(mg_matrices_Schur_complement[level]);
-    mg::Matrix<VectorType > mg_interface_Schur(mg_interface_matrices_Schur);
+    mg::Matrix<VectorType> mg_interface_Schur(mg_interface_matrices_Schur);
 
     // MG Matrix
-    mg::Matrix<VectorType > mg_matrix_A(mg_matrices_A_block);
-    mg::Matrix<VectorType > mg_matrix_Schur(mg_matrices_Schur_complement);
+    mg::Matrix<VectorType> mg_matrix_A(mg_matrices_A_block);
+    mg::Matrix<VectorType> mg_matrix_Schur(mg_matrices_Schur_complement);
 
     // MG object
     // ABlock GMG
-    Multigrid<VectorType > mg_A(mg_matrix_A,
-                                mg_coarse_A,
-                                mg_transfer_A_block,
-                                mg_smoother_A,
-                                mg_smoother_A);
+    Multigrid<VectorType> mg_A(mg_matrix_A,
+                               mg_coarse_A,
+                               mg_transfer_A_block,
+                               mg_smoother_A,
+                               mg_smoother_A);
     mg_A.set_edge_matrices(mg_interface_A, mg_interface_A);
 
     // Schur complement matrix GMG
-    Multigrid<VectorType > mg_Schur(mg_matrix_Schur,
-                                    mg_coarse_Schur,
-                                    mg_transfer_Schur_complement,
-                                    mg_smoother_Schur,
-                                    mg_smoother_Schur);
+    Multigrid<VectorType> mg_Schur(mg_matrix_Schur,
+                                   mg_coarse_Schur,
+                                   mg_transfer_Schur_complement,
+                                   mg_smoother_Schur,
+                                   mg_smoother_Schur);
     mg_Schur.set_edge_matrices(mg_interface_Schur, mg_interface_Schur);
 
     // GMG Preconditioner for ABlock and Schur complement
@@ -2341,7 +2029,7 @@ namespace aspect
         const int n_timings = 10;
         Timer timer(sim.mpi_communicator);
 
-        auto time_this = [&](const char *name, int repeats, std::function<void()> body, std::function<void()> prepare)
+        auto time_this = [&](const char *name, int repeats, const std::function<void()> &body, const std::function<void()> &prepare)
         {
           sim.pcout << "Timing " << name << ' ' << n_timings << " time(s) and repeat "
                     << repeats << " time(s) within each timing:" << std::endl;
@@ -2467,10 +2155,10 @@ namespace aspect
         if (sim.parameters.stokes_krylov_type == Parameters<dim>::StokesKrylovType::gmres)
           {
             SolverGMRES<dealii::LinearAlgebra::distributed::BlockVector<double>>
-                                                                              solver(solver_control_cheap, mem,
-                                                                                     SolverGMRES<dealii::LinearAlgebra::distributed::BlockVector<double>>::
-                                                                                     AdditionalData(sim.parameters.stokes_gmres_restart_length+2,
-                                                                                         true));
+            solver(solver_control_cheap, mem,
+                   SolverGMRES<dealii::LinearAlgebra::distributed::BlockVector<double>>::
+                   AdditionalData(sim.parameters.stokes_gmres_restart_length+2,
+                                  true));
 
             solver.solve (stokes_matrix,
                           solution_copy,
@@ -2480,9 +2168,9 @@ namespace aspect
         else if (sim.parameters.stokes_krylov_type == Parameters<dim>::StokesKrylovType::idr_s)
           {
             SolverIDR<dealii::LinearAlgebra::distributed::BlockVector<double>>
-                                                                            solver(solver_control_cheap, mem,
-                                                                                   SolverIDR<dealii::LinearAlgebra::distributed::BlockVector<double>>::
-                                                                                   AdditionalData(sim.parameters.idr_s_parameter));
+            solver(solver_control_cheap, mem,
+                   SolverIDR<dealii::LinearAlgebra::distributed::BlockVector<double>>::
+                   AdditionalData(sim.parameters.idr_s_parameter));
 
             solver.solve (stokes_matrix,
                           solution_copy,
@@ -2521,9 +2209,9 @@ namespace aspect
                                                           std::max(sim.parameters.stokes_gmres_restart_length, 100U));
 
         SolverFGMRES<dealii::LinearAlgebra::distributed::BlockVector<double>>
-                                                                           solver(solver_control_expensive, mem,
-                                                                                  SolverFGMRES<dealii::LinearAlgebra::distributed::BlockVector<double>>::
-                                                                                  AdditionalData(number_of_temporary_vectors));
+        solver(solver_control_expensive, mem,
+               SolverFGMRES<dealii::LinearAlgebra::distributed::BlockVector<double>>::
+               AdditionalData(number_of_temporary_vectors));
 
         try
           {
@@ -2727,18 +2415,6 @@ namespace aspect
       // for boundary indices will not be created (if mesh has no Dirichlet conditions).
       mg_constrained_dofs_A_block.make_zero_boundary_constraints(dof_handler_v, dirichlet_boundary);
 
-      {
-        const std::set<types::boundary_id> no_flux_boundary = sim.boundary_velocity_manager.get_tangential_boundary_velocity_indicators();
-        if (!no_flux_boundary.empty() && !sim.geometry_model->has_curved_elements())
-          for (const auto bid : no_flux_boundary)
-            {
-              internal::TangentialBoundaryFunctions::compute_no_normal_flux_constraints_box(dof_handler_v,
-                                                                                            bid,
-                                                                                            0,
-                                                                                            mg_constrained_dofs_A_block);
-            }
-      }
-
       //Schur complement matrix GMG
       dof_handler_p.distribute_mg_dofs();
 
@@ -2774,7 +2450,7 @@ namespace aspect
       stokes_constraints.push_back(&constraints_p);
 
       std::shared_ptr<MatrixFree<dim,double>>
-                                           stokes_mf_storage(new MatrixFree<dim,double>());
+      stokes_mf_storage(new MatrixFree<dim,double>());
       stokes_mf_storage->reinit(*sim.mapping,stokes_dofs, stokes_constraints,
                                 QGauss<1>(sim.parameters.stokes_velocity_degree+1), additional_data);
       stokes_matrix.clear();
@@ -2790,7 +2466,7 @@ namespace aspect
       additional_data.mapping_update_flags = (update_values | update_gradients |
                                               update_JxW_values | update_quadrature_points);
       std::shared_ptr<MatrixFree<dim,double>>
-                                           ablock_mf_storage(new MatrixFree<dim,double>());
+      ablock_mf_storage(new MatrixFree<dim,double>());
       ablock_mf_storage->reinit(*sim.mapping,dof_handler_v, constraints_v,
                                 QGauss<1>(sim.parameters.stokes_velocity_degree+1), additional_data);
 
@@ -2807,7 +2483,7 @@ namespace aspect
       additional_data.mapping_update_flags = (update_values | update_JxW_values |
                                               update_quadrature_points);
       std::shared_ptr<MatrixFree<dim,double>>
-                                           Schur_mf_storage(new MatrixFree<dim,double>());
+      Schur_mf_storage(new MatrixFree<dim,double>());
       Schur_mf_storage->reinit(*sim.mapping,dof_handler_p, constraints_p,
                                QGauss<1>(sim.parameters.stokes_velocity_degree+1), additional_data);
 
@@ -2838,18 +2514,22 @@ namespace aspect
 
           std::set<types::boundary_id> no_flux_boundary
             = sim.boundary_velocity_manager.get_tangential_boundary_velocity_indicators();
-          if (!no_flux_boundary.empty() && sim.geometry_model->has_curved_elements())
+          if (!no_flux_boundary.empty())
             {
               AffineConstraints<double> user_level_constraints;
               user_level_constraints.reinit(relevant_dofs);
 
-              internal::TangentialBoundaryFunctions::compute_no_normal_flux_constraints_shell(dof_handler_v,
-                                                                                              mg_constrained_dofs_A_block,
-                                                                                              mapping,
-                                                                                              level,
-                                                                                              0,
-                                                                                              no_flux_boundary,
-                                                                                              user_level_constraints);
+              const IndexSet &refinement_edge_indices =
+                mg_constrained_dofs_A_block.get_refinement_edge_indices(level);
+              dealii::VectorTools::compute_no_normal_flux_constraints_on_level(
+                dof_handler_v,
+                0,
+                no_flux_boundary,
+                user_level_constraints,
+                mapping,
+                refinement_edge_indices,
+                level);
+
               user_level_constraints.close();
               mg_constrained_dofs_A_block.add_user_constraints(level,user_level_constraints);
 
@@ -2866,7 +2546,7 @@ namespace aspect
                                                     update_quadrature_points);
             additional_data.mg_level = level;
             std::shared_ptr<MatrixFree<dim,GMGNumberType>>
-                                                        mg_mf_storage_level(new MatrixFree<dim,GMGNumberType>());
+            mg_mf_storage_level(new MatrixFree<dim,GMGNumberType>());
 
             mg_mf_storage_level->reinit(mapping, dof_handler_v, level_constraints,
                                         QGauss<1>(sim.parameters.stokes_velocity_degree+1),
@@ -2899,7 +2579,7 @@ namespace aspect
                                                     update_quadrature_points);
             additional_data.mg_level = level;
             std::shared_ptr<MatrixFree<dim,GMGNumberType>>
-                                                        mg_mf_storage_level(new MatrixFree<dim,GMGNumberType>());
+            mg_mf_storage_level(new MatrixFree<dim,GMGNumberType>());
 
             const Mapping<dim> &mapping =
               (sim.mesh_deformation) ? sim.mesh_deformation->get_level_mapping(level) : *sim.mapping;
@@ -2956,11 +2636,14 @@ namespace aspect
                                    locally_relevant_dofs,
                                    sim.mpi_communicator);
 
-            QGauss<dim>  quadrature_formula(sim.parameters.stokes_velocity_degree+1);
-            FEValues<dim> fe_values (*(sim.mapping), fe_v, quadrature_formula,
+            const Quadrature<dim> &quadrature_formula = sim.introspection.quadratures.velocities;
+            const Mapping<dim> &mapping =
+              (sim.mesh_deformation) ? sim.mesh_deformation->get_level_mapping(level) : *sim.mapping;
+
+            FEValues<dim> fe_values (mapping, fe_v, quadrature_formula,
                                      update_values   | update_gradients |
                                      update_quadrature_points | update_JxW_values);
-            FEValues<dim> fe_values_projection (*(sim.mapping),
+            FEValues<dim> fe_values_projection (mapping,
                                                 fe_projection,
                                                 quadrature_formula,
                                                 update_values);

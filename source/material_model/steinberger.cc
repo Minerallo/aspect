@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -54,7 +54,7 @@ namespace aspect
         while (!in.eof())
           {
             double visc, depth;
-            in >> visc;;
+            in >> visc;
             if (in.eof())
               break;
             in >> depth;
@@ -99,7 +99,7 @@ namespace aspect
         while (!in.eof())
           {
             double visc, depth;
-            in >> visc;;
+            in >> visc;
             if (in.eof())
               break;
             in >> depth;
@@ -196,16 +196,6 @@ namespace aspect
       const double vis_radial = radial_viscosity_lookup->radial_viscosity(depth);
 
       return std::max(std::min(vis_lateral * vis_radial,max_eta),min_eta);
-    }
-
-
-
-    template <int dim>
-    double
-    Steinberger<dim>::
-    reference_viscosity () const
-    {
-      return reference_eta;
     }
 
 
@@ -310,7 +300,7 @@ namespace aspect
 
               // The function compute_volumes_from_masses expects as many mass_fractions as densities.
               // But the function compute_composition_fractions always adds another element at the start
-              // of the vector that represents the the background field. If there is no lookup table for
+              // of the vector that represents the background field. If there is no lookup table for
               // the background field, the mass_fractions vector is too long and we remove this element.
               if (!has_background_field)
                 mass_fractions.erase(mass_fractions.begin());
@@ -339,7 +329,7 @@ namespace aspect
                             MaterialModel::MaterialModelOutputs<dim> &out) const
     {
       // set up variable to interpolate prescribed field outputs onto compositional field
-      PrescribedFieldOutputs<dim> *prescribed_field_out = out.template get_additional_output<PrescribedFieldOutputs<dim> >();
+      PrescribedFieldOutputs<dim> *prescribed_field_out = out.template get_additional_output<PrescribedFieldOutputs<dim>>();
 
       if (this->introspection().composition_type_exists(Parameters<dim>::CompositionalFieldDescription::density)
           && prescribed_field_out != nullptr)
@@ -382,28 +372,6 @@ namespace aspect
           prm.declare_entry ("Number lateral average bands", "10",
                              Patterns::Integer (1),
                              "Number of bands to compute laterally averaged temperature within.");
-          prm.declare_entry ("Reference viscosity", "1e23",
-                             Patterns::Double (0.),
-                             "The reference viscosity that is used for pressure scaling. "
-                             "To understand how pressure scaling works, take a look at "
-                             "\\cite{KHB12}. In particular, the value of this parameter "
-                             "would not affect the solution computed by \\aspect{} if "
-                             "we could do arithmetic exactly; however, computers do "
-                             "arithmetic in finite precision, and consequently we need to "
-                             "scale quantities in ways so that their magnitudes are "
-                             "roughly the same. As explained in \\cite{KHB12}, we scale "
-                             "the pressure during some computations (never visible by "
-                             "users) by a factor that involves a reference viscosity. This "
-                             "parameter describes this reference viscosity."
-                             "\n\n"
-                             "For problems with a constant viscosity, you will generally want "
-                             "to choose the reference viscosity equal to the actual viscosity. "
-                             "For problems with a variable viscosity, the reference viscosity "
-                             "should be a value that adequately represents the order of "
-                             "magnitude of the viscosities that appear, such as an average "
-                             "value or the value one would use to compute a Rayleigh number."
-                             "\n\n"
-                             "Units: \\si{\\pascal\\second}.");
           prm.declare_entry ("Minimum viscosity", "1e19",
                              Patterns::Double (0.),
                              "The minimum viscosity that is allowed in the viscosity "
@@ -513,7 +481,6 @@ namespace aspect
           lateral_viscosity_file_name  = prm.get ("Lateral viscosity file name");
           use_lateral_average_temperature = prm.get_bool ("Use lateral average temperature for viscosity");
           n_lateral_slices = prm.get_integer("Number lateral average bands");
-          reference_eta        = prm.get_double ("Reference viscosity");
           min_eta              = prm.get_double ("Minimum viscosity");
           max_eta              = prm.get_double ("Maximum viscosity");
           max_lateral_eta_variation    = prm.get_double ("Maximum lateral viscosity variation");
@@ -609,7 +576,7 @@ namespace aspect
       equation_of_state.create_additional_named_outputs(out);
 
       if (this->introspection().composition_type_exists(Parameters<dim>::CompositionalFieldDescription::density)
-          && out.template get_additional_output<PrescribedFieldOutputs<dim> >() == nullptr)
+          && out.template get_additional_output<PrescribedFieldOutputs<dim>>() == nullptr)
         {
           const unsigned int n_points = out.n_evaluation_points();
           out.additional_outputs.push_back(

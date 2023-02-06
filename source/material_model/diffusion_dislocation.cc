@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -41,7 +41,7 @@ namespace aspect
       // to prevent a division-by-zero, and a floating point exception.
       // Otherwise, calculate the square-root of the norm of the second invariant of the deviatoric-
       // strain rate (often simplified as epsilondot_ii)
-      const double edot_ii = std::max(std::sqrt(std::fabs(second_invariant(deviator(strain_rate)))),
+      const double edot_ii = std::max(std::sqrt(std::max(-second_invariant(deviator(strain_rate)), 0.)),
                                       min_strain_rate);
 
 
@@ -200,6 +200,9 @@ namespace aspect
           // calculate effective viscosity
           if (in.requests_property(MaterialProperties::viscosity))
             {
+              Assert(std::isfinite(in.strain_rate[i].norm()),
+                     ExcMessage("Invalid strain_rate in the MaterialModelInputs. This is likely because it was "
+                                "not filled by the caller."));
               // Currently, the viscosities for each of the compositional fields are calculated assuming
               // isostrain amongst all compositions, allowing calculation of the viscosity ratio.
               // TODO: This is only consistent with viscosity averaging if the arithmetic averaging
@@ -246,14 +249,6 @@ namespace aspect
     }
 
     template <int dim>
-    double
-    DiffusionDislocation<dim>::
-    reference_viscosity () const
-    {
-      return ref_visc;
-    }
-
-    template <int dim>
     bool
     DiffusionDislocation<dim>::
     is_compressible () const
@@ -280,27 +275,6 @@ namespace aspect
                              "Upper cutoff for effective viscosity. Units: \\si{\\pascal\\second}.");
           prm.declare_entry ("Effective viscosity coefficient", "1.0", Patterns::Double(0.),
                              "Scaling coefficient for effective viscosity.");
-          prm.declare_entry ("Reference viscosity", "1e22", Patterns::Double(0.),
-                             "The reference viscosity that is used for pressure scaling. "
-                             "To understand how pressure scaling works, take a look at "
-                             "\\cite{KHB12}. In particular, the value of this parameter "
-                             "would not affect the solution computed by \\aspect{} if "
-                             "we could do arithmetic exactly; however, computers do "
-                             "arithmetic in finite precision, and consequently we need to "
-                             "scale quantities in ways so that their magnitudes are "
-                             "roughly the same. As explained in \\cite{KHB12}, we scale "
-                             "the pressure during some computations (never visible by "
-                             "users) by a factor that involves a reference viscosity. This "
-                             "parameter describes this reference viscosity."
-                             "\n\n"
-                             "For problems with a constant viscosity, you will generally want "
-                             "to choose the reference viscosity equal to the actual viscosity. "
-                             "For problems with a variable viscosity, the reference viscosity "
-                             "should be a value that adequately represents the order of "
-                             "magnitude of the viscosities that appear, such as an average "
-                             "value or the value one would use to compute a Rayleigh number."
-                             "\n\n"
-                             "Units: \\si{\\pascal\\second}.");
 
           // Viscosity iteration parameters
           prm.declare_entry ("Strain rate residual tolerance", "1e-22", Patterns::Double(0.),
@@ -424,7 +398,6 @@ namespace aspect
           minimum_viscosity = prm.get_double ("Minimum viscosity");
           maximum_viscosity = prm.get_double ("Maximum viscosity");
           veff_coefficient = prm.get_double ("Effective viscosity coefficient");
-          ref_visc = prm.get_double ("Reference viscosity");
 
           // Iteration parameters
           strain_rate_residual_threshold = prm.get_double ("Strain rate residual tolerance");

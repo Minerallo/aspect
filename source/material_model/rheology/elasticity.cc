@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2019 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -80,7 +80,7 @@ namespace aspect
                            "relationship uses the regular numerical time step or a separate fixed "
                            "elastic time step throughout the model run. The fixed elastic time step "
                            "is always used during the initial time step. If a fixed elastic time "
-                           "step is used throughout the model run, a stress averaging scheme can be "
+                           "step is used throughout the model run, a stress averaging scheme is "
                            "applied to account for differences with the numerical time step. An "
                            "alternative approach is to limit the maximum time step size so that it "
                            "is equal to the elastic time step. The default value of this parameter is "
@@ -91,10 +91,6 @@ namespace aspect
                            "The fixed elastic time step $dte$. Units: years if the "
                            "'Use years in output instead of seconds' parameter is set; "
                            "seconds otherwise.");
-        prm.declare_entry ("Use stress averaging","false",
-                           Patterns::Bool (),
-                           "Whether to apply a stress averaging scheme to account for differences "
-                           "between the fixed elastic time step and numerical time step. ");
         prm.declare_entry ("Stabilization time scale factor", "1.",
                            Patterns::Double (1.),
                            "A stabilization factor for the elastic stresses that influences how fast "
@@ -133,8 +129,6 @@ namespace aspect
           use_fixed_elastic_time_step = false;
         else
           AssertThrow(false, ExcMessage("'Use fixed elastic time step' must be set to 'true' or 'false'"));
-
-        use_stress_averaging = prm.get_bool ("Use stress averaging");
 
         stabilization_time_scale_factor = prm.get_double ("Stabilization time scale factor");
 
@@ -249,26 +243,21 @@ namespace aspect
         if (force_out == nullptr)
           return;
 
-        if (in.current_cell.state() == IteratorState::valid && in.requests_property(MaterialProperties::reaction_terms))
-          {
+        if (in.requests_property(MaterialProperties::additional_outputs))
+          for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
+            {
+              // Get old stresses from compositional fields
+              SymmetricTensor<2,dim> stress_old;
+              for (unsigned int j=0; j < SymmetricTensor<2,dim>::n_independent_components; ++j)
+                stress_old[SymmetricTensor<2,dim>::unrolled_to_component_indices(j)] = in.composition[i][j];
 
-            for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
-              {
-                // Get old stresses from compositional fields
-                SymmetricTensor<2,dim> stress_old;
-                for (unsigned int j=0; j < SymmetricTensor<2,dim>::n_independent_components; ++j)
-                  stress_old[SymmetricTensor<2,dim>::unrolled_to_component_indices(j)] = in.composition[i][j];
+              // Average viscoelastic viscosity
+              const double average_viscoelastic_viscosity = out.viscosities[i];
 
-                // Average viscoelastic viscosity
-                const double average_viscoelastic_viscosity = out.viscosities[i];
+              // Fill elastic force outputs (See equation 30 in Moresi et al., 2003, J. Comp. Phys.)
+              force_out->elastic_force[i] = -1. * ( average_viscoelastic_viscosity / calculate_elastic_viscosity(average_elastic_shear_moduli[i]) * stress_old );
 
-                // Fill elastic force outputs (See equation 30 in Moresi et al., 2003, J. Comp. Phys.)
-                force_out->elastic_force[i] = -1. * ( average_viscoelastic_viscosity / calculate_elastic_viscosity(average_elastic_shear_moduli[i]) * stress_old );
-
-              }
-          }
-        else
-          std::fill(force_out->elastic_force.begin(), force_out->elastic_force.end(), 0.0);
+            }
       }
 
 
@@ -331,17 +320,19 @@ namespace aspect
                 const SymmetricTensor<2,dim> stress_0 = (stress_old + dte * ( symmetrize(rotation * Tensor<2,dim>(stress_old) ) - symmetrize(Tensor<2,dim>(stress_old) * rotation) ) );
 
                 // stress_creep is the stress experienced by the viscous and elastic components.
+                Assert(std::isfinite(in.strain_rate[i].norm()),
+                       ExcMessage("Invalid strain_rate in the MaterialModelInputs. This is likely because it was "
+                                  "not filled by the caller."));
                 const SymmetricTensor<2,dim> stress_creep = 2. * average_viscoelastic_viscosity * ( deviator(in.strain_rate[i]) + stress_0 / (2. * damped_elastic_viscosity ) );
 
                 // stress_new is the (new) stored elastic stress
                 SymmetricTensor<2,dim> stress_new = stress_creep * (1. - (elastic_damper_viscosity / damped_elastic_viscosity)) + elastic_damper_viscosity * stress_0 / damped_elastic_viscosity;
 
-                // Stress averaging scheme to account for difference between fixed elastic time step
-                // and numerical time step (see equation 32 in Moresi et al., 2003, J. Comp. Phys.)
-                if (use_stress_averaging == true)
-                  {
-                    stress_new = ( ( 1. - ( dt / dte ) ) * stress_old ) + ( ( dt / dte ) * stress_new ) ;
-                  }
+                // Stress averaging scheme to account for difference between the elastic time step
+                // and the numerical time step (see equation 32 in Moresi et al., 2003, J. Comp. Phys.)
+                // Note that if there is no difference between the elastic timestep and the numerical
+                // timestep, then no averaging occurs as dt/dte = 1.
+                stress_new = ( ( 1. - ( dt / dte ) ) * stress_old ) + ( ( dt / dte ) * stress_new ) ;
 
                 // Fill reaction terms
                 for (unsigned int j = 0; j < SymmetricTensor<2,dim>::n_independent_components ; ++j)
@@ -423,7 +414,7 @@ namespace aspect
         const SymmetricTensor<2,dim> edot_deviator = deviator(strain_rate) + 0.5*stress /
                                                      calculate_elastic_viscosity(shear_modulus);
 
-        return std::sqrt(std::fabs(second_invariant(edot_deviator)));
+        return std::sqrt(std::max(-second_invariant(edot_deviator), 0.));
       }
     }
   }

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -511,16 +511,10 @@ void signal_handler(int signal)
     {
       std::cerr << "Unexpected signal " << signal << " received\n";
     }
-#if DEAL_II_USE_CXX11
-  // Kill the program without performing any other cleanup, which is likely to
-  // lead to a deadlock
+
+  // Kill the program without performing any other cleanup, which would likely
+  // lead to a deadlock.
   std::_Exit(EXIT_FAILURE);
-#else
-  // Kill the program, or at least try to. The problem when we get here is
-  // that calling std::exit invokes at_exit() functions that may still hang
-  // the MPI system
-  std::exit(1);
-#endif
 }
 
 
@@ -809,6 +803,8 @@ int main (int argc, char *argv[])
                 << "Aborting!" << std::endl
                 << "----------------------------------------------------"
                 << std::endl;
+
+      MPI_Abort(MPI_COMM_WORLD, 1);
       return 1;
     }
   catch (std::exception &exc)
@@ -823,6 +819,8 @@ int main (int argc, char *argv[])
                 << "Aborting!" << std::endl
                 << "----------------------------------------------------"
                 << std::endl;
+
+      MPI_Abort(MPI_COMM_WORLD, 1);
       return 1;
     }
   catch (aspect::QuietException &)
@@ -836,6 +834,8 @@ int main (int argc, char *argv[])
       // other ranks to be printed before the MPI implementation might kill
       // the computation.
       std::this_thread::sleep_for(std::chrono::seconds(5));
+
+      MPI_Abort(MPI_COMM_WORLD, 1);
       return 1;
     }
   catch (...)
@@ -847,6 +847,8 @@ int main (int argc, char *argv[])
                 << "Aborting!" << std::endl
                 << "----------------------------------------------------"
                 << std::endl;
+
+      MPI_Abort(MPI_COMM_WORLD, 1);
       return 1;
     }
 

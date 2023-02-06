@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -745,7 +745,7 @@ namespace aspect
         distributed_stokes_rhs.block(block_vel) = system_rhs.block(block_vel);
         distributed_stokes_rhs.block(block_p) = system_rhs.block(block_p);
 
-        PrimitiveVectorMemory< LinearAlgebra::BlockVector > mem;
+        PrimitiveVectorMemory<LinearAlgebra::BlockVector> mem;
 
         // create Solver controls for the cheap and expensive solver phase
         SolverControl solver_control_cheap (parameters.n_cheap_stokes_solver_steps,

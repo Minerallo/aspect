@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -169,7 +169,7 @@ namespace aspect
 
     prm.declare_entry ("Maximum relative increase in time step", boost::lexical_cast<std::string>(std::numeric_limits<int>::max()),
                        Patterns::Double (0.),
-                       "Set a percentage with which the the time step is limited to increase. Generally the "
+                       "Set a percentage with which the time step is limited to increase. Generally the "
                        "time step based on the CFL number should be sufficient, but for complicated models "
                        "which may suddenly drastically change behavior, it may be useful to limit the increase "
                        "in the time step, without limiting the time step size of the whole simulation to a "
@@ -567,7 +567,7 @@ namespace aspect
       {
         prm.declare_entry ("Diffusion length scale", "1.e4",
                            Patterns::Double (0.),
-                           "Set a length scale for the diffusion of compositional fields if the "
+                           "Set a length scale for the diffusion of advection fields if the "
                            "``prescribed field with diffusion'' method is selected for a field. "
                            "More precisely, this length scale represents the square root of the "
                            "product of diffusivity and time in the diffusion equation, and controls "
@@ -776,7 +776,16 @@ namespace aspect
                          Patterns::Integer (0),
                          "The number of global refinement steps performed on "
                          "the initial coarse mesh, before the problem is first "
-                         "solved there.");
+                         "solved there."
+                         "\n\n"
+                         "Note that it is possible to supply conflicting refinement "
+                         "and coarsening settings, such as an 'Initial global refinement' "
+                         "of 4 and a 'Maximum refinement function' strategy that limits "
+                         "the refinement locally to 2. In this case, the tagging strategies "
+                         "such as the 'Maximum refinement function' will remove refinement "
+                         "flags in each initial global refinement step, such that the "
+                         "resulting mesh is not necessarily uniform or of the level "
+                         "given by the 'Initial global refinement' parameter.");
       prm.declare_entry ("Initial adaptive refinement", "0",
                          Patterns::Integer (0),
                          "The number of adaptive refinement steps performed after "
@@ -1145,7 +1154,7 @@ namespace aspect
     prm.enter_subsection ("Temperature field");
     {
       prm.declare_entry ("Temperature method", "field",
-                         Patterns::Selection("field|prescribed field|static"),
+                         Patterns::Selection("field|prescribed field|prescribed field with diffusion|static"),
                          "A comma separated list denoting the solution method of the "
                          "temperature field. Each entry of the list must be "
                          "one of the currently implemented field types."
@@ -1164,6 +1173,17 @@ namespace aspect
                          "model output, called the `PrescribedTemperatureOutputs' is interpolated "
                          "onto the temperature. This field does not change otherwise, it is not "
                          "advected with the flow. "
+                         "\n"
+                         "\\item ``prescribed field with diffusion'': If the temperature field is "
+                         "marked this way, the value of a specific additional material model output, "
+                         "called the `PrescribedTemperatureOutputs' is interpolated onto the field, as in "
+                         "the ``prescribed field'' method. Afterwards, the field is diffused based on "
+                         "a solver parameter, the diffusion length scale, smoothing the field. "
+                         "Specifically, the field is updated by solving the equation "
+                         "$(I-l^2 \\Delta) T_\\text{smoothed} = T_\\text{prescribed}$, "
+                         "where $l$ is the diffusion length scale. Note that this means that the amount "
+                         "of diffusion is independent of the time step size, and that the field is not "
+                         "advected with the flow."
                          "\n"
                          "\\item ``static'': If a temperature field is marked "
                          "this way, then it does not evolve at all. Its values are "
@@ -1196,7 +1216,7 @@ namespace aspect
                          "If a plugin such as a material model uses these types, "
                          "the choice of type will affect how that module functions.");
       prm.declare_entry ("Compositional field methods", "",
-                         Patterns::List (Patterns::Selection("field|particles|volume of fluid|static|melt field|prescribed field|prescribed field with diffusion")),
+                         Patterns::List (Patterns::Selection("field|particles|volume of fluid|static|melt field|darcy field|prescribed field|prescribed field with diffusion")),
                          "A comma separated list denoting the solution method of each "
                          "compositional field. Each entry of the list must be "
                          "one of the currently implemented field methods."
@@ -1241,6 +1261,17 @@ namespace aspect
                          "advected with the melt velocity instead of the solid velocity. "
                          "This method can only be chosen if melt transport is active in the "
                          "model."
+                         "\n"
+                         "\\item ``darcy field'': If a compositional field is marked with this "
+                         "method, then its values are computed in each time step by "
+                         "advecting along the values of the previous time step using the "
+                         "fluid velocity prescribed by Darcy's Law, and applying reaction rates "
+                         "to it. In other words this corresponds to the usual notion of a composition "
+                         "field as mentioned in Section~\\ref{sec:compositional}, except that it is "
+                         "advected with the Darcy velocity instead of the solid velocity. This method "
+                         "requires there to be a compositional field named porosity that is advected "
+                         "the darcy field method. We calculate the fluid velocity $u_f$ using an "
+                         "approximation of Darcy's Law: $u_f = u_s - K_D / \\phi * (rho_s * g - rho_f * g)$."
                          "\n"
                          "\\item ``prescribed field'': The value of these fields is determined "
                          "in each time step from the material model. If a compositional field is "
@@ -1511,8 +1542,8 @@ namespace aspect
       std::sort (additional_refinement_times.begin(),
                  additional_refinement_times.end());
       if (convert_to_years == true)
-        for (unsigned int i=0; i<additional_refinement_times.size(); ++i)
-          additional_refinement_times[i] *= year_in_seconds;
+        for (double &additional_refinement_time : additional_refinement_times)
+          additional_refinement_time *= year_in_seconds;
 
       skip_solvers_on_initial_refinement = prm.get_bool("Skip solvers on initial refinement");
       skip_setup_initial_conditions_on_initial_refinement = prm.get_bool("Skip setup initial conditions on initial refinement");
@@ -1589,41 +1620,41 @@ namespace aspect
                              "'Nullspace removal/Remove nullspace' contains entries more than once. "
                              "This is not allowed. Please check your parameter file."));
 
-      for (unsigned int i=0; i<nullspace_names.size(); ++i)
+      for (const auto &nullspace_name : nullspace_names)
         {
-          if (nullspace_names[i]=="net rotation")
+          if (nullspace_name=="net rotation")
             nullspace_removal = typename NullspaceRemoval::Kind(
                                   nullspace_removal | NullspaceRemoval::net_rotation);
-          else if (nullspace_names[i]=="net surface rotation")
+          else if (nullspace_name=="net surface rotation")
             nullspace_removal = typename NullspaceRemoval::Kind(
                                   nullspace_removal | NullspaceRemoval::net_surface_rotation);
-          else if (nullspace_names[i]=="angular momentum")
+          else if (nullspace_name=="angular momentum")
             nullspace_removal = typename NullspaceRemoval::Kind(
                                   nullspace_removal | NullspaceRemoval::angular_momentum);
-          else if (nullspace_names[i]=="net translation")
+          else if (nullspace_name=="net translation")
             nullspace_removal = typename NullspaceRemoval::Kind(
                                   nullspace_removal | NullspaceRemoval::net_translation_x |
                                   NullspaceRemoval::net_translation_y | ( dim == 3 ?
                                                                           NullspaceRemoval::net_translation_z : 0) );
-          else if (nullspace_names[i]=="net x translation")
+          else if (nullspace_name=="net x translation")
             nullspace_removal = typename NullspaceRemoval::Kind(
                                   nullspace_removal | NullspaceRemoval::net_translation_x);
-          else if (nullspace_names[i]=="net y translation")
+          else if (nullspace_name=="net y translation")
             nullspace_removal = typename NullspaceRemoval::Kind(
                                   nullspace_removal | NullspaceRemoval::net_translation_y);
-          else if (nullspace_names[i]=="net z translation")
+          else if (nullspace_name=="net z translation")
             nullspace_removal = typename NullspaceRemoval::Kind(
                                   nullspace_removal | NullspaceRemoval::net_translation_z);
-          else if (nullspace_names[i]=="linear x momentum")
+          else if (nullspace_name=="linear x momentum")
             nullspace_removal = typename NullspaceRemoval::Kind(
                                   nullspace_removal | NullspaceRemoval::linear_momentum_x);
-          else if (nullspace_names[i]=="linear y momentum")
+          else if (nullspace_name=="linear y momentum")
             nullspace_removal = typename NullspaceRemoval::Kind(
                                   nullspace_removal | NullspaceRemoval::linear_momentum_y);
-          else if (nullspace_names[i]=="linear z momentum")
+          else if (nullspace_name=="linear z momentum")
             nullspace_removal = typename NullspaceRemoval::Kind(
                                   nullspace_removal | NullspaceRemoval::linear_momentum_z);
-          else if (nullspace_names[i]=="linear momentum")
+          else if (nullspace_name=="linear momentum")
             nullspace_removal = typename NullspaceRemoval::Kind(
                                   nullspace_removal | NullspaceRemoval::linear_momentum_x |
                                   NullspaceRemoval::linear_momentum_y | ( dim == 3 ?
@@ -1752,6 +1783,8 @@ namespace aspect
         temperature_method = AdvectionFieldMethod::fem_field;
       else if (x_temperature_method == "prescribed field")
         temperature_method = AdvectionFieldMethod::prescribed_field;
+      else if (x_temperature_method == "prescribed field with diffusion")
+        temperature_method = AdvectionFieldMethod::prescribed_field_with_diffusion;
       else if (x_temperature_method == "static")
         temperature_method = AdvectionFieldMethod::static_field;
       else
@@ -1896,6 +1929,8 @@ namespace aspect
             compositional_field_methods[i] = AdvectionFieldMethod::static_field;
           else if (x_compositional_field_methods[i] == "melt field")
             compositional_field_methods[i] = AdvectionFieldMethod::fem_melt_field;
+          else if (x_compositional_field_methods[i] == "darcy field")
+            compositional_field_methods[i] = AdvectionFieldMethod::fem_darcy_field;
           else if (x_compositional_field_methods[i] == "prescribed field")
             compositional_field_methods[i] = AdvectionFieldMethod::prescribed_field;
           else if (x_compositional_field_methods[i] == "prescribed field with diffusion")
@@ -1926,6 +1961,17 @@ namespace aspect
                    || (x_mapped_particle_properties.size() == 0),
                    ExcMessage ("The list of names for the mapped particle property fields needs to either be empty or have a length equal to "
                                "the number of compositional fields that are interpolated from particle properties."));
+
+      if (std::find(compositional_field_methods.begin(), compositional_field_methods.end(), AdvectionFieldMethod::fem_darcy_field)
+          != compositional_field_methods.end())
+        {
+          const unsigned int porosity_idx = std::find(names_of_compositional_fields.begin(), names_of_compositional_fields.end(), "porosity")
+                                            - names_of_compositional_fields.begin();
+          AssertThrow (porosity_idx != n_compositional_fields,
+                       ExcMessage ("The Darcy advection field method only works if there is a compositional field named 'porosity'"));
+          AssertThrow (compositional_field_methods[porosity_idx] == AdvectionFieldMethod::fem_darcy_field,
+                       ExcMessage ("When using the Darcy advection field method, the porosity field must be advected with the darcy method."));
+        }
 
       for (const auto &p : x_mapped_particle_properties)
         {

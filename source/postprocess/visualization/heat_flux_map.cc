@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -38,7 +38,8 @@ namespace aspect
       HeatFluxMap ()
         :
         DataPostprocessorScalar<dim> ("heat_flux_map",
-                                      update_quadrature_points)
+                                      update_quadrature_points),
+        Interface<dim>("W/m/m")
       {}
 
 
@@ -61,8 +62,8 @@ namespace aspect
       evaluate_vector_field(const DataPostprocessorInputs::Vector<dim> &input_data,
                             std::vector<Vector<double>> &computed_quantities) const
       {
-        for (unsigned int q=0; q<computed_quantities.size(); ++q)
-          computed_quantities[q](0) = 0;
+        for (auto &quantity : computed_quantities)
+          quantity(0) = 0;
 
         auto cell = input_data.template get_cell<dim>();
 
@@ -111,8 +112,8 @@ namespace aspect
                                heat_flux_and_area[cell->active_cell_index()][f].second;
                 }
 
-            for (unsigned int q=0; q<computed_quantities.size(); ++q)
-              computed_quantities[q](0) = heat_flux;
+            for (auto &quantity : computed_quantities)
+              quantity(0) = heat_flux;
           }
       }
 
@@ -199,7 +200,9 @@ namespace aspect
                                                   "boundaries is of interest, the "
                                                   "postprocessor can produce output of higher resolution "
                                                   "by evaluating the CBF solution vector point-wise "
-                                                  "instead of computing cell-wise averaged values.")
+                                                  "instead of computing cell-wise averaged values."
+                                                  "\n\n"
+                                                  "Physical units: \\si{\\watt\\per\\meter\\squared}.")
     }
   }
 }

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -48,11 +48,11 @@ namespace aspect
 
 
     template <int dim>
-    std::set< std::pair< std::pair<types::boundary_id, types::boundary_id>, unsigned int >>
-        Interface<dim>::get_periodic_boundary_pairs() const
+    std::set<std::pair<std::pair<types::boundary_id, types::boundary_id>, unsigned int>>
+    Interface<dim>::get_periodic_boundary_pairs() const
     {
       // return an empty set in the base class
-      return std::set< std::pair< std::pair< types::boundary_id, types::boundary_id>, unsigned int >>();
+      return std::set<std::pair<std::pair<types::boundary_id, types::boundary_id>, unsigned int>>();
     }
 
 
@@ -268,7 +268,7 @@ namespace aspect
     register_geometry_model (const std::string &name,
                              const std::string &description,
                              void (*declare_parameters_function) (ParameterHandler &),
-                             Interface<dim> *(*factory_function) ())
+                             std::unique_ptr<Interface<dim>> (*factory_function) ())
     {
       std::get<dim>(registered_plugins).register_plugin (name,
                                                          description,
@@ -278,7 +278,7 @@ namespace aspect
 
 
     template <int dim>
-    Interface<dim> *
+    std::unique_ptr<Interface<dim>>
     create_geometry_model (ParameterHandler &prm)
     {
       std::string model_name;
@@ -343,7 +343,7 @@ namespace aspect
                                                  AffineConstraints<double> &constraints) const
     {
       using periodic_boundary_set
-        = std::set< std::pair< std::pair< types::boundary_id, types::boundary_id>, unsigned int>>;
+        = std::set<std::pair<std::pair<types::boundary_id, types::boundary_id>, unsigned int>>;
       periodic_boundary_set pbs = get_periodic_boundary_pairs();
 
       for (const auto &pb : pbs)
@@ -367,11 +367,11 @@ namespace aspect
     {
       template <>
       std::list<internal::Plugins::PluginList<GeometryModel::Interface<2>>::PluginInfo> *
-                                                                        internal::Plugins::PluginList<GeometryModel::Interface<2>>::plugins = nullptr;
+      internal::Plugins::PluginList<GeometryModel::Interface<2>>::plugins = nullptr;
 
       template <>
       std::list<internal::Plugins::PluginList<GeometryModel::Interface<3>>::PluginInfo> *
-                                                                        internal::Plugins::PluginList<GeometryModel::Interface<3>>::plugins = nullptr;
+      internal::Plugins::PluginList<GeometryModel::Interface<3>>::plugins = nullptr;
     }
   }
 
@@ -385,7 +385,7 @@ namespace aspect
   register_geometry_model<dim> (const std::string &, \
                                 const std::string &, \
                                 void ( *) (ParameterHandler &), \
-                                Interface<dim> *( *) ()); \
+                                std::unique_ptr<Interface<dim>>( *) ()); \
   \
   template  \
   void \
@@ -396,7 +396,7 @@ namespace aspect
   write_plugin_graph<dim> (std::ostream &); \
   \
   template \
-  Interface<dim> * \
+  std::unique_ptr<Interface<dim>> \
   create_geometry_model<dim> (ParameterHandler &prm);
 
     ASPECT_INSTANTIATE(INSTANTIATE)

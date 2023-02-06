@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -35,7 +35,6 @@ namespace aspect
     std::pair<std::string,std::string>
     MassFluxStatistics<dim>::execute (TableHandler &statistics)
     {
-      // First determine the units for the output
       const std::string unit = (this->convert_output_to_years())
                                ?
                                "kg/yr"
@@ -48,7 +47,7 @@ namespace aspect
                               1.0;
 
       // create a quadrature formula based on the temperature element alone.
-      const QGauss<dim-1> quadrature_formula (this->introspection().polynomial_degree.velocities + 1);
+      const Quadrature<dim-1> &quadrature_formula = this->introspection().face_quadratures.velocities;
 
       FEFaceValues<dim> fe_face_values (this->get_mapping(),
                                         this->get_fe(),
@@ -63,6 +62,7 @@ namespace aspect
 
       MaterialModel::MaterialModelInputs<dim> in(fe_face_values.n_quadrature_points, this->n_compositional_fields());
       MaterialModel::MaterialModelOutputs<dim> out(fe_face_values.n_quadrature_points, this->n_compositional_fields());
+      in.requested_properties = MaterialModel::MaterialProperties::density;
 
       // for every surface face on which it makes sense to compute a
       // mass flux and that is owned by this processor,

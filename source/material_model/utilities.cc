@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -612,11 +612,11 @@ namespace aspect
             {
               first_natural_variable = column_name;
               in >> column_name;
-              AssertThrow(column_name == "P(bar)", ExcMessage("The second column name in PerpleX lookup file " + filename + " should be T(K)."))
+              AssertThrow(column_name == "P(bar)", ExcMessage("The second column name in PerpleX lookup file " + filename + " should be P(bar)."))
             }
           else
             {
-              AssertThrow(false, ExcMessage("The first column name in PerpleX lookup file " + filename + " should be P(bar) or T(K)."))
+              AssertThrow(false, ExcMessage("The first column name in the PerpleX lookup file " + filename + " should be P(bar) or T(K)."))
             }
 
           for (unsigned int n=2; n<n_columns; n++)
@@ -1067,6 +1067,16 @@ namespace aspect
               function_value = (pressure_deviation > 0) ? 1. : 0.;
             else
               function_value = 0.5*(1.0 + std::tanh(pressure_deviation / transition_pressure_widths[in.phase_index]));
+            if(in.temperature<kinetic_temperatures_activation[in.phase_index])
+            {
+                    function_value = 0.;
+            }else
+            {
+            if (transition_pressure_widths[in.phase_index] == 0)
+              function_value = (pressure_deviation > 0) ? 1. : 0.;
+            else
+              function_value = 0.5*(1.0 + std::tanh(pressure_deviation / transition_pressure_widths[in.phase_index]));      
+            }            
           }
 
         return function_value;
@@ -1209,6 +1219,14 @@ namespace aspect
                            "For negative slopes the other way round. "
                            "List must have the same number of entries as Phase transition depths. "
                            "Units: \\si{\\pascal\\per\\kelvin}.");
+        prm.declare_entry ("Blocking temperatures", "",
+                           Patterns::Anything(),
+                           "A list of temperatures where phase transitions occur. Higher or lower "
+                           "temperatures lead to phase transition occurring in smaller or greater "
+                           "depths than given in Phase transition depths, depending on the "
+                           "Clapeyron slope given in Phase transition Clapeyron slopes. "
+                           "List must have the same number of entries as Phase transition depths. "
+                           "Units: \\si{\\kelvin}.");         
       }
 
 
@@ -1279,6 +1297,13 @@ namespace aspect
                                                                   true,
                                                                   n_phase_transitions_per_composition,
                                                                   true);
+        kinetic_temperatures_activation = Utilities::parse_map_to_double_array (prm.get("Blocking temperatures"),
+                                                                        list_of_composition_names,
+                                                                        has_background_field,
+                                                                        "Blocking temperatures",
+                                                                        true,
+                                                                        n_phase_transitions_per_composition,
+                                                                        true);          
       }
     }
   }

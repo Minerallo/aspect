@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2019 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -34,7 +34,7 @@ namespace aspect
     {
       template <int dim>
       DruckerPrager<dim>::DruckerPrager ()
-      {}
+        = default;
 
       template <int dim>
       const DruckerPragerParameters
@@ -61,8 +61,7 @@ namespace aspect
             drucker_prager_parameters.cohesion = MaterialModel::MaterialUtilities::phase_average_value(phase_function_values, n_phases_per_composition,
                                                  cohesions, composition);
           }
-        return drucker_prager_parameters;
-      }
+        
 
       template <int dim>
       double
@@ -170,6 +169,7 @@ namespace aspect
       void
       DruckerPrager<dim>::declare_parameters (ParameterHandler &prm)
       {
+          
         prm.declare_entry ("Angles of internal friction", "0.",
                            Patterns::Anything(),
                            "List of angles of internal friction, $\\phi$, for background material and compositional fields, "
@@ -209,6 +209,7 @@ namespace aspect
         const std::vector<std::string> list_of_composition_names = this->introspection().get_composition_names();
         // Establish that a background field is required here
         const bool has_background_field = true;
+        
 
         angles_internal_friction = Utilities::parse_map_to_double_array(prm.get("Angles of internal friction"),
                                                                         list_of_composition_names,

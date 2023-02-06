@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011-2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022-2021 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -35,7 +35,7 @@ namespace aspect
     ViscousDissipationStatistics<dim>::execute (TableHandler &statistics)
     {
       // Create a quadrature formula based on the velocity element.
-      const QGauss<dim> quadrature_formula(this->get_fe().base_element(this->introspection().base_elements.velocities).degree + 1);
+      const Quadrature<dim> &quadrature_formula = this->introspection().quadratures.velocities;
 
       const unsigned int n_q_points = quadrature_formula.size();
 
@@ -58,6 +58,7 @@ namespace aspect
                                                                      n_compositional_fields);
       typename MaterialModel::Interface<dim>::MaterialModelOutputs out(n_q_points,
                                                                        n_compositional_fields);
+      in.requested_properties = MaterialModel::MaterialProperties::viscosity;
 
       for (const auto &cell : this->get_dof_handler().active_cell_iterators())
         if (cell->is_locally_owned())
@@ -68,7 +69,6 @@ namespace aspect
                       cell,
                       this->introspection(),
                       this->get_solution());
-            in.requested_properties = MaterialModel::MaterialProperties::viscosity;
 
             this->get_material_model().fill_additional_material_model_inputs(in,
                                                                              this->get_solution(),

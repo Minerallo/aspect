@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -329,7 +329,7 @@ namespace aspect
               in.velocity[0] = Tensor<1,dim> ();
               for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
                 in.composition[0][c] = this->get_initial_composition_manager().initial_composition(position, c);
-              in.strain_rate.resize(0);
+              in.requested_properties = MaterialModel::MaterialProperties::thermal_expansion_coefficient;
 
               this->get_material_model().evaluate(in, out);
 

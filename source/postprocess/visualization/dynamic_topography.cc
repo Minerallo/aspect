@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -32,7 +32,8 @@ namespace aspect
       DynamicTopography ()
         :
         DataPostprocessorScalar<dim> ("dynamic_topography",
-                                      update_quadrature_points)
+                                      update_quadrature_points),
+        Interface<dim>("m")
       {}
 
 
@@ -45,8 +46,8 @@ namespace aspect
       {
         // Initialize everything to zero, so that we can ignore faces we are
         // not interested in (namely, those not labeled as 'top' or 'bottom'
-        for (unsigned int q=0; q<computed_quantities.size(); ++q)
-          computed_quantities[q](0) = 0;
+        for (auto &quantity : computed_quantities)
+          quantity(0) = 0;
 
         const Postprocess::DynamicTopography<dim> &dynamic_topography =
           this->get_postprocess_manager().template get_matching_postprocessor<Postprocess::DynamicTopography<dim>>();
@@ -148,7 +149,9 @@ namespace aspect
                                                   "Alternatively, consider using the "
                                                   "\"surface dynamic topography\" visualization postprocessor "
                                                   "to only output the dynamic topography at the boundary of "
-                                                  "the domain.")
+                                                  "the domain."
+                                                  "\n\n"
+                                                  "Physical units: \\si{\\meter}.")
     }
   }
 }

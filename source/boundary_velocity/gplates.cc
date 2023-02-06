@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -188,8 +188,8 @@ namespace aspect
           {
             velocities[i]
               = std::make_unique<Functions::InterpolatedUniformGridData<2>> (grid_extent,
-                                                                             table_intervals,
-                                                                             velocity_values[i]);
+                                                                              table_intervals,
+                                                                              velocity_values[i]);
           }
 
         AssertThrow(i == n_points,
@@ -727,12 +727,12 @@ namespace aspect
 
       if ((this->get_time() - first_data_file_model_time >= 0.0) && (this->get_geometry_model().depth(position) <= lithosphere_thickness + magic_number))
         {
-          const Tensor<1,dim> data = lookup->surface_velocity(position);
+          const Tensor<1,dim> data = velocity_scaling_factor * lookup->surface_velocity(position);
 
           if (!time_dependent)
             return data;
 
-          const Tensor<1,dim> old_data = old_lookup->surface_velocity(position);
+          const Tensor<1,dim> old_data = velocity_scaling_factor * old_lookup->surface_velocity(position);
 
           return time_weight * data + (1 - time_weight) * old_data;
         }
@@ -830,7 +830,7 @@ namespace aspect
           first_data_file_model_time = prm.get_double ("First data file model time");
           first_data_file_number     = prm.get_integer("First data file number");
           decreasing_file_order      = prm.get_bool   ("Decreasing file order");
-          scale_factor               = prm.get_double ("Scale factor");
+          velocity_scaling_factor    = prm.get_double ("Scale factor");
           point1                     = prm.get        ("Point one");
           point2                     = prm.get        ("Point two");
           lithosphere_thickness      = prm.get_double ("Lithosphere thickness");

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -227,7 +227,7 @@ namespace aspect
 
     template <int dim>
     std::unique_ptr<Manifold<dim,3>>
-                                  EllipsoidalChunk<dim>::EllipsoidalChunkGeometry::clone() const
+    EllipsoidalChunk<dim>::EllipsoidalChunkGeometry::clone() const
     {
       return std::make_unique<EllipsoidalChunkGeometry>(*this);
     }
@@ -681,7 +681,7 @@ namespace aspect
 
     template <int dim>
     const std::vector<Point<2>> &
-                             EllipsoidalChunk<dim>::get_corners() const
+    EllipsoidalChunk<dim>::get_corners() const
     {
       return corners;
     }

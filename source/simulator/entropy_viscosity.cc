@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2016 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2016 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -44,7 +44,10 @@ namespace aspect
       return numbers::signaling_nan<double>();
 
     // record maximal entropy on Gauss quadrature points
-    const QGauss<dim> quadrature_formula (advection_field.polynomial_degree(introspection)+1);
+    const Quadrature<dim> &quadrature_formula
+      = (advection_field.is_temperature() ?
+         introspection.quadratures.temperature :
+         introspection.quadratures.compositional_fields);
     const unsigned int n_q_points = quadrature_formula.size();
 
     const FEValuesExtractors::Scalar field = advection_field.scalar_extractor(introspection);
@@ -138,7 +141,7 @@ namespace aspect
           residual[j] += new_residual[j];
 
         if (auto *stabilization_assembler =
-              dynamic_cast<Assemblers::AdvectionStabilizationInterface<dim>* > ((assemblers->advection_system[i]).get()))
+              dynamic_cast<Assemblers::AdvectionStabilizationInterface<dim>*> ((assemblers->advection_system[i]).get()))
           {
             // Ensure no other assembler has set max_advection_prefactor or max_conductivity before,
             // otherwise we dont know which one to use.
@@ -305,7 +308,7 @@ namespace aspect
                                   QGauss<dim>(advection_field.polynomial_degree(introspection)
                                               +
                                               (parameters.stokes_velocity_degree+1)/2),
-                                  QTrapez<dim-1> (),
+                                  QTrapezoid<dim-1> (),
                                   update_flags,
                                   face_update_flags,
                                   introspection.n_compositional_fields,
@@ -700,7 +703,7 @@ namespace aspect
                                                           const bool skip_interior_cells) const; \
   template void Simulator<dim>::get_artificial_viscosity (Vector<float> &viscosity_per_cell,  \
                                                           const AdvectionField &advection_field, \
-                                                          const bool skip_interior_cells) const; \
+                                                          const bool skip_interior_cells) const;
 
 
   ASPECT_INSTANTIATE(INSTANTIATE)

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -33,6 +33,15 @@ namespace aspect
   {
     namespace VisualizationPostprocessors
     {
+      template <int dim>
+      GrainLagAngle<dim>::
+      GrainLagAngle ()
+        :
+        CellDataVectorCreator<dim>("radian")
+      {}
+
+
+
       template<int dim>
       std::pair<std::string, Vector<float> *> GrainLagAngle<dim>::execute() const
       {
@@ -63,7 +72,7 @@ namespace aspect
                         this->get_solution(), true);
               // Also get velocity gradients
               std::vector<Tensor<2, dim>> velocity_gradient(n_q_points,
-                                                            Tensor<2, dim>());
+                                                             Tensor<2, dim>());
               fe_values[this->introspection().extractors.velocities].get_function_gradients(
                 this->get_solution(), velocity_gradient);
 
@@ -163,7 +172,9 @@ namespace aspect
                                                   "which we calculate as the first eigenvector of "
                                                   "the 'left stretch' tensor. "
                                                   "$\\Theta$ can be used to calculate the grain "
-                                                  "orientation lag parameter.")
+                                                  "orientation lag parameter."
+                                                  "\n\n"
+                                                  "Physical units: \\si{\\radian}.")
     }
   }
 }

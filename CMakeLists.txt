@@ -1,4 +1,4 @@
-# Copyright (C) 2013 - 2021 by the authors of the ASPECT code.
+# Copyright (C) 2013 - 2022 by the authors of the ASPECT code.
 #
 # This file is part of ASPECT.
 #
@@ -69,6 +69,7 @@ ENDFOREACH()
 INCLUDE_DIRECTORIES(BEFORE ${CMAKE_BINARY_DIR}/include include)
 INCLUDE_DIRECTORIES(AFTER  contrib/catch)
 
+# Generate compile_commands.json for tooling (VS Code, etc.)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 LIST(APPEND CMAKE_MODULE_PATH
@@ -77,7 +78,7 @@ LIST(APPEND CMAKE_MODULE_PATH
   )
 
 FIND_PACKAGE(deal.II 9.3.0 QUIET
-  HINTS ${deal.II_DIR} ${DEAL_II_DIR} ../ ../../ $ENV{DEAL_II_DIR}
+  HINTS ${deal.II_DIR} ${DEAL_II_DIR} $ENV{DEAL_II_DIR}
   )
 IF(NOT ${deal.II_FOUND})
   MESSAGE(FATAL_ERROR "\n*** Could not find a suitably recent version of deal.II. ***\n"
@@ -139,19 +140,35 @@ if(ASPECT_WITH_WORLD_BUILDER)
   MESSAGE(STATUS "Using World Builder version ${WORLD_BUILDER_VERSION} found at ${WORLD_BUILDER_SOURCE_DIR}.")
 
   # add source and include dirs:
-  FILE(GLOB_RECURSE wb_files "${WORLD_BUILDER_SOURCE_DIR}/source/*.cc")
+  IF(WORLD_BUILDER_VERSION VERSION_LESS 0.5.0)
+    FILE(GLOB_RECURSE wb_files "${WORLD_BUILDER_SOURCE_DIR}/source/*.cc")
+  ELSE()
+    FILE(GLOB_RECURSE wb_files "${WORLD_BUILDER_SOURCE_DIR}/source/world_builder/*.cc")
+  ENDIF()
   LIST(APPEND TARGET_SRC ${wb_files})
 
   # generate config.cc and include it:
-  CONFIGURE_FILE("${WORLD_BUILDER_SOURCE_DIR}/source/config.cc.in" "${CMAKE_BINARY_DIR}/world_builder_config.cc" @ONLY)
-  LIST(INSERT TARGET_SRC 0 "${CMAKE_BINARY_DIR}/world_builder_config.cc")
+  IF(WORLD_BUILDER_VERSION VERSION_LESS 0.5.0)
+    CONFIGURE_FILE("${WORLD_BUILDER_SOURCE_DIR}/source/config.cc.in" "${CMAKE_BINARY_DIR}/source/world_builder/config.cc" @ONLY)
+    LIST(INSERT TARGET_SRC 0 "${CMAKE_BINARY_DIR}/source/world_builder/config.cc")
+    FILE(REMOVE "${CMAKE_BINARY_DIR}/include/world_builder/config.h")
+  ELSE()
+    CONFIGURE_FILE("${WORLD_BUILDER_SOURCE_DIR}/include/world_builder/config.h.in" "${CMAKE_BINARY_DIR}/include/world_builder/config.h" @ONLY)
+    INCLUDE_DIRECTORIES("${CMAKE_BINARY_DIR}/include/")
+    FILE(REMOVE "${CMAKE_BINARY_DIR}/source/world_builder/config.cc")
+  ENDIF()
 
   # Move some file to the end for unity builds to make sure other file come
   # "before". Note: The current design keeps all ASPECT files (including
   # ASPECT_UNITY_LAST files) before all GWB files. Mixing them will causes
   # many issues with non-unique namespace names like Utilities.
-  SET(UNITY_WB_LAST_FILES
-  "${WORLD_BUILDER_SOURCE_DIR}/source/parameters.cc")
+  IF(WORLD_BUILDER_VERSION VERSION_LESS 0.5.0)
+    SET(UNITY_WB_LAST_FILES
+    "${WORLD_BUILDER_SOURCE_DIR}/source/parameters.cc")
+  ELSE()
+    SET(UNITY_WB_LAST_FILES
+    "${WORLD_BUILDER_SOURCE_DIR}/source/world_builder/parameters.cc")
+  ENDIF()
 
   FOREACH(_source_file ${UNITY_WB_LAST_FILES})
     LIST(FIND TARGET_SRC ${_source_file} _index)
@@ -479,8 +496,28 @@ IF(NOT ASPECT_ADDITIONAL_CXX_FLAGS STREQUAL "")
   MESSAGE(STATUS "  DEAL_II_CXX_FLAGS_RELEASE: ${DEAL_II_CXX_FLAGS_RELEASE}")
 ENDIF()
 
+# Check if a fastscape library is available, if so link it with aspect.
+# If the library is not found, then remove fastscape .cc and .h from list
+# so aspect can still compile.
+# TODO: likely need to switch ENV and normal positions so it checks ENV second.
+FIND_LIBRARY(FASTSCAPE NAMES fastscapelib_fortran PATHS $ENV{FASTSCAPE_DIR} ${FASTSCAPE_DIR} PATH_SUFFIXES lib NO_DEFAULT_PATH)
+IF(FASTSCAPE)
+  MESSAGE(STATUS "FastScape found at ${FASTSCAPE}")
+ELSE()
+  FIND_FILE(FASTSCAPE_SRC fastscape.cc HINTS "${CMAKE_SOURCE_DIR}/source/mesh_deformation")
+  LIST(REMOVE_ITEM TARGET_SRC ${FASTSCAPE_SRC})
+  MESSAGE(STATUS "FastScape library not found")
+ENDIF()
+
 ADD_EXECUTABLE(${TARGET} ${TARGET_SRC})
 DEAL_II_SETUP_TARGET(${TARGET})
+
+# Library needs to be linked after executable is added, but if fastscape isn't found
+# then the .cc files need to be removed before.
+# TODO: find a way to do this where they don't have to be separated.
+IF(FASTSCAPE)
+  TARGET_LINK_LIBRARIES(${TARGET} ${FASTSCAPE})
+ENDIF()
 
 # deal.II does not define NDEBUG, but the world builder relies on it to disable
 # its asserts in release mode. Set it manually for anything but debug mode.
@@ -673,6 +710,16 @@ ELSE()
 ENDIF()
 
 
+###########################################################
+# Having configured most of the compilation phase, now also
+# deal with other parts of the system.
+###########################################################
+
+# Start with the documentation
+
+ADD_SUBDIRECTORY(doc)
+
+
 # Find the deal.II parameter GUI and install helper script
 FIND_PROGRAM(PARAMETER_GUI_EXECUTABLE
         parameter_gui
@@ -680,7 +727,7 @@ FIND_PROGRAM(PARAMETER_GUI_EXECUTABLE
         PATH bin)
 MARK_AS_ADVANCED(CLEAR PARAMETER_GUI_EXECUTABLE)
 
-# did the user specify something that doesn't exist?
+# Did the user specify something that doesn't exist?
 IF (PARAMETER_GUI_EXECUTABLE
         AND
     (NOT EXISTS ${PARAMETER_GUI_EXECUTABLE} OR IS_DIRECTORY ${PARAMETER_GUI_EXECUTABLE}))

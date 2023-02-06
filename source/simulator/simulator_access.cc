@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -408,23 +408,6 @@ namespace aspect
 
 
   template <int dim>
-  void
-  SimulatorAccess<dim>::compute_material_model_input_values (const LinearAlgebra::BlockVector                            &input_solution,
-                                                             const FEValuesBase<dim,dim>                                 &input_finite_element_values,
-                                                             const typename DoFHandler<dim>::active_cell_iterator        &cell,
-                                                             const bool                                                   compute_strainrate,
-                                                             MaterialModel::MaterialModelInputs<dim> &material_model_inputs) const
-  {
-    simulator->compute_material_model_input_values(input_solution,
-                                                   input_finite_element_values,
-                                                   cell,
-                                                   compute_strainrate,
-                                                   material_model_inputs);
-  }
-
-
-
-  template <int dim>
   const std::map<types::boundary_id,std::unique_ptr<BoundaryTraction::Interface<dim>>> &
   SimulatorAccess<dim>::get_boundary_traction () const
   {
@@ -596,12 +579,45 @@ namespace aspect
   }
 
 
+
+  template <int dim>
+  std::shared_ptr<const InitialTemperature::Manager<dim>>
+  SimulatorAccess<dim>::get_initial_temperature_manager_pointer () const
+  {
+    Assert (simulator->initial_temperature_manager,
+            ExcMessage ("You are trying to access the initial temperature manager "
+                        "object, but the Simulator object is no longer keeping "
+                        "track of it because the initial time has passed. If "
+                        "you need to access this object after the first time "
+                        "step, you need to copy the object returned by "
+                        "this function before or during the first time step "
+                        "into a std::shared_ptr that lives long enough to "
+                        "extend the lifetime of the object pointed to "
+                        "beyond the time frame that the Simulator object "
+                        "keeps track of it."));
+    return simulator->initial_temperature_manager;
+  }
+
+
+
   template <int dim>
   const InitialTemperature::Manager<dim> &
   SimulatorAccess<dim>::get_initial_temperature_manager () const
   {
-    return simulator->initial_temperature_manager;
+    Assert (simulator->initial_temperature_manager,
+            ExcMessage ("You are trying to access the initial temperature manager "
+                        "object, but the Simulator object is no longer keeping "
+                        "track of it because the initial time has passed. If "
+                        "you need to access this object after the first time "
+                        "step, you need to copy the object returned by "
+                        "this function before or during the first time step "
+                        "into a std::shared_ptr that lives long enough to "
+                        "extend the lifetime of the object pointed to "
+                        "beyond the time frame that the Simulator object "
+                        "keeps track of it."));
+    return *simulator->initial_temperature_manager;
   }
+
 
 
   template <int dim>
@@ -614,12 +630,45 @@ namespace aspect
   }
 
 
+
+  template <int dim>
+  std::shared_ptr<const InitialComposition::Manager<dim>>
+  SimulatorAccess<dim>::get_initial_composition_manager_pointer () const
+  {
+    Assert (simulator->initial_composition_manager,
+            ExcMessage ("You are trying to access the initial composition manager "
+                        "object, but the Simulator object is no longer keeping "
+                        "track of it because the initial time has passed. If "
+                        "you need to access to this object after the first time "
+                        "step, you need to copy the object returned by "
+                        "this function before or during the first time step "
+                        "into a std::shared_ptr that lives long enough to "
+                        "extend the lifetime of the object pointed to "
+                        "beyond the timeframe that the Simulator object "
+                        "keeps track of it."));
+    return simulator->initial_composition_manager;
+  }
+
+
+
   template <int dim>
   const InitialComposition::Manager<dim> &
   SimulatorAccess<dim>::get_initial_composition_manager () const
   {
-    return simulator->initial_composition_manager;
+    Assert (simulator->initial_composition_manager,
+            ExcMessage ("You are trying to access the initial composition manager "
+                        "object, but the Simulator object is no longer keeping "
+                        "track of it because the initial time has passed. If "
+                        "you need access to this object after the first time "
+                        "step, you need to copy the object returned by "
+                        "this function before or during the first time step "
+                        "into a std::shared_ptr that lives long enough to "
+                        "extend the lifetime of the object pointed to "
+                        "beyond the timeframe that the Simulator object "
+                        "keeps track of it."));
+    return *simulator->initial_composition_manager;
   }
+
 
 
   template <int dim>
@@ -670,9 +719,42 @@ namespace aspect
   SimulatorAccess<dim>::get_world_builder () const
   {
     Assert (simulator->world_builder.get() != nullptr,
-            ExcMessage("You can not call this function if the World Builder is not enabled. "
-                       "Enable it by providing a path to a world builder file."));
-    return *(simulator->world_builder);
+            ExcMessage ("You are trying to access the WorldBuilder "
+                        "object, but the Simulator object is not currently storing "
+                        "a valid pointer to such an object. This is likely "
+                        "because the Simulator object is no longer keeping "
+                        "track of wht WorldBuilder object because "
+                        "the initial time has passed. If "
+                        "you need to access this object after the first time "
+                        "step, you need to copy the object returned by "
+                        "this function before or during the first time step "
+                        "into a std::shared_ptr that lives long enough to "
+                        "extend the lifetime of the object pointed to "
+                        "beyond the time frame that the Simulator object "
+                        "keeps track of it."));
+    return *simulator->world_builder;
+  }
+
+
+  template <int dim>
+  std::shared_ptr<const WorldBuilder::World>
+  SimulatorAccess<dim>::get_world_builder_pointer () const
+  {
+    Assert (simulator->world_builder.get() != nullptr,
+            ExcMessage ("You are trying to access the WorldBuilder "
+                        "object, but the Simulator object is not currently storing "
+                        "a valid pointer to such an object. This is likely "
+                        "because the Simulator object is no longer keeping "
+                        "track of wht WorldBuilder object because "
+                        "the initial time has passed. If "
+                        "you need to access this object after the first time "
+                        "step, you need to copy the object returned by "
+                        "this function before or during the first time step "
+                        "into a std::shared_ptr that lives long enough to "
+                        "extend the lifetime of the object pointed to "
+                        "beyond the time frame that the Simulator object "
+                        "keeps track of it."));
+    return simulator->world_builder;
   }
 #endif
 

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2019 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -111,15 +111,6 @@ namespace aspect
          */
 
         /**
-         * @name Reference quantities
-         * @{
-         */
-        double reference_viscosity () const override;
-        /**
-         * @}
-         */
-
-        /**
          * @name Functions used in dealing with run-time parameters
          * @{
          */
@@ -142,7 +133,6 @@ namespace aspect
       private:
 
         double reference_T;
-        double reference_eta;
         double thermal_conductivities;
 
         EquationOfState::LinearizedIncompressible<dim> equation_of_state;

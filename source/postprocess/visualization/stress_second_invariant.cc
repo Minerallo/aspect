@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -35,7 +35,8 @@ namespace aspect
       StressSecondInvariant ()
         :
         DataPostprocessorScalar<dim> ("stress_second_invariant",
-                                      update_values | update_gradients | update_quadrature_points)
+                                      update_values | update_gradients | update_quadrature_points),
+        Interface<dim>("Pa")
       {}
 
 
@@ -103,7 +104,7 @@ namespace aspect
             // in the same way as the second moment invariant of the deviatoric
             // strain rate is computed in the viscoplastic material model.
             // TODO check that this is valid for the compressible case.
-            const double stress_invariant = std::sqrt(std::fabs(second_invariant(deviatoric_stress)));
+            const double stress_invariant = std::sqrt(std::max(-second_invariant(deviatoric_stress), 0.));
 
             computed_quantities[q](0) = stress_invariant;
           }
@@ -129,7 +130,9 @@ namespace aspect
       ASPECT_REGISTER_VISUALIZATION_POSTPROCESSOR(StressSecondInvariant,
                                                   "stress second invariant",
                                                   "A visualization output object that outputs "
-                                                  "the second moment invariant of the deviatoric stress tensor.")
+                                                  "the second moment invariant of the deviatoric stress tensor."
+                                                  "\n\n"
+                                                  "Physical units: \\si{\\pascal}.")
     }
   }
 }

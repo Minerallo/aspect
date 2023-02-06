@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -656,7 +656,7 @@ namespace aspect
 
       // Calculate core mantle boundary heat flow
       {
-        const QGauss<dim-1> quadrature_formula (this->get_fe().base_element(this->introspection().base_elements.temperature).degree+1);
+        const Quadrature<dim-1> &quadrature_formula = this->introspection().face_quadratures.temperature;
         FEFaceValues<dim> fe_face_values (this->get_mapping(),
                                           this->get_fe(),
                                           quadrature_formula,
@@ -675,6 +675,9 @@ namespace aspect
 
         typename MaterialModel::Interface<dim>::MaterialModelInputs in(fe_face_values.n_quadrature_points, this->n_compositional_fields());
         typename MaterialModel::Interface<dim>::MaterialModelOutputs out(fe_face_values.n_quadrature_points, this->n_compositional_fields());
+        // Do not request viscosity or reaction rates
+        in.requested_properties = MaterialModel::MaterialProperties::equation_of_state_properties |
+                                  MaterialModel::MaterialProperties::thermal_conductivity;
 
         // for every surface face on which it makes sense to compute a
         // heat flux and that is owned by this processor,

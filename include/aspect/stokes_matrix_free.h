@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2018 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -51,6 +51,33 @@ using GMGNumberType = double;
 namespace aspect
 {
   using namespace dealii;
+
+  namespace internal
+  {
+    /**
+     * Matrix-free operators must use deal.II defined vectors, while the rest of the ASPECT
+     * software is based on Trilinos vectors. Here we define functions which copy between the
+     * vector types.
+     */
+    namespace ChangeVectorTypes
+    {
+      void import(TrilinosWrappers::MPI::Vector &out,
+                  const dealii::LinearAlgebra::ReadWriteVector<double> &rwv,
+                  const VectorOperation::values                 operation);
+
+      void copy(TrilinosWrappers::MPI::Vector &out,
+                const dealii::LinearAlgebra::distributed::Vector<double> &in);
+
+      void copy(dealii::LinearAlgebra::distributed::Vector<double> &out,
+                const TrilinosWrappers::MPI::Vector &in);
+
+      void copy(TrilinosWrappers::MPI::BlockVector &out,
+                const dealii::LinearAlgebra::distributed::BlockVector<double> &in);
+
+      void copy(dealii::LinearAlgebra::distributed::BlockVector<double> &out,
+                const TrilinosWrappers::MPI::BlockVector &in);
+    }
+  }
 
   /**
    * This namespace contains all matrix-free operators used in the Stokes solver.
@@ -358,9 +385,9 @@ namespace aspect
   }
 
   /**
-    * Base class for the matrix free GMG solver for the Stokes system. The
-    * actual implementation is found inside StokesMatrixFreeHandlerImplementation below.
-    */
+   * Base class for the matrix free GMG solver for the Stokes system. The
+   * actual implementation is found inside StokesMatrixFreeHandlerImplementation below.
+   */
   template<int dim>
   class StokesMatrixFreeHandler
   {

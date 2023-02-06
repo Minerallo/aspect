@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2019 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -161,15 +161,6 @@ namespace aspect
            * from parameter file.
            */
           bool use_fixed_elastic_time_step;
-
-          /**
-           * Bool indicating whether to use a stress averaging scheme to account
-           * for differences between the numerical and fixed elastic time step
-           * (if true). When set to false, the viscoelastic stresses are not
-           * modified to account for differences between the viscoelastic time
-           * step and the numerical time step. Read from parameter file.
-           */
-          bool use_stress_averaging;
 
           /**
            * Double for fixed elastic time step value, read from parameter file

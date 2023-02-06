@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2019 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -80,7 +80,7 @@ namespace aspect
                         std::vector<double> &output) override
         {
           const MaterialModel::UnscaledViscosityAdditionalOutputs<dim> *unscaled_viscosity_outputs
-            = out.template get_additional_output<const MaterialModel::UnscaledViscosityAdditionalOutputs<dim> >();
+            = out.template get_additional_output<const MaterialModel::UnscaledViscosityAdditionalOutputs<dim>>();
 
           Assert(unscaled_viscosity_outputs != nullptr,ExcInternalError());
 
@@ -109,12 +109,12 @@ namespace aspect
 
         void update() override
         {
-          std::vector<std::unique_ptr<internal::FunctorBase<dim> > > lateral_averaging_properties;
+          std::vector<std::unique_ptr<internal::FunctorBase<dim>>> lateral_averaging_properties;
           lateral_averaging_properties.push_back(std::make_unique<internal::FunctorDepthAverageUnscaledViscosity<dim>>());
 
           std::vector<std::vector<double>> averages =
-                                          this->get_lateral_averaging().compute_lateral_averages(reference_viscosity_coordinates,
-                                              lateral_averaging_properties);
+            this->get_lateral_averaging().compute_lateral_averages(reference_viscosity_coordinates,
+                                                                   lateral_averaging_properties);
 
           laterally_averaged_viscosity_profile.swap(averages[0]);
 
@@ -179,7 +179,7 @@ namespace aspect
                       MaterialModel::MaterialModelOutputs<dim> &out) const override
         {
           UnscaledViscosityAdditionalOutputs<dim> *unscaled_viscosity_out =
-            out.template get_additional_output<MaterialModel::UnscaledViscosityAdditionalOutputs<dim> >();
+            out.template get_additional_output<MaterialModel::UnscaledViscosityAdditionalOutputs<dim>>();
 
           for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
             {
@@ -210,11 +210,6 @@ namespace aspect
         bool is_compressible() const override
         {
           return false;
-        }
-
-        double reference_viscosity() const override
-        {
-          return 1;
         }
 
         void
@@ -265,7 +260,7 @@ namespace aspect
          * depth-dependent rheologies, or to compare (and potentially scale)
          * the grain-size dependent viscosity to a reference profile.
          */
-        std::unique_ptr<Rheology::AsciiDepthProfile<dim> > reference_viscosity_profile;
+        std::unique_ptr<Rheology::AsciiDepthProfile<dim>> reference_viscosity_profile;
 
         /**
          * Reference viscosity profile coordinates.

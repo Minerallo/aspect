@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -232,7 +232,7 @@ namespace aspect
         // the index j corresponds to the jth compositional field
         // the index k corresponds to the kth phase in the lookup
         std::vector<std::vector<double>> phase_volume_fractions(unique_phase_names.size(),
-                                                                std::vector<double>(in.n_evaluation_points(), 0.));
+                                                                 std::vector<double>(in.n_evaluation_points(), 0.));
         for (unsigned int i = 0; i < in.n_evaluation_points(); ++i)
           for (unsigned j = 0; j < material_lookup.size(); ++j)
             for (unsigned int k = 0; k < unique_phase_indices[j].size(); ++k)
@@ -260,7 +260,7 @@ namespace aspect
         // In the following function,
         // the index i corresponds to the ith evaluation point
         // the index j corresponds to the jth compositional field
-        std::vector<std::vector<double> > dominant_phase_indices(1, std::vector<double>(in.n_evaluation_points(),
+        std::vector<std::vector<double>> dominant_phase_indices(1, std::vector<double>(in.n_evaluation_points(),
                                                                                         std::numeric_limits<double>::quiet_NaN()));
         for (unsigned int i = 0; i < in.n_evaluation_points(); ++i)
           {
@@ -428,7 +428,7 @@ namespace aspect
         if (NamedAdditionalMaterialOutputs<dim> *phase_volume_fractions_out = out.template get_additional_output<NamedAdditionalMaterialOutputs<dim>>())
           fill_phase_volume_fractions(in, volume_fractions, phase_volume_fractions_out);
 
-        if (PhaseOutputs<dim> *dominant_phases_out = out.template get_additional_output<PhaseOutputs<dim> >())
+        if (PhaseOutputs<dim> *dominant_phases_out = out.template get_additional_output<PhaseOutputs<dim>>())
           fill_dominant_phases(in, volume_fractions, *dominant_phases_out);
       }
 
@@ -539,7 +539,7 @@ namespace aspect
               std::make_unique<MaterialModel::SeismicAdditionalOutputs<dim>> (n_points));
           }
 
-        if (out.template get_additional_output<PhaseOutputs<dim> >() == nullptr
+        if (out.template get_additional_output<PhaseOutputs<dim>>() == nullptr
             && material_lookup[0]->has_dominant_phase())
           {
             const unsigned int n_points = out.n_evaluation_points();

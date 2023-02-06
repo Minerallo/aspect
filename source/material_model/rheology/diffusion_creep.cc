@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2019 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -35,7 +35,7 @@ namespace aspect
     {
       template <int dim>
       DiffusionCreep<dim>::DiffusionCreep ()
-      {}
+        = default;
 
 
 
@@ -229,8 +229,9 @@ namespace aspect
         // that is masked anyway, like strain. Despite
         // these compositions being masked, their viscosities
         // are computed anyway and this will lead to division by zero.
-        for (unsigned int n = 0; n < prefactors_diffusion.size(); ++n)
-          AssertThrow(prefactors_diffusion[n] > 0., ExcMessage("The diffusion prefactor should be larger than zero."));
+        for (const double prefactor : prefactors_diffusion)
+          AssertThrow(prefactor > 0.,
+                      ExcMessage("The diffusion prefactor should be larger than zero."));
       }
     }
   }

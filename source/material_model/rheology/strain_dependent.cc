@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2019 - 2022 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -84,7 +84,7 @@ namespace aspect
                            "approximated as the product of the second invariant of the strain rate "
                            "in each time step and the time step size in regions where material is "
                            "not plastically yielding. This quantity is integrated and tracked over time, and "
-                           "used to weaken the the pre-yield viscosity. The cohesion and friction angle are "
+                           "used to weaken the pre-yield viscosity. The cohesion and friction angle are "
                            "not weakened."
                            "\n\n"
                            "\\item ``default'': The default option has the same behavior as ``none'', "
@@ -274,12 +274,16 @@ namespace aspect
                          Parameters<dim>::NonlinearSolver::single_Advection_iterated_Newton_Stokes
                          ||
                          this->get_parameters().nonlinear_solver ==
-                         Parameters<dim>::NonlinearSolver::single_Advection_iterated_defect_correction_Stokes),
+                         Parameters<dim>::NonlinearSolver::single_Advection_iterated_defect_correction_Stokes
+                         ||
+                         this->get_parameters().nonlinear_solver ==
+                         Parameters<dim>::NonlinearSolver::no_Advection_no_Stokes),
                         ExcMessage("The material model will only work with the nonlinear "
                                    "solver schemes 'single Advection, single Stokes', "
                                    "'single Advection, iterated Stokes', "
-                                   "'single Advection, iterated Newton Stokes', and "
-                                   "'single Advection, iterated defect correction Stokes' "
+                                   "'single Advection, iterated Newton Stokes', "
+                                   "'single Advection, iterated defect correction Stokes', and "
+                                   "'no Advection, no Stokes' "
                                    "when strain weakening is enabled, because more than one nonlinear "
                                    "advection iteration will result in the incorrect value of strain."));
           }
@@ -498,7 +502,12 @@ namespace aspect
         // Calculate changes in strain and update the reaction terms
         if  (this->simulator_is_past_initialization() && this->get_timestep_number() > 0 && in.requests_property(MaterialProperties::reaction_terms))
           {
-            const double edot_ii = std::max(sqrt(std::fabs(second_invariant(deviator(in.strain_rate[i])))),min_strain_rate);
+            Assert(std::isfinite(in.strain_rate[i].norm()),
+                   ExcMessage("Invalid strain_rate in the MaterialModelInputs. This is likely because it was "
+                              "not filled by the caller."));
+
+            const double edot_ii = std::max(std::sqrt(std::max(-second_invariant(deviator(in.strain_rate[i])), 0.)),
+                                            min_strain_rate);
             double delta_e_ii = edot_ii*this->get_timestep();
 
             // Adjusting strain values to account for strain healing without exceeding an unreasonable range

@@ -906,19 +906,19 @@ namespace aspect
           {
             functors.push_back(std::make_unique<FunctorDepthAverageVsVp<dim>> (false /* Vp */));
           }
-        else if (property_names[property_index] == "friction_angles")
+        else if (property_name == "friction_angles")
           {
             functors.push_back(std::make_unique<FunctorDepthAveragePlasticity<dim>> (true, false, false));
           }
-        else if (property_names[property_index] == "cohesions")
+        else if (property_name == "cohesions")
           {
             functors.push_back(std::make_unique<FunctorDepthAveragePlasticity<dim>> (false, true, false));
           }
-        else if (property_names[property_index] == "yield_stresses")
+        else if (property_name == "yield_stresses")
           {
             functors.push_back(std::make_unique<FunctorDepthAveragePlasticity<dim>> (false, false, true));
           }          
-        else if (property_names[property_index] == "viscosity")
+        else if (property_name == "viscosity")
           {
             functors.push_back(std::make_unique<FunctorDepthAverageViscosity<dim>>());
           }

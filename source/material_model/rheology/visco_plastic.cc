@@ -667,8 +667,8 @@ namespace aspect
         strain_rheology.initialize_simulator (this->get_simulator());
         strain_rheology.parse_parameters(prm);
 
-        friction_models.initialize_simulator (this->get_simulator());
-        friction_models.parse_parameters(prm);
+        // friction_models.initialize_simulator (this->get_simulator());
+        // friction_models.parse_parameters(prm);
 
         use_elasticity = prm.get_bool ("Include viscoelasticity");
 

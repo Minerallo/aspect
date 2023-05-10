@@ -105,6 +105,25 @@ namespace aspect
          * based on depth interpolation between computed pressure values.
          */
         double interpolate_pressure (const Point<dim> &p) const;
+<<<<<<< HEAD
+=======
+
+        /**
+         * Return whether the given point lies on the bottom boundary of
+         * the model domain.
+         */
+        bool point_on_bottom_boundary(const Point<dim> &p) const;
+
+        /**
+         * The boundary ids of those boundaries with prescribed tractions. 
+         */
+        std::set<types::boundary_id> traction_bi;
+
+        /**
+         * The vertical coordinate of the bottom domain boundary.
+         */
+        double bottom_vertical_coordinate;
+>>>>>>> e95680a95 (lithostatic pressure with topo)
     };
   }
 }

@@ -225,7 +225,7 @@ namespace aspect
             }
           }
       }else{
-        std::cout<<"not yet"<<std::endl;
+        // std::cout<<"not yet"<<std::endl;
       }
     }
 

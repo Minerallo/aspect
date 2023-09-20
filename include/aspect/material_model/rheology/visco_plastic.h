@@ -332,6 +332,13 @@ namespace aspect
            */
           bool use_adiabatic_pressure_in_creep;
 
+          /** 
+           * Whether to real or reference strain rate for stress limiter option
+           * If the user is using real then the stress limiter exponent
+           * is not used
+           */
+          bool use_real_strain_rate_for_stress_limiter; 
+          
           /**
            * List of exponents controlling the behaviour of the stress limiter
            * yielding mechanism.

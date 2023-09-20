@@ -343,12 +343,20 @@ namespace aspect
               {
                 case stress_limiter:
                 {
+                  if(use_real_strain_rate_for_stress_limiter)
+                  {
+                  //Step 5b-1: always rescale the viscosity back to the yield surface
+                  const double viscosity_limiter = yield_stress / (2.0 * edot_ii);                                              
+                  viscosity_yield = 1. / ( 1./viscosity_limiter + 1./viscosity_pre_yield);
+                  break;
+                  }else{
                   //Step 5b-1: always rescale the viscosity back to the yield surface
                   const double viscosity_limiter = yield_stress / (2.0 * ref_strain_rate)
                                                    * std::pow((edot_ii/ref_strain_rate),
                                                               1./exponents_stress_limiter[j] - 1.0);
                   viscosity_yield = 1. / ( 1./viscosity_limiter + 1./viscosity_pre_yield);
                   break;
+                  }
                 }
                 case drucker_prager:
                 {
@@ -598,6 +606,13 @@ namespace aspect
                            "large negative dynamic pressure, resulting in solver convergence "
                            "issue and in some cases a viscosity of zero.");
 
+        prm.declare_entry ("Use real strain rate", "false",
+                           Patterns::Bool (),
+                           "Whether to real or reference strain rate for stress limiter option"
+                           "If the user is using real then the stress limiter exponent"
+                           "is not used");
+                           
+
         // Diffusion creep parameters
         Rheology::DiffusionCreep<dim>::declare_parameters(prm);
 
@@ -688,6 +703,7 @@ namespace aspect
         // alpha_mobility = prm.get_double("Alpha mobility");
         // // alpha_mobility = Utilities::string_to_double(Utilities::split_string_list(prm.get("Alpha mobility")));
         // alpha_mobility_time = prm.get_double("Alpha mobility transition time");
+
         min_strain_rate = prm.get_double("Minimum strain rate");
         ref_strain_rate = prm.get_double("Reference strain rate");
         minimum_viscosity = Utilities::parse_map_to_double_array (prm.get("Minimum viscosity"),
@@ -773,6 +789,8 @@ namespace aspect
         drucker_prager_plasticity.parse_parameters(prm, expected_n_phases_per_composition);
 
         // Stress limiter parameter
+        use_real_strain_rate_for_stress_limiter = prm.get_bool ("Use real strain rate");   
+
         exponents_stress_limiter = Utilities::parse_map_to_double_array (prm.get("Stress limiter exponents"),
                                                                          list_of_composition_names,
                                                                          has_background_field,

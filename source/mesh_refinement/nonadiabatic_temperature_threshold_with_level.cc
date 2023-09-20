@@ -92,7 +92,7 @@ namespace aspect
             const int cell_level = cell->level();
             if (cell_level >= max_refinement_level)
                 {
-                clear_refine = true;
+                clear_refine = false;
                 }
             if (cell_level >  max_refinement_level)
                 {
@@ -152,7 +152,7 @@ namespace aspect
     {
       prm.enter_subsection("Mesh refinement");
       {
-        prm.enter_subsection("Nonadiabatic temperature threshold");
+        prm.enter_subsection("Nonadiabatic temperature threshold with level");
         {
           prm.declare_entry ("Threshold",
                              "100",

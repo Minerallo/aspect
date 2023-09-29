@@ -389,8 +389,17 @@ namespace aspect
 
 
           // Function to get alpha value at a given time
-          // double get_alpha(double current_time) const;          
-
+          // double get_alpha(double current_time) const;     
+          double composition_number_affected ;
+          double temperature_threshold;
+          double pressure_threshold;
+          double viscosity_decrease_factor;
+          bool use_drop_viscosity;
+          //Solidus temperature calculation with pressure     
+          bool use_solidus;
+          double A1;
+          double A2;
+          double A3;
       };
     }
   }

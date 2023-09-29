@@ -337,8 +337,29 @@ namespace aspect
                                                                                        pressure_for_plasticity,
                                                                                        drucker_prager_parameters.max_yield_stress);
 
-            // Step 5b: select if yield viscosity is based on Drucker Prager or stress limiter rheology
             double viscosity_yield = viscosity_pre_yield;
+
+            //Melt induce weakening
+            double temperature_solidus = 0 ;
+            if(use_drop_viscosity== true){
+                if(use_solidus==true){
+                  const double T_solidus        = A1 + 273.15
+                        + A2 * in.pressure[i]
+                        + A3 * in.pressure[i] * in.pressure[i];
+                  temperature_solidus = T_solidus ; 
+                }else{
+                  temperature_solidus = temperature_threshold;
+                }
+
+                if(in.composition[i][composition_number_affected]>0.5 && in.temperature[i]>temperature_solidus && in.pressure[i]<pressure_threshold)
+                {
+                viscosity_yield = viscosity_yield / viscosity_decrease_factor;    
+                }   
+            }
+                                                                                                
+
+            // Step 5b: select if yield viscosity is based on Drucker Prager or stress limiter rheology
+            
             switch (yield_mechanism)
               {
                 case stress_limiter:
@@ -611,7 +632,41 @@ namespace aspect
                            "Whether to real or reference strain rate for stress limiter option"
                            "If the user is using real then the stress limiter exponent"
                            "is not used");
-                           
+
+        //Melt weakening
+        prm.declare_entry ("Composition number affected", "5", Patterns::Double (0.),
+                             "Composition affected by the change of conductivity");        
+        prm.declare_entry ("A1", "1085.7",
+                            Patterns::Double (),
+                            "Constant parameter in the quadratic "
+                            "function that approximates the solidus "
+                            "of peridotite. "
+                            "Units: \\si{\\degreeCelsius}.");
+        prm.declare_entry ("A2", "1.329e-7",
+                            Patterns::Double (),
+                            "Prefactor of the linear pressure term "
+                            "in the quadratic function that approximates "
+                            "the solidus of peridotite. "
+                            "Units: \\si{\\degreeCelsius\\per\\pascal}.");
+        prm.declare_entry ("A3", "-5.1e-18",
+                            Patterns::Double (),
+                            "Prefactor of the quadratic pressure term "
+                            "in the quadratic function that approximates "
+                            "the solidus of peridotite. "
+                            "Units: \\si{\\degreeCelsius\\per\\pascal\\squared}.");
+        prm.declare_entry ("Viscosity decrease factor", "10", Patterns::Double (0.),
+                             "Factor for decrease of viscosity");         
+        prm.declare_entry("Use drop viscosity from melt", "false",
+                            Patterns::Bool(),
+                             "Drop viscosity depending on composition and tmperature threshold"); 
+        prm.declare_entry("Use solidus temperature", "false",
+                            Patterns::Bool(),
+                             "Use a solidus as a constrain for the viscosity drop");  
+        prm.declare_entry ("Temperature of activation", "10000", Patterns::Double (0.),
+                             "Temperature at which conductivity factor applies in Kelvin");
+        prm.declare_entry ("Pressure maximum of activation", "10000", Patterns::Double (0.),
+                             "Pressure maximum at which the decrease of viscosity will take place");                                                                                                                  
+
 
         // Diffusion creep parameters
         Rheology::DiffusionCreep<dim>::declare_parameters(prm);
@@ -703,6 +758,17 @@ namespace aspect
         // alpha_mobility = prm.get_double("Alpha mobility");
         // // alpha_mobility = Utilities::string_to_double(Utilities::split_string_list(prm.get("Alpha mobility")));
         // alpha_mobility_time = prm.get_double("Alpha mobility transition time");
+
+        //Melt_induce_weakening
+        composition_number_affected = prm.get_double("Composition number affected");
+        temperature_threshold = prm.get_double("Temperature of activation");
+        pressure_threshold = prm.get_double("Pressure maximum of activation");
+        viscosity_decrease_factor = prm.get_double("Viscosity decrease factor");
+        use_drop_viscosity = prm.get_bool("Use drop viscosity from melt");
+        use_solidus = prm.get_bool("Use solidus temperature");
+        A1              = prm.get_double ("A1");
+        A2              = prm.get_double ("A2");
+        A3              = prm.get_double ("A3");
 
         min_strain_rate = prm.get_double("Minimum strain rate");
         ref_strain_rate = prm.get_double("Reference strain rate");

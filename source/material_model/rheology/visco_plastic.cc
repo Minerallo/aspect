@@ -633,7 +633,7 @@ namespace aspect
                            "If the user is using real then the stress limiter exponent"
                            "is not used");
 
-        //Melt weakening
+        //Melt weakening test
         prm.declare_entry ("Composition number affected", "5", Patterns::Double (0.),
                              "Composition affected by the change of conductivity");        
         prm.declare_entry ("A1", "1085.7",

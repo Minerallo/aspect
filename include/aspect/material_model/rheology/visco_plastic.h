@@ -390,7 +390,7 @@ namespace aspect
 
           // Function to get alpha value at a given time
           // double get_alpha(double current_time) const;     
-          double composition_number_affected ;
+          double composition_number_affected_double ;
           double temperature_threshold;
           double pressure_threshold;
           double viscosity_decrease_factor;

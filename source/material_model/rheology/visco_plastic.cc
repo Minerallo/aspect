@@ -149,6 +149,7 @@ namespace aspect
           edot_ii = std::max(std::sqrt(std::max(-second_invariant(deviator(in.strain_rate[i])), 0.)),
                              min_strain_rate);
 
+
         // Calculate viscosities for each of the individual compositional phases
         for (unsigned int j=0; j < volume_fractions.size(); ++j)
           {
@@ -337,25 +338,33 @@ namespace aspect
                                                                                        pressure_for_plasticity,
                                                                                        drucker_prager_parameters.max_yield_stress);
 
-            double viscosity_yield = viscosity_pre_yield;
+            double viscosity_yield = viscosity_pre_yield;          
 
-            //Melt induce weakening
+            // Melt induce weakening
+            int composition_number_affected = static_cast<int>(composition_number_affected_double);
+
             double temperature_solidus = 0 ;
             if(use_drop_viscosity== true){
+              //  std::cout<<"Drop viscosity" <<std::endl;
+
                 if(use_solidus==true){
                   const double T_solidus        = A1 + 273.15
                         + A2 * in.pressure[i]
                         + A3 * in.pressure[i] * in.pressure[i];
                   temperature_solidus = T_solidus ; 
                 }else{
+                  // std::cout<<"No solidus" <<std::endl;
                   temperature_solidus = temperature_threshold;
                 }
-
-                if(in.composition[i][composition_number_affected]>0.5 && in.temperature[i]>temperature_solidus && in.pressure[i]<pressure_threshold)
+                if(composition_number_affected>=0)
                 {
-                viscosity_yield = viscosity_yield / viscosity_decrease_factor;    
-                }   
-            }
+                  if(volume_fractions[composition_number_affected]>0.5 && in.temperature[i]>temperature_solidus && in.pressure[i]<pressure_threshold)
+                    {
+                      // std::cout<<"Compo assigned###########" <<std::endl;
+                      viscosity_yield = viscosity_yield / viscosity_decrease_factor;    
+                    }
+                }
+             }
                                                                                                 
 
             // Step 5b: select if yield viscosity is based on Drucker Prager or stress limiter rheology
@@ -633,11 +642,14 @@ namespace aspect
                            "If the user is using real then the stress limiter exponent"
                            "is not used");
 
-        //Melt weakening test
-        prm.declare_entry ("Composition number affected", "5", Patterns::Double (0.),
-                             "Composition affected by the change of conductivity");        
+        //Melt weakening
+        prm.declare_entry ("Composition number affected", "5", Patterns::Double (),
+                             "Composition affected by the change of conductivity");  
+                             
+  
+
         prm.declare_entry ("A1", "1085.7",
-                            Patterns::Double (),
+                            Patterns::Double (),  
                             "Constant parameter in the quadratic "
                             "function that approximates the solidus "
                             "of peridotite. "
@@ -760,7 +772,15 @@ namespace aspect
         // alpha_mobility_time = prm.get_double("Alpha mobility transition time");
 
         //Melt_induce_weakening
-        composition_number_affected = prm.get_double("Composition number affected");
+        composition_number_affected_double = prm.get_double("Composition number affected");
+
+        // composition_number_affected = Utilities::parse_map_to_double_array(prm.get("Composition number affected"),
+        //                                                                 list_of_composition_names,
+        //                                                                 has_background_field,
+        //                                                                 "Composition number affected",
+        //                                                                 true,
+        //                                                                 expected_n_phases_per_composition);      
+
         temperature_threshold = prm.get_double("Temperature of activation");
         pressure_threshold = prm.get_double("Pressure maximum of activation");
         viscosity_decrease_factor = prm.get_double("Viscosity decrease factor");

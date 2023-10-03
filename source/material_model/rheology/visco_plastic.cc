@@ -317,8 +317,8 @@ namespace aspect
             // - friction_terms;
             
             //limit friction 
-            current_friction = std::max(0.5*drucker_prager_parameters.angle_internal_friction, current_friction);
-            current_friction = std::min(1.5*drucker_prager_parameters.angle_internal_friction, current_friction);
+            // current_friction = std::max(0.5*drucker_prager_parameters.angle_internal_friction, current_friction);
+            // current_friction = std::min(1.5*drucker_prager_parameters.angle_internal_friction, current_friction);
             output_parameters.current_friction_angles[j] = current_friction;
             output_parameters.current_cohesions[j] = current_cohesion;
 
@@ -348,7 +348,7 @@ namespace aspect
               //  std::cout<<"Drop viscosity" <<std::endl;
 
                 if(use_solidus==true){
-                  const double T_solidus        = A1 + 273.15
+                double T_solidus        = A1 + 273.15
                         + A2 * in.pressure[i]
                         + A3 * in.pressure[i] * in.pressure[i];
                   temperature_solidus = T_solidus ; 
@@ -972,8 +972,8 @@ namespace aspect
               //  - friction_terms;
 
                //limit friction
-               current_friction = std::max(0.5*drucker_prager_parameters.angle_internal_friction, current_friction);
-               current_friction = std::min(1.5*drucker_prager_parameters.angle_internal_friction, current_friction);
+              //  current_friction = std::max(0.5*drucker_prager_parameters.angle_internal_friction, current_friction);
+              //  current_friction = std::min(1.5*drucker_prager_parameters.angle_internal_friction, current_friction);
 
                 // Also convert radians to degrees
                 plastic_out->friction_angles[i] += 180.0/numbers::PI * volume_fractions[j] * current_friction;

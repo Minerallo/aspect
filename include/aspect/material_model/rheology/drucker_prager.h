@@ -156,7 +156,7 @@ namespace aspect
           double alpha_mobility;
           double alpha_mobility_time;
 
-          double max_yield_stress;
+          std::vector<double> max_yield_stress;
 
           /**
            * Whether to add a plastic damper in the computation

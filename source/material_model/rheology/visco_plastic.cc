@@ -313,9 +313,12 @@ namespace aspect
           //   double friction_terms = alpha * drucker_prager_parameters.angle_internal_friction * DMob;             
             
             //vary friction
-            double current_friction = drucker_prager_parameters.angle_internal_friction * weakening_factors[1];
-            // - friction_terms;
-            
+            double current_friction = drucker_prager_parameters.angle_internal_friction * weakening_factors[1];            // - friction_terms;
+            current_friction = friction_models.compute_friction_angle(edot_ii,
+                                                                      j,
+                                                                      current_friction,
+                                                                      in.position[i]);
+
             //limit friction 
             // current_friction = std::max(0.5*drucker_prager_parameters.angle_internal_friction, current_friction);
             // current_friction = std::min(1.5*drucker_prager_parameters.angle_internal_friction, current_friction);
@@ -747,8 +750,8 @@ namespace aspect
         strain_rheology.initialize_simulator (this->get_simulator());
         strain_rheology.parse_parameters(prm);
 
-        // friction_models.initialize_simulator (this->get_simulator());
-        // friction_models.parse_parameters(prm);
+        friction_models.initialize_simulator (this->get_simulator());
+        friction_models.parse_parameters(prm);
 
         use_elasticity = prm.get_bool ("Include viscoelasticity");
 
@@ -931,7 +934,8 @@ namespace aspect
             plastic_out->yielding[i] = plastic_yielding ? 1 : 0;
 
             // The max yield stress is the same for each composition, so we give the 0th field value.
-            const double max_yield_stress = drucker_prager_plasticity.compute_drucker_prager_parameters(0).max_yield_stress;
+            // const double max_yield_stress = drucker_prager_plasticity.compute_drucker_prager_parameters(0).max_yield_stress;
+
             double pressure_for_plasticity = in.pressure[i];
             if (allow_negative_pressures_in_plasticity == false)
               pressure_for_plasticity = std::max(in.pressure[i], 0.0);
@@ -943,7 +947,11 @@ namespace aspect
                 const std::array<double, 3> weakening_factors = strain_rheology.compute_strain_weakening_factors(j, in.composition[i]);
                 const DruckerPragerParameters drucker_prager_parameters = drucker_prager_plasticity.compute_drucker_prager_parameters(j,
                                                                           phase_function_values,
-                                                                          n_phase_transitions_per_composition); 
+                                                                          n_phase_transitions_per_composition);
+            
+            // const double max_yield_stress = drucker_prager_plasticity.compute_drucker_prager_parameters(j,
+            //                                                               phase_function_values,
+            //                                                               n_phase_transitions_per_composition).max_yield_stress;                                                           
                                                                           
                 plastic_out->cohesions[i]   += volume_fractions[j] * (drucker_prager_parameters.cohesion * weakening_factors[0]);
  

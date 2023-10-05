@@ -292,3 +292,4 @@ namespace aspect
 #undef INSTANTIATE
   }
 }
+

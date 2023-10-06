@@ -314,11 +314,11 @@ namespace aspect
             
             //vary friction
             double current_friction = drucker_prager_parameters.angle_internal_friction * weakening_factors[1];            // - friction_terms;
-            current_friction = friction_models.compute_friction_angle(edot_ii,
-                                                                      j,
-                                                                      current_friction,
-                                                                      in.position[i]);
-            
+            // current_friction = friction_models.compute_friction_angle(edot_ii,
+            //                                                           j,
+            //                                                           current_friction,
+            //                                                           in.position[i]);
+
             //limit friction 
             // current_friction = std::max(0.5*drucker_prager_parameters.angle_internal_friction, current_friction);
             // current_friction = std::min(1.5*drucker_prager_parameters.angle_internal_friction, current_friction);
@@ -750,8 +750,8 @@ namespace aspect
         strain_rheology.initialize_simulator (this->get_simulator());
         strain_rheology.parse_parameters(prm);
 
-        friction_models.initialize_simulator (this->get_simulator());
-        friction_models.parse_parameters(prm);
+        // friction_models.initialize_simulator (this->get_simulator());
+        // friction_models.parse_parameters(prm);
 
         use_elasticity = prm.get_bool ("Include viscoelasticity");
 

@@ -318,7 +318,7 @@ namespace aspect
                                                                       j,
                                                                       current_friction,
                                                                       in.position[i]);
-
+            
             //limit friction 
             // current_friction = std::max(0.5*drucker_prager_parameters.angle_internal_friction, current_friction);
             // current_friction = std::min(1.5*drucker_prager_parameters.angle_internal_friction, current_friction);

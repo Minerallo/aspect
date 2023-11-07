@@ -37,30 +37,31 @@ namespace aspect
         const double pressure = in.pressure[q];
         const double temperature = std::max(in.temperature[q], 1.); // temperature can't be zero for correct evaluation
         
-        if(use_Birch_Murnaghan)
-        {
-            for (unsigned int c=0; c < out.densities.size(); ++c)
-            {
-              const double ak = reference_thermal_expansivities[c]/reference_isothermal_compressibilities[c];
-              const double n = isothermal_bulk_modulus_pressure_derivatives[c];
-              const double V0 = reference_volumes[c];
-              const double B0 = reference_bulk_moduli[c];
-              const double P0 = reference_pressures[c];
-              const double third_order_correction = (3.*n-1.)/(2.*(n-1.)*(n-1.)) * (pressure - P0) * (pressure - P0) / B0;
-              const double f = (1. + (pressure - ak*(temperature - reference_temperatures[c])) * n * reference_isothermal_compressibilities[c]);
+        // if(use_Birch_Murnaghan)
+        // {
+        //     for (unsigned int c=0; c < out.densities.size(); ++c)
+        //     {
+        //       const double ak = reference_thermal_expansivities[c]/reference_isothermal_compressibilities[c];
+        //       const double n = isothermal_bulk_modulus_pressure_derivatives[c];
+        //       const double V0 = reference_volumes[c];
+        //       const double B0 = reference_bulk_moduli[c];
+        //       const double P0 = reference_pressures[c];
+        //       const double third_order_correction = (3.*n-1.)/(2.*(n-1.)*(n-1.)) * (pressure - P0) * (pressure - P0) / B0;
+        //       const double f = (1. + (pressure - ak*(temperature - reference_temperatures[c])) * n * reference_isothermal_compressibilities[c]);
 
-              const double V = V0 * (1. + (pressure - P0) / (B0 * (n - 1.))) / pow(1. + (n - 1.) * (pressure - P0) / (2. * B0) + third_order_correction, 1./(n - 1.));
-              out.densities[c] = reference_densities[c] * pow(V0 / V, 1.);
-              out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c] / f;
-              out.specific_heat_capacities[c] = (isochoric_specific_heats[c] +
-                                              (temperature*reference_thermal_expansivities[c] *
-                                                  ak * std::pow(f, -1.-(1./n))
-                                                  / reference_densities[c]));
-              out.compressibilities[c] = reference_isothermal_compressibilities[c]/f;
-              out.entropy_derivative_pressure[c] = 0.;
-              out.entropy_derivative_temperature[c] = 0.;
-            } 
-        }else if(use_Murnaghan)
+        //       const double V = V0 * (1. + (pressure - P0) / (B0 * (n - 1.))) / pow(1. + (n - 1.) * (pressure - P0) / (2. * B0) + third_order_correction, 1./(n - 1.));
+        //       out.densities[c] = reference_densities[c] * pow(V0 / V, 1.);
+        //       out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c] / f;
+        //       out.specific_heat_capacities[c] = (isochoric_specific_heats[c] +
+        //                                       (temperature*reference_thermal_expansivities[c] *
+        //                                           ak * std::pow(f, -1.-(1./n))
+        //                                           / reference_densities[c]));
+        //       out.compressibilities[c] = reference_isothermal_compressibilities[c]/f;
+        //       out.entropy_derivative_pressure[c] = 0.;
+        //       out.entropy_derivative_temperature[c] = 0.;
+        //     } 
+        // }else 
+        if(use_Murnaghan)
         {
             for (unsigned int c=0; c < out.densities.size(); ++c)
             {
@@ -99,37 +100,28 @@ namespace aspect
                 out.densities[c] = reference_densities[c]*std::pow(f, 1./isothermal_bulk_modulus_pressure_derivatives[c]);    
 //                 }
                 
-                if(c==composition_number_affected && in.temperature[q]>temperature_threshold)
-                {
-                out.specific_heat_capacities[c] = ((isochoric_specific_heats[c] +
-                                                (temperature*reference_thermal_expansivities[c] *
-                                                    ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
-                                                    / reference_densities[c]))*conductivity_increase_factor);
-                }else
-                {
+                // if(c==composition_number_affected && in.temperature[q]>temperature_threshold)
+                // {
+                // out.specific_heat_capacities[c] = ((isochoric_specific_heats[c] +
+                //                                 (temperature*reference_thermal_expansivities[c] *
+                //                                     ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
+                //                                     / reference_densities[c]))*conductivity_increase_factor);
+                // }else
+                // {
                 out.specific_heat_capacities[c] = (isochoric_specific_heats[c] +
                                                 (temperature*reference_thermal_expansivities[c] *
                                                     ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
                                                     / reference_densities[c]));                    
-                }
+                
                 
                 //we send back that the model is incompressible, the mass will be balanced with the lithostatic pressure
                 out.compressibilities[c] = 0;
                 out.entropy_derivative_pressure[c] = 0.;
                 out.entropy_derivative_temperature[c] = 0.;
-            }
+             }
         
-        }else if(use_incompressibility){
-            for (unsigned int c=0; c < out.densities.size(); ++c)
-            {
-                out.densities[c] = reference_densities[c] * (1 - reference_thermal_expansivities[c] * (temperature - 274));
-                out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c];
-                out.specific_heat_capacities[c] = isochoric_specific_heats[c];
-                out.compressibilities[c] = 0.0;
-                out.entropy_derivative_pressure[c] = 0.0;
-                out.entropy_derivative_temperature[c] = 0.0;
-            }
-        }else if(use_incompressibility_adiabat){    
+        } else{
+          // else if(use_incompressibility_adiabat){    
         for (unsigned int c=0; c < out.densities.size(); ++c)
           {
                 // If adiabatic heating is used, the reference temperature used to calculate density should be the adiabatic
@@ -145,18 +137,31 @@ namespace aspect
             out.compressibilities[c] = 0.0;
             out.entropy_derivative_pressure[c] = 0.0;
             out.entropy_derivative_temperature[c] = 0.0;
-          }            
-        }else if(use_gms_densities){
-            for (unsigned int c=0; c < out.densities.size(); ++c)
-            {
-                out.densities[c] = reference_densities[c];
-                out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c];
-                out.specific_heat_capacities[c] = isochoric_specific_heats[c];
-                out.compressibilities[c] = 0.0;
-                out.entropy_derivative_pressure[c] = 0.0;
-                out.entropy_derivative_temperature[c] = 0.0;
-            }            
-        }
+          }  
+        }   
+          // else{
+          //             for (unsigned int c=0; c < out.densities.size(); ++c)
+          //             {
+          //                 out.densities[c] = reference_densities[c] * (1 - reference_thermal_expansivities[c] * (temperature - 274));
+          //                 out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c];
+          //                 out.specific_heat_capacities[c] = isochoric_specific_heats[c];
+          //                 out.compressibilities[c] = 0.0;
+          //                 out.entropy_derivative_pressure[c] = 0.0;
+          //                 out.entropy_derivative_temperature[c] = 0.0;
+          //             }
+          //         }          
+
+        // }else if(use_gms_densities){
+        //     for (unsigned int c=0; c < out.densities.size(); ++c)
+        //     {
+        //         out.densities[c] = reference_densities[c];
+        //         out.thermal_expansion_coefficients[c] = reference_thermal_expansivities[c];
+        //         out.specific_heat_capacities[c] = isochoric_specific_heats[c];
+        //         out.compressibilities[c] = 0.0;
+        //         out.entropy_derivative_pressure[c] = 0.0;
+        //         out.entropy_derivative_temperature[c] = 0.0;
+        //     }            
+        // }
       }
 
 
@@ -166,7 +171,7 @@ namespace aspect
       MulticomponentIncompressible<dim>::
       is_compressible () const
       {
-        if(use_Murnaghan || use_Birch_Murnaghan)
+        if(use_Murnaghan)
         {
             return true;
         }else{
@@ -181,7 +186,7 @@ namespace aspect
       MulticomponentIncompressible<dim>::declare_parameters (ParameterHandler &prm,
                                                              const double default_thermal_expansion)
       {
-        prm.declare_entry ("Reference temperatures", "298.15",
+        prm.declare_entry ("Reference temperature", "298.15",
                            Patterns::Anything(),
                            "List of reference temperatures $T_0$ for background mantle and compositional fields,"
                            "for a total of N+1 values, where N is the number of compositional fields."
@@ -240,24 +245,24 @@ namespace aspect
                            "for a total of N+1 values, where N is the number of compositional fields."
                            "If only one value is given, then all use the same value. "
                            "Units: \\si{\\Pa}.");                           
-        prm.declare_entry("Use Birch-Murnaghan", "false",
-                            Patterns::Bool(),
-                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");                            
+        // prm.declare_entry("Use Birch-Murnaghan", "false",
+        //                     Patterns::Bool(),
+        //                      "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");                            
         prm.declare_entry("Use Murnaghan", "false",
                             Patterns::Bool(),
                              "Define if the density is incompressible of compressible and how it should be handled for the mass conservation"); 
         prm.declare_entry("Use compressible density only", "false",
                             Patterns::Bool(),
                              "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");  
-        prm.declare_entry("Use incompressibility", "false",
-                            Patterns::Bool(),
-                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");
-        prm.declare_entry("Use incompressibility with adiabat", "false",
-                            Patterns::Bool(),
-                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");
-        prm.declare_entry("Use GMS densities", "false",
-                            Patterns::Bool(),
-                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");         
+        // prm.declare_entry("Use incompressibility", "false",
+        //                     Patterns::Bool(),
+        //                      "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");
+        // prm.declare_entry("Use incompressibility with adiabat", "false",
+        //                     Patterns::Bool(),
+        //                      "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");
+        // prm.declare_entry("Use GMS densities", "false",
+        //                     Patterns::Bool(),
+        //                      "Define if the density is incompressible of compressible and how it should be handled for the mass conservation");         
 
         prm.declare_entry("Use conductivity temperature dependent", "false",
                             Patterns::Bool(),
@@ -303,7 +308,7 @@ namespace aspect
                                                                        "Reference pressures",
                                                                        true,
                                                                        expected_n_phases_per_composition);
-        reference_temperatures = Utilities::parse_map_to_double_array (prm.get("Reference temperatures"),
+        reference_temperatures = Utilities::parse_map_to_double_array (prm.get("Reference temperature"),
                                                                        list_of_composition_names,
                                                                        has_background_field,
                                                                        "Reference temperatures",
@@ -355,12 +360,12 @@ namespace aspect
                                                               true,
                                                               expected_n_phases_per_composition); 
 
-        use_Birch_Murnaghan = prm.get_bool ("Use Birch-Murnaghan");
+        // use_Birch_Murnaghan = prm.get_bool ("Use Birch-Murnaghan");
         use_Murnaghan = prm.get_bool ("Use Murnaghan");
         use_compressible_density_only = prm.get_bool ("Use compressible density only");
-        use_incompressibility = prm.get_bool ("Use incompressibility");
-        use_incompressibility_adiabat=prm.get_bool ("Use incompressibility with adiabat");
-        use_gms_densities==prm.get_bool ("Use GMS densities");
+        // use_incompressibility = prm.get_bool ("Use incompressibility");
+        // use_incompressibility_adiabat=prm.get_bool ("Use incompressibility with adiabat");
+        // use_gms_densities==prm.get_bool ("Use GMS densities");
         
         use_conductivity_temperature_dependent = prm.get_bool("Use conductivity temperature dependent");
         composition_number_affected = prm.get_double("Composition number affected");

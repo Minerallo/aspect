@@ -49,7 +49,8 @@ namespace aspect
       {
         static_friction,
         dynamic_friction,
-        function
+        function,
+        dynamic_friction_weakening
       };
 
       template <int dim>

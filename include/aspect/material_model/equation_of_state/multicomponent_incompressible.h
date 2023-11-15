@@ -102,10 +102,10 @@ namespace aspect
            */
           std::vector<double> densities;
 
-          /**
-           * The reference temperature $T_0$ used in the computation of the density.
-           * All components use the same reference temperature.
-           */
+          // /**
+          //  * The reference temperature $T_0$ used in the computation of the density.
+          //  * All components use the same reference temperature.
+          //  */
           double reference_T;
 
           /**
@@ -119,6 +119,23 @@ namespace aspect
            * for the background field.
            */
           std::vector<double> specific_heats;
+
+         /**
+           * Vector for reference temperatures, read from parameter file .
+           */
+          std::vector<double> reference_temperatures;
+
+          /**
+           * Vector for reference compressibilities, read from parameter file.
+           */
+          std::vector<double> reference_isothermal_compressibilities;
+
+          /**
+           * Vector for isothermal bulk modulus pressure derivatives, read from parameter file.
+           */
+          std::vector<double> isothermal_bulk_modulus_pressure_derivatives;
+
+          bool use_Murnaghan_densities;
       };
     }
   }

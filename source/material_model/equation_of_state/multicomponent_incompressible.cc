@@ -39,9 +39,31 @@ namespace aspect
       {
 
 
+        if(use_Murnaghan_densities)
+        {
+            for (unsigned int c=0; c < out.densities.size(); ++c)
+            {
+                const double ak = thermal_expansivities[c]/reference_isothermal_compressibilities[c];
+                const double f = (1. + (in.pressure[input_index] - ak*(in.temperature[input_index] - reference_temperatures[c])) *
+                                isothermal_bulk_modulus_pressure_derivatives[c] *
+                                reference_isothermal_compressibilities[c]);
+
+                out.densities[c] = densities[c]*std::pow(f, 1./isothermal_bulk_modulus_pressure_derivatives[c]);
+                out.thermal_expansion_coefficients[c] = thermal_expansivities[c] / f;
+                out.specific_heat_capacities[c] = (specific_heats[c] +
+                                                (in.temperature[input_index]*thermal_expansivities[c] *
+                                                    ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
+                                                    / densities[c]));
+               out.compressibilities[c] = 0;
+                // out.compressibilities[c] = reference_isothermal_compressibilities[c]/f;
+                out.entropy_derivative_pressure[c] = 0.;
+                out.entropy_derivative_temperature[c] = 0.;
+            }
+        }else{
+
         // If adiabatic heating is used, the reference temperature used to calculate density should be the adiabatic
         // temperature at the current position. This definition is consistent with the Extended Boussinesq Approximation.
-        const double reference_temperature = (this->include_adiabatic_heating()
+        const double reference_T2 = (this->include_adiabatic_heating()
                                               ?
                                               this->get_adiabatic_conditions().temperature(in.position[input_index])
                                               :
@@ -49,13 +71,14 @@ namespace aspect
 
         for (unsigned int c=0; c < out.densities.size(); ++c)
           {
-            out.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[input_index] - reference_temperature));
+            out.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[input_index] - reference_T2));
             out.thermal_expansion_coefficients[c] = thermal_expansivities[c];
             out.specific_heat_capacities[c] = specific_heats[c];
             out.compressibilities[c] = 0.0;
             out.entropy_derivative_pressure[c] = 0.0;
             out.entropy_derivative_temperature[c] = 0.0;
           }
+        }
       }
 
 
@@ -96,6 +119,35 @@ namespace aspect
                            "If only one value is given, then all use the same value. "
                            "Units: \\si{\\joule\\per\\kelvin\\per\\kilogram}.");
         prm.declare_alias ("Heat capacities", "Specific heats");
+
+        prm.declare_entry ("Reference temperatures", "298.15",
+                           Patterns::Anything(),
+                           "List of reference temperatures $T_0$ for background mantle and compositional fields,"
+                           "for a total of N+1 values, where N is the number of compositional fields."
+                           "If only one value is given, then all use the same value. Units: \\si{\\kelvin}.");
+        // prm.declare_entry ("Densities", "3300.",
+        //                    Patterns::Anything(),
+        //                    "List of densities for background mantle and compositional fields,"
+        //                    "for a total of N+1 values, where N is the number of compositional fields."
+        //                    "If only one value is given, then all use the same value. "
+        //                    "Units: \\si{\\kilogram\\per\\meter\\cubed}.");
+        prm.declare_entry ("Reference isothermal compressibilities", "4e-12",
+                           Patterns::Anything(),
+                           "List of isothermal compressibilities for background mantle and compositional fields,"
+                           "for a total of N+1 values, where N is the number of compositional fields."
+                           "If only one value is given, then all use the same value. "
+                           "Units: \\si{\\per\\pascal}.");
+        prm.declare_entry ("Isothermal bulk modulus pressure derivatives", "4.",
+                           Patterns::Anything(),
+                           "List of isothermal pressure derivatives of the bulk moduli for background mantle and compositional fields,"
+                           "for a total of N+1 values, where N is the number of compositional fields."
+                           "If only one value is given, then all use the same value. "
+                           "Units: []."); 
+        prm.declare_entry("Use Murnaghan density formulation", "false",
+                            Patterns::Bool(),
+                             "Define if the density is incompressible of compressible and how it should be handled for the mass conservation"); 
+                                 
+
       }
 
 
@@ -106,6 +158,8 @@ namespace aspect
                                                            const std::unique_ptr<std::vector<unsigned int>> &expected_n_phases_per_composition)
       {
         reference_T = prm.get_double ("Reference temperature");
+
+        use_Murnaghan_densities = prm.get_bool ("Use Murnaghan density formulation");
 
         // Make options file for parsing maps to double arrays
         std::vector<std::string> chemical_field_names = this->introspection().chemical_composition_field_names();
@@ -132,6 +186,13 @@ namespace aspect
         thermal_expansivities = Utilities::MapParsing::parse_map_to_double_array(prm.get("Thermal expansivities"), options);
         options.property_name = "Heat capacities";
         specific_heats = Utilities::MapParsing::parse_map_to_double_array (prm.get("Heat capacities"), options);
+                options.property_name = "Heat capacities";
+        isothermal_bulk_modulus_pressure_derivatives = Utilities::MapParsing::parse_map_to_double_array (prm.get("Isothermal bulk modulus pressure derivatives"), options);
+                options.property_name = "Isothermal bulk modulus pressure derivatives";
+        reference_isothermal_compressibilities = Utilities::MapParsing::parse_map_to_double_array (prm.get("Reference isothermal compressibilities"), options);
+                options.property_name = "Reference isothermal compressibilities";
+        reference_temperatures = Utilities::MapParsing::parse_map_to_double_array (prm.get("Reference temperatures"), options);
+                options.property_name = "Reference temperatures";                
       }
     }
   }

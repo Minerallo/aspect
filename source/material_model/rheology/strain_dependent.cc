@@ -43,7 +43,7 @@ namespace aspect
       StrainDependent<dim>::declare_parameters (ParameterHandler &prm)
       {
         prm.declare_entry ("Strain weakening mechanism", "default",
-                           Patterns::Selection("none|finite strain tensor|total strain|plastic weakening with plastic strain only|plastic weakening with total strain only|plastic weakening with plastic strain and viscous weakening with viscous strain|viscous weakening with viscous strain only|default"),
+                           Patterns::Selection("none|finite strain tensor|total strain|plastic weakening with plastic strain only|plastic weakening with total strain only|plastic weakening with plastic strain and viscous weakening with viscous strain|viscous weakening with viscous strain only|plastic weakening with damage strain|default"),
                            "Whether to apply strain weakening to viscosity, cohesion and internal angle"
                            "of friction based on accumulated finite strain, and if yes, which method to "
                            "use. The following methods are available:"
@@ -98,6 +98,17 @@ namespace aspect
                            "included in the parameter file, this field will automatically be excluded from "
                            "from volume fraction calculation and track the cumulative plastic strain with "
                            "the initial plastic strain values removed.");
+
+        prm.declare_entry ("Relaxation time of damage weakening", "1e6", 
+                            Patterns::Double (0.),
+                            // Patterns::List(Patterns::Double (0.)),
+                           "Time of relaxation for damage weakening. Units: \\si{\\year}.");
+
+        prm.declare_entry ("Dynamic characteristic damage", "1e-3", 
+                            Patterns::List(Patterns::Double (0.)),
+                            // Patterns::List(Patterns::Double (0.)),
+                           "Time of relaxation for damage weakening. Units: \\si{\\year}.");
+                           
 
         prm.declare_entry ("Start plasticity strain weakening intervals", "0.",
                            Patterns::List(Patterns::Double (0.)),
@@ -191,6 +202,8 @@ namespace aspect
           weakening_mechanism = total_strain;
         else if (prm.get ("Strain weakening mechanism") == "plastic weakening with plastic strain only")
           weakening_mechanism = plastic_weakening_with_plastic_strain_only;
+        else if (prm.get ("Strain weakening mechanism") == "plastic weakening with damage strain")
+          weakening_mechanism = plastic_weakening_with_damage_strain;          
         else if (prm.get ("Strain weakening mechanism") == "plastic weakening with total strain only")
           weakening_mechanism = plastic_weakening_with_total_strain_only;
         else if (prm.get ("Strain weakening mechanism") == "plastic weakening with plastic strain and viscous weakening with viscous strain")
@@ -201,6 +214,13 @@ namespace aspect
           weakening_mechanism = none;
         else
           AssertThrow(false, ExcMessage("Not a valid Strain weakening mechanism!"));
+
+        if (weakening_mechanism == plastic_weakening_with_damage_strain)
+          {
+            AssertThrow(this->introspection().compositional_name_exists("damage_strain"),
+                        ExcMessage("Material model visco_plastic with plastic strain weakening only works if there is a "
+                                   "compositional field called plastic_strain."));
+          }
 
         if (weakening_mechanism == plastic_weakening_with_plastic_strain_only
             || weakening_mechanism == plastic_weakening_with_plastic_strain_and_viscous_weakening_with_viscous_strain)
@@ -304,6 +324,17 @@ namespace aspect
         // Establish that a background field is required here
         const bool has_background_field = true;
 
+        relaxation_time = prm.get_double("Relaxation time of damage weakening");
+        // Utilities::parse_map_to_double_array (prm.get("Relaxation time of damage weakening"),
+        //                                     list_of_composition_names,
+        //                                     has_background_field,
+        //                                     "Relaxation time of damage weakening");
+
+        dynamic_characteristic_damage = Utilities::parse_map_to_double_array (prm.get("Dynamic characteristic damage"),
+                                            list_of_composition_names,
+                                            has_background_field,
+                                            "Dynamic characteristic strain rate");
+
         start_plastic_strain_weakening_intervals = Utilities::parse_map_to_double_array (prm.get("Start plasticity strain weakening intervals"),
                                                    list_of_composition_names,
                                                    has_background_field,
@@ -398,6 +429,13 @@ namespace aspect
               viscous_weakening = calculate_viscous_weakening(strain_ii, j);
               break;
             }
+            case plastic_weakening_with_damage_strain:
+            {
+              const unsigned int damage_strain_index = this->introspection().compositional_index_for_name("damage_strain");
+              brittle_weakening = calculate_damage_weakening(composition[damage_strain_index],j);
+              // viscous_weakening = calculate_viscous_weakening(strain_ii, j);
+              break;              
+            }            
             case total_strain:
             {
               const unsigned int total_strain_index = this->introspection().compositional_index_for_name("total_strain");
@@ -489,6 +527,25 @@ namespace aspect
         return std::make_pair (weakening_cohesion, weakening_friction);
       }
 
+      template <int dim>
+      std::pair<double, double>
+      StrainDependent<dim>::
+      calculate_damage_weakening(const double current_damage,
+                                  const unsigned int j) const
+      {
+        const double cut_off_damage = std::min(current_damage,dynamic_characteristic_damage[j]);
+
+        const double weakening_friction = 1. - cut_off_damage/dynamic_characteristic_damage[j];
+
+        const double weakening_cohesion = 1;
+  //        std::cout<<"weakening_friction "<<weakening_friction<<std::endl;
+//        std::cout<<"current_damage "<<current_damage<<std::endl;
+//        std::cout<<"cut_off_damage "<<cut_off_damage<<std::endl;
+        // std::cout <<"volume_fraction_index : " <<j  << std::endl; 
+        // std::cout <<"weakening fraction : " <<weakening_friction<< std::endl;
+
+        return std::make_pair (weakening_cohesion, weakening_friction);
+      }
 
       template <int dim>
       double
@@ -514,6 +571,7 @@ namespace aspect
                              const bool plastic_yielding,
                              MaterialModel::MaterialModelOutputs<dim> &out) const
       {
+                //  std::cout<<"test "<<std::endl;
 
         // If strain weakening is used, overwrite the first reaction term,
         // which represents the second invariant of the (plastic) strain tensor.
@@ -535,8 +593,26 @@ namespace aspect
 
             // Plastic strain
             double delta_e_ii_plastic = 0.;
-            if (plastic_yielding == true)
+            // double dgamma_dt = 0;
+            if (plastic_yielding == true && weakening_mechanism == plastic_weakening_with_damage_strain){
+              // const double healed_strain = calculate_strain_healing(in,i);
+
+              // dgamma_dt = edot_ii*this->get_timestep()-delta_e_ii_plastic; 
+              // // dgamma_dt = edot_ii-delta_e_ii_plastic/relaxation_time; 
+              // // delta_e_ii_plastic += dgamma_dt *this->get_timestep();
+              // delta_e_ii_plastic += dgamma_dt;  
+              delta_e_ii_plastic=(delta_e_ii_plastic+edot_ii*this->get_timestep())/(1+this->get_timestep()/relaxation_time); 
+              // delta_e_ii_plastic+=dgamma_dt;
+  
+              if(healing_mechanism != no_healing){
+                const double healed_strain = calculate_strain_healing(in,i);
+                delta_e_ii_plastic -= healed_strain;
+                  std::cout<<"healed_strain  "<<healed_strain<<std::endl;
+ 
+                }  
+            }else if(plastic_yielding == true && weakening_mechanism != plastic_weakening_with_damage_strain){
               delta_e_ii_plastic = delta_e_ii;
+            }
 
             // Viscous strain
             double delta_e_ii_viscous = 0.;
@@ -544,7 +620,7 @@ namespace aspect
               delta_e_ii_viscous = delta_e_ii;
 
             // Now account for strain healing
-            if (healing_mechanism != no_healing)
+            if (healing_mechanism != no_healing && weakening_mechanism != plastic_weakening_with_damage_strain)
               {
                 // Temperature-dependent healing occurs independent of deformation state
                 const double healed_strain = calculate_strain_healing(in,i);
@@ -553,6 +629,20 @@ namespace aspect
                 delta_e_ii_viscous -= healed_strain;
                 delta_e_ii -= healed_strain;
               }
+
+            // if (plastic_yielding == true)
+            //   {
+            //             // Calculate the rate of change of damage
+            //     const double dgamma_dt = edot_ii-delta_e_ii_plastic/relaxation_time;
+            //     //  std::cout<<"dgamma_dt "<<dgamma_dt<<std::endl;
+            //     //  std::cout<<"delta_e_ii_plastic "<<delta_e_ii_plastic<<std::endl;
+            //     //  std::cout<<"edot_ii "<<edot_ii<<std::endl;
+            //     // Update damage 
+            //     delta_e_ii_plastic += dgamma_dt *this->get_timestep();
+            //     // delta_e_ii_plastic = calculate_damage_weakening(edot_ii,i,delta_e_ii_plastic,relaxation_time_tau);
+
+            //     // delta_e_ii_plastic += damage_new;
+            //   }              
 
             // We need to obtain the strain values from compositional fields at the previous time step,
             // as the values from the current linearization point are an extrapolation of the solution
@@ -577,6 +667,28 @@ namespace aspect
                    ExcMessage("The number of composition evaluators should be equal to the number of compositional fields."));
 
             const auto &component_indices = this->introspection().component_indices.compositional_fields;
+
+
+            // Assign incremental strain values to reaction terms
+            if (weakening_mechanism == plastic_weakening_with_damage_strain)
+              {
+                const unsigned int damage_strain_index = this->introspection().compositional_index_for_name("damage_strain");
+                // Only create the evaluator the first time we get here
+                if (!composition_evaluators[damage_strain_index])
+                  composition_evaluators[damage_strain_index]
+                    = std::make_unique<FEPointEvaluation<1, dim>>(this->get_mapping(),
+                                                                   this->get_fe(),
+                                                                   update_values,
+                                                                   component_indices[damage_strain_index]);
+
+                composition_evaluators[damage_strain_index]->reinit(in.current_cell, quadrature_positions);
+                composition_evaluators[damage_strain_index]->evaluate({old_solution_values.data(),old_solution_values.size()},
+                                                               EvaluationFlags::values);
+                  out.reaction_terms[i][damage_strain_index] =std::max(delta_e_ii_plastic,
+                                                              -composition_evaluators[damage_strain_index]->get_value(0));
+                  // delta_e_ii_plastic;
+//                  
+              }
 
             // Assign incremental strain values to reaction terms
             if (weakening_mechanism == plastic_weakening_with_plastic_strain_only)
@@ -762,6 +874,9 @@ namespace aspect
 
             if (weakening_mechanism == total_strain || weakening_mechanism == plastic_weakening_with_total_strain_only)
               strain_mask.set(this->introspection().compositional_index_for_name("total_strain"),false);
+
+            if (weakening_mechanism == plastic_weakening_with_damage_strain)
+              strain_mask.set(this->introspection().compositional_index_for_name("damage_strain"),false);
 
             if (weakening_mechanism == finite_strain_tensor)
               {

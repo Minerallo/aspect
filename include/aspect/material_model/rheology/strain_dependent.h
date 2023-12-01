@@ -53,7 +53,8 @@ namespace aspect
         plastic_weakening_with_plastic_strain_only,
         plastic_weakening_with_total_strain_only,
         plastic_weakening_with_plastic_strain_and_viscous_weakening_with_viscous_strain,
-        viscous_weakening_with_viscous_strain_only
+        viscous_weakening_with_viscous_strain_only,
+        plastic_weakening_with_damage_strain
       };
 
       /**
@@ -104,6 +105,10 @@ namespace aspect
           double
           calculate_strain_healing (const MaterialModel::MaterialModelInputs<dim> &in,
                                     const unsigned int j) const;
+          
+          std::pair<double, double>
+          calculate_damage_weakening (const double current_damage,
+                                  const unsigned int j) const;
 
           /**
            * A function that computes by how much the cohesion and internal friction
@@ -217,6 +222,11 @@ namespace aspect
            * A prefactor of viscosity used in the strain healing calculation.
            */
           double strain_healing_temperature_dependent_prefactor;
+          
+          double relaxation_time;
+          // std::vector<double> relaxation_time;
+
+          std::vector<double> dynamic_characteristic_damage;
 
           /**
            * We cache the evaluators that are necessary to evaluate the velocity

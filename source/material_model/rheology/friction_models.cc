@@ -40,7 +40,8 @@ namespace aspect
       compute_friction_angle(const double current_edot_ii,
                              const unsigned int volume_fraction_index,
                              const double static_friction_angle,
-                             const Point<dim> &position) const
+                             const Point<dim> &position,
+                             const std::array<double, 3> weakening_fraction) const
       {
 
         switch (friction_mechanism)
@@ -49,13 +50,30 @@ namespace aspect
             {
               return static_friction_angle;
             }
+           case damage_memory_friction_weakening:
+            {
+              const double mu = std::tan(dynamic_angles_of_internal_friction[volume_fraction_index])
+                                 + (std::tan(static_friction_angle) - std::tan(dynamic_angles_of_internal_friction[volume_fraction_index]))
+                                 *  weakening_fraction[1];
+              const double mu_threshold = std::max(std::tan(dynamic_angles_of_internal_friction[volume_fraction_index]), mu);
+              const double dynamic_friction_angle = std::atan (mu_threshold);//* constants::radians_to_degree
+              // std::cout <<"volume_fraction_index : " <<volume_fraction_index  << std::endl; 
+              // std::cout <<"dynamic_angles_of_internal_friction : " <<std::tan(dynamic_angles_of_internal_friction[volume_fraction_index])<< std::endl;                            
+              // std::cout <<"mu : " <<mu  << std::endl;
+              // // std::cout <<"edotii : " << current_edot_ii  << std::endl;
+              // // std::cout <<"edotii_max : " << dynamic_characteristic_strain_rate  << std::endl;
+              // std::cout <<"mu_threshold : " << mu_threshold  << std::endl;
+              // std::cout <<"dynamic_friction_angle : " << dynamic_friction_angle  << std::endl;
+              // std::cout <<"weakening fraction : " <<weakening_fraction[1]<< std::endl;
+              return dynamic_friction_angle;
+            }                
            case dynamic_friction_weakening:
             {
               const double mu_weakening = std::tan(dynamic_angles_of_internal_friction[volume_fraction_index])
-                                 + (tan(static_friction_angle) - std::tan(dynamic_angles_of_internal_friction[volume_fraction_index]))
+                                 + (std::tan(static_friction_angle) - std::tan(dynamic_angles_of_internal_friction[volume_fraction_index]))
                                  * (1. - (current_edot_ii / dynamic_characteristic_strain_rate));
               const double mu_threshold = std::max(std::tan(dynamic_angles_of_internal_friction[volume_fraction_index]), mu_weakening);
-              const double dynamic_friction_angle = std::atan (mu_threshold);
+              const double dynamic_friction_angle = std::atan (mu_threshold); //must need  * constants::radians_to_degree
               // Assert((mu < 1) && (0 < dynamic_friction_angle) && (dynamic_friction_angle <= 1.6), ExcMessage(
               //          "The friction coefficient should be larger than zero and smaller than 1. "
               //          "The friction angle should be smaller than 1.6 rad."));
@@ -65,8 +83,6 @@ namespace aspect
               // std::cout <<"edotii : " << current_edot_ii  << std::endl;
               // std::cout <<"edotii_max : " << dynamic_characteristic_strain_rate  << std::endl;
               // std::cout <<"mu_threshold : " << mu_threshold  << std::endl;
-
-
               return dynamic_friction_angle;
             }    
             case dynamic_friction:
@@ -141,7 +157,7 @@ namespace aspect
       FrictionModels<dim>::declare_parameters (ParameterHandler &prm)
       {
         prm.declare_entry ("Friction mechanism", "none",
-                           Patterns::Selection("none|dynamic friction|function| dynamic friction weakening"),
+                           Patterns::Selection("none|dynamic friction|function| dynamic friction weakening|damage memory friction weakening"),
                            "Whether to make the friction angle dependent on strain rate or not. This rheology "
                            "is intended to be used together with the visco-plastic rheology model."
                            "\n\n"
@@ -234,7 +250,9 @@ namespace aspect
         else if (prm.get ("Friction mechanism") == "function")
           friction_mechanism = function;
         else if (prm.get ("Friction mechanism") == "dynamic friction weakening")
-          friction_mechanism = dynamic_friction_weakening;          
+          friction_mechanism = dynamic_friction_weakening;
+        else if (prm.get ("Friction mechanism") == "damage memory friction weakening")
+          friction_mechanism = damage_memory_friction_weakening;                     
         else
           AssertThrow(false, ExcMessage("Not a valid friction mechanism option!"));
 

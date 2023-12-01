@@ -50,7 +50,8 @@ namespace aspect
         static_friction,
         dynamic_friction,
         function,
-        dynamic_friction_weakening
+        dynamic_friction_weakening,
+        damage_memory_friction_weakening
       };
 
       template <int dim>
@@ -79,7 +80,8 @@ namespace aspect
           compute_friction_angle(const double current_edot_ii,
                                  const unsigned int volume_fraction_index,
                                  const double static_friction_angle,
-                                 const Point<dim> &position) const;
+                                 const Point<dim> &position,
+                                 const std::array<double, 3> weakening_fraction) const;
 
           /**
            * A function that returns the selected type of friction dependence.

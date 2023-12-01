@@ -292,7 +292,19 @@ namespace aspect
             current_friction = friction_models.compute_friction_angle(effective_edot_ii,
                                                                       j,
                                                                       current_friction,
-                                                                      in.position[i]);
+                                                                      in.position[i],
+                                                                      weakening_factors);
+            // double  current_friction_test = friction_models.compute_friction_angle(effective_edot_ii,
+            //                                                           j,
+            //                                                           current_friction,
+            //                                                           in.position[i]);                                                          
+            // current_friction *= weakening_factors[1];  
+
+            // std::cout<<"weakening factor1 "<<weakening_factors[1]<<std::endl;
+            // std::cout<<"weakening factor0 "<<weakening_factors[0]<<std::endl;
+
+            // std::cout<<"friction test"<<current_friction_test<<std::endl;
+
             output_parameters.current_friction_angles[j] = current_friction;
             output_parameters.current_cohesions[j] = current_cohesion;
 

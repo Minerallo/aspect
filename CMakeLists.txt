@@ -599,7 +599,7 @@ ENDIF()
 
 
 # Check for FastScape library and link it to ASPECT if requested
-SET(ASPECT_WITH_FASTSCAPE OFF CACHE BOOL "Whether the user wants to compile ASPECT with the landscape evolution code FastScape, or not.")
+SET(ASPECT_WITH_FASTSCAPE ON CACHE BOOL "Whether the user wants to compile ASPECT with the landscape evolution code FastScape, or not.")
 MESSAGE(STATUS "Using ASPECT_WITH_FASTSCAPE = '${ASPECT_WITH_FASTSCAPE}'")
 IF(ASPECT_WITH_FASTSCAPE)
   FIND_LIBRARY(FASTSCAPE NAMES fastscapelib_fortran PATHS $ENV{FASTSCAPE_DIR} ${FASTSCAPE_DIR} PATH_SUFFIXES lib NO_DEFAULT_PATH)

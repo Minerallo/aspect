@@ -105,8 +105,7 @@ namespace aspect
          * based on depth interpolation between computed pressure values.
          */
         double interpolate_pressure (const Point<dim> &p) const;
-<<<<<<< HEAD
-=======
+
 
         /**
          * Return whether the given point lies on the bottom boundary of
@@ -123,7 +122,6 @@ namespace aspect
          * The vertical coordinate of the bottom domain boundary.
          */
         double bottom_vertical_coordinate;
->>>>>>> e95680a95 (lithostatic pressure with topo)
     };
   }
 }

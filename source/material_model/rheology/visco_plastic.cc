@@ -329,8 +329,31 @@ namespace aspect
                                                                                        pressure_for_plasticity,
                                                                                        drucker_prager_parameters.max_yield_stress);
 
-            // Step 5b: select if the yield viscosity is based on Drucker Prager or a stress limiter rheology
+          // Partial_Melting
+            // Loop over the specified composition numbers
+            // for (double comp : composition_numbers_affected)
+            // {
+            //     // Convert the composition number to an index (if necessary) and apply logic
+            //     unsigned int comp_index = static_cast<unsigned int>(comp);  // Cast to index if necessary
+            //       // std::cout<<"comp index : "<<comp_index<<std::endl;
+
+            //     if (in.composition[i][comp_index] > 0.5 && in.temperature[i] > temperature_threshold && use_drop_viscosity == true)
+            //     {
+            //       // std::cout<<"melt weakening working"<<std::endl;
+            //         non_yielding_viscosity = non_yielding_viscosity / viscosity_decrease_factor;
+            //         break; 
+            //     }
+            // }
+
+            if (in.composition[i][composition_numbers_affected] > 0.5 && in.temperature[i] > temperature_threshold && use_drop_viscosity == true)
+            {
+              // std::cout<<"melt weakening working"<<std::endl;
+                non_yielding_viscosity = non_yielding_viscosity / viscosity_decrease_factor;
+            }
+
             double effective_viscosity = non_yielding_viscosity;
+            // Step 5b: select if the yield viscosity is based on Drucker Prager or a stress limiter rheology
+            // double effective_viscosity = non_yielding_viscosity;
             switch (yield_mechanism)
               {
                 case stress_limiter:
@@ -536,6 +559,25 @@ namespace aspect
 
         Rheology::Elasticity<dim>::declare_parameters (prm);
 
+        // prm.declare_entry ("Composition number affected", "1", 
+        //                     Patterns::List(Patterns::Double(0.)),
+        //                     "List of compositions affected by the change of viscosity");
+        prm.declare_entry ("Composition number affected", "1", 
+                            Patterns::Double(0.),
+                            "Composition affected by the change of viscosity");
+
+        prm.declare_entry ("Temperature of activation", "1000", 
+                            Patterns::Double(0.), 
+                            "Temperature at which the Viscosity and conductivity decrease factor applies in Kelvin");
+
+        prm.declare_entry ("Viscosity decrease factor", "10", 
+                            Patterns::Double(0.), 
+                            "Factor for decrease of viscosity");
+
+        prm.declare_entry("Use drop viscosity", "false",
+                          Patterns::Bool(),
+                          "Drop viscosity depending on composition and temperature threshold");
+
         // Reference and minimum/maximum values
         prm.declare_entry ("Minimum strain rate", "1.0e-20", Patterns::Double (0.),
                            "Stabilizes strain dependent viscosity. Units: \\si{\\per\\second}.");
@@ -657,6 +699,19 @@ namespace aspect
             elastic_rheology.parse_parameters(prm);
           }
 
+        use_drop_viscosity = prm.get_bool("Use drop viscosity");
+        viscosity_decrease_factor = prm.get_double("Viscosity decrease factor");
+        temperature_threshold = prm.get_double("Temperature of activation");
+        composition_numbers_affected = prm.get_double("Composition number affected");
+        // std::vector<double> composition_numbers_affected = Utilities::string_to_double(Utilities::split_string_list(prm.get("Composition number affected")));
+          // // Print the contents of composition_numbers_affected
+          // std::cout << "compositions: ";
+          // for (const double &comp : composition_numbers_affected)
+          // {
+          //     std::cout << comp << " ";
+          // }
+          // std::cout << std::endl; 
+          
         // Reference and minimum/maximum values
         min_strain_rate = prm.get_double("Minimum strain rate");
         ref_strain_rate = prm.get_double("Reference strain rate");

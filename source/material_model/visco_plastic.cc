@@ -125,7 +125,23 @@ namespace aspect
       return plastic_yielding;
     }
 
+    // template <int dim>
+    // std::vector<double> ViscoPlastic<dim>::get_composition_numbers_affected() const
+    // {
+    //     return rheology->composition_numbers_affected;
+    // }
 
+    template <int dim>
+    double ViscoPlastic<dim>::get_composition_numbers_affected() const
+    {
+        return rheology->composition_numbers_affected;
+    }
+
+    template <int dim>
+    double ViscoPlastic<dim>::get_temperature_threshold() const
+    {
+        return rheology->temperature_threshold;
+    }
 
     template <int dim>
     void
@@ -185,6 +201,20 @@ namespace aspect
           out.thermal_expansion_coefficients[i] = MaterialUtilities::average_value (volume_fractions, eos_outputs.thermal_expansion_coefficients, MaterialUtilities::arithmetic);
           out.specific_heat[i] = MaterialUtilities::average_value (volume_fractions, eos_outputs.specific_heat_capacities, MaterialUtilities::arithmetic);
 
+          double final_conductivity_increase_factor = 1.0;  // Default value if no conditions are met
+
+          // Check the threshold temperature value
+          double threshold_temperature = rheology->temperature_threshold;
+          // std::cout << "Threshold temperature: " << threshold_temperature << std::endl;
+
+          // Check the composition numbers affected
+          double composition_numbers_affected = rheology->composition_numbers_affected;
+
+          if (in.composition[i][composition_numbers_affected] > 0.5 && in.temperature[i] > threshold_temperature && use_conductivity_temperature_dependent == true)
+          {
+              final_conductivity_increase_factor = conductivity_increase_factor;
+          }
+
           if (define_conductivities == false)
             {
               double thermal_diffusivity = 0.0;
@@ -200,15 +230,17 @@ namespace aspect
                   Parameters<dim>::Formulation::TemperatureEquation::reference_density_profile &&
                   this->get_adiabatic_conditions().is_initialized())
                 out.thermal_conductivities[i] = thermal_diffusivity * out.specific_heat[i] *
-                                                this->get_adiabatic_conditions().density(in.position[i]);
+                                                this->get_adiabatic_conditions().density(in.position[i])*final_conductivity_increase_factor;
               else
-                out.thermal_conductivities[i] = thermal_diffusivity * out.specific_heat[i] * out.densities[i];
+                out.thermal_conductivities[i] = thermal_diffusivity * out.specific_heat[i] * out.densities[i]*final_conductivity_increase_factor;
             }
           else
             {
-              // Use thermal conductivity values specified in the parameter file, if this
-              // option was selected.
-              out.thermal_conductivities[i] = MaterialUtilities::average_value (volume_fractions, thermal_conductivities, MaterialUtilities::arithmetic);
+              // Use specified thermal conductivity values from parameter file
+              double conductivity_out = MaterialUtilities::average_value(volume_fractions, thermal_conductivities, MaterialUtilities::arithmetic);
+
+              // Apply the conductivity increase factor
+              out.thermal_conductivities[i] = conductivity_out * final_conductivity_increase_factor;
             }
 
           out.compressibilities[i] = MaterialUtilities::average_value (volume_fractions, eos_outputs.compressibilities, MaterialUtilities::arithmetic);
@@ -328,6 +360,21 @@ namespace aspect
       return rheology->min_strain_rate;
     }
 
+    // // Retrieve the composition numbers affected
+    // template <int dim>
+    // std::vector<double> ViscoPlastic<dim>::
+    // get_composition_numbers_affected() const
+    // {
+    //   return rheology->composition_numbers_affected;
+    // }
+
+    // // Retrieve the temperature threshold
+    // template <int dim>
+    // double ViscoPlastic<dim>::
+    // get_temperature_threshold() const
+    // {
+    //   return rheology->temperature_threshold;
+    // }
 
 
     template <int dim>
@@ -364,6 +411,13 @@ namespace aspect
                              "those corresponding to chemical compositions. "
                              "If only one value is given, then all use the same value. "
                              "Units: \\si{\\watt\\per\\meter\\per\\kelvin}.");
+          prm.declare_entry("Conductivity increase factor", "1", 
+                            Patterns::Double(0.), 
+                            "Factor for the increase of conductivity");
+
+          prm.declare_entry("Use conductivity temperature dependent", "false", 
+                            Patterns::Bool(), 
+                            "Apply a temperature-dependent factor to the specific heat, affecting conductivity");
         }
         prm.leave_subsection();
       }
@@ -413,9 +467,15 @@ namespace aspect
           options.property_name = "Thermal conductivities";
           thermal_conductivities = Utilities::MapParsing::parse_map_to_double_array (prm.get("Thermal conductivities"), options);
 
+          use_conductivity_temperature_dependent = prm.get_bool("Use conductivity temperature dependent");
+
+          conductivity_increase_factor = prm.get_double("Conductivity increase factor");
+          
           rheology = std::make_unique<Rheology::ViscoPlastic<dim>>();
           rheology->initialize_simulator (this->get_simulator());
           rheology->parse_parameters(prm, std::make_unique<std::vector<unsigned int>>(n_phases_for_each_chemical_composition));
+          rheology->parse_parameters(prm);
+
         }
         prm.leave_subsection();
       }

@@ -226,7 +226,10 @@ namespace aspect
            */
           Rheology::Elasticity<dim> elastic_rheology;
 
-
+          // std::vector<double> composition_numbers_affected;
+          double composition_numbers_affected;
+          double temperature_threshold;
+          
         private:
 
           /**
@@ -340,6 +343,9 @@ namespace aspect
            * Input parameters for the drucker prager plasticity.
            */
           Rheology::DruckerPragerParameters drucker_prager_parameters;
+
+          double viscosity_decrease_factor;
+          bool use_drop_viscosity;
 
       };
     }

@@ -181,6 +181,8 @@ namespace aspect
     class ViscoPlastic : public MaterialModel::Interface<dim>, public ::aspect::SimulatorAccess<dim>
     {
       public:
+        
+        // Rheology::ViscoPlastic<dim> rheology;
 
         void evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
                       MaterialModel::MaterialModelOutputs<dim> &out) const override;
@@ -208,6 +210,13 @@ namespace aspect
         create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const override;
 
         double get_min_strain_rate() const;
+        
+        // Retrieve the composition numbers affected
+        // std::vector<double> get_composition_numbers_affected() const;
+        double get_composition_numbers_affected() const;
+
+        // Retrieve the temperature threshold
+        double get_temperature_threshold() const;
 
         /**
          * A function that returns whether the material is plastically yielding at
@@ -274,6 +283,9 @@ namespace aspect
          * Object that handles phase transitions.
          */
         MaterialUtilities::PhaseFunction<dim> phase_function;
+
+        bool use_conductivity_temperature_dependent;
+        double conductivity_increase_factor;
 
     };
 

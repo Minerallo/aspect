@@ -266,14 +266,16 @@ namespace aspect
             }
         }
 
+      std::array<unsigned int, dim> repetitions;
+
       if (use_boxlitho_2d)
       {
         grid_extent[0].first = 0;
         grid_extent[1].first = 0;
         grid_extent[0].second = x_extent_2d;
         grid_extent[1].second = y_extent_2d_bl;
-        x_repetitions = x_repetitions_2d;
-        y_repetitions = y_repetitions_2d;
+        repetitions[0] = x_repetitions_2d;
+        repetitions[1] = y_repetitions_2d;
       }
       else
       {
@@ -283,12 +285,10 @@ namespace aspect
             grid_extent[d].first = geometry->get_origin()[d];
             grid_extent[d].second = geometry->get_extents()[d];
           }
-      }
-
       // Get the x and y repetitions used in the parameter file so
       // the FastScape cell size can be properly set.
-      const std::array<unsigned int, dim> repetitions = geometry->get_repetitions();
-
+      repetitions = geometry->get_repetitions();
+      }
       // Set number of x points, which is generally 1+(FastScape refinement level)^2.
       // The FastScape refinement level is a combination of the maximum ASPECT refinement level
       // at the surface and any additional refinement we want in FastScape. If
@@ -1751,6 +1751,9 @@ namespace aspect
                             "Select one type of Fastscape variable as output in Fastcape vtk."
                             "Output are in units of per year. "
                            );
+          prm.declare_entry("Use box with lithosphere 2d", "true",
+                            Patterns::Bool(),
+                            "Flag on to autorize the user to enter its own model dimension X extent and XY repetitions");                         
 
           prm.enter_subsection ("Boundary conditions");
           {

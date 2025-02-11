@@ -193,8 +193,8 @@ namespace aspect
     {
       CitationInfo::add("fastscape");
 
-      AssertThrow(Plugins::plugin_type_matches<const GeometryModel::Box<dim>>(this->get_geometry_model()),
-                  ExcMessage("FastScape can only be run with a box geometry model."));
+      // AssertThrow(Plugins::plugin_type_matches<const GeometryModel::Box<dim>>(this->get_geometry_model()),
+      //             ExcMessage("FastScape can only be run with a box geometry model."));
 
       const GeometryModel::Box<dim> *geometry
         = dynamic_cast<const GeometryModel::Box<dim>*> (&this->get_geometry_model());
@@ -263,12 +263,24 @@ namespace aspect
             }
         }
 
-      // The first entry represents the minimum coordinates of the model domain, the second the model extent.
-      for (unsigned int d=0; d<dim; ++d)
-        {
-          grid_extent[d].first = geometry->get_origin()[d];
-          grid_extent[d].second = geometry->get_extents()[d];
-        }
+      if (use_boxlitho_2d)
+      {
+        grid_extent[0].first = 0;
+        grid_extent[1].first = 0;
+        grid_extent[0].second = x_extent_2d;
+        grid_extent[1].second = y_extent_2d_bl;
+        x_repetitions = x_repetitions_2d;
+        y_repetitions = y_repetitions_2d;
+      }
+      else
+      {
+        // The first entry represents the minimum coordinates of the model domain, the second the model extent.
+        for (unsigned int d=0; d<dim; ++d)
+          {
+            grid_extent[d].first = geometry->get_origin()[d];
+            grid_extent[d].second = geometry->get_extents()[d];
+          }
+      }
 
       // Get the x and y repetitions used in the parameter file so
       // the FastScape cell size can be properly set.
@@ -1793,6 +1805,23 @@ namespace aspect
                               "Transport coefficient (diffusivity) for silt. Units: $\\{m^2/yr}$ ");
           }
           prm.leave_subsection();
+
+          prm.enter_subsection("Box with lithosphere 2d");
+          {
+          prm.declare_entry("X extent in 2d", "2208000",
+                            Patterns::Double(),
+                            "Set a X extent in meters.");  
+          prm.declare_entry("Y extent in 2d", "100000",
+                            Patterns::Double(),
+                            "Y extent when used with 2D");                                                
+          prm.declare_entry("X repetitions in 2d", "69",
+                            Patterns::Double(),
+                            "Set a X repetitions.");
+          prm.declare_entry("Y repetitions in 2d", "35",
+                            Patterns::Double(),
+                            "Set a Y repetitions.");
+          }    
+          prm.leave_subsection();   
         }
         prm.leave_subsection();
       }
@@ -1825,6 +1854,16 @@ namespace aspect
                                 (Utilities::split_string_list(prm.get ("Sediment rain rates")));
           sediment_rain_times = Utilities::string_to_double
                                 (Utilities::split_string_list(prm.get ("Sediment rain time intervals")));
+          use_boxlitho_2d = prm.get_bool("Use box with lithosphere 2d");
+
+          prm.enter_subsection("Box with lithosphere 2d");
+          {
+            x_extent_2d = prm.get_double("X extent in 2d");
+            y_extent_2d_bl = prm.get_double("Y extent in 2d");            
+            x_repetitions_2d = prm.get_double("X repetitions in 2d");
+            y_repetitions_2d = prm.get_double("Y repetitions in 2d");
+          }
+          prm.leave_subsection();
 
           if (!this->convert_output_to_years())
             {

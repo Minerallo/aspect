@@ -15,7 +15,7 @@
 
   You should have received a copy of the GNU General Public License
   along with ASPECT; see the file LICENSE.  If not see
-  <http://www.gnu.org/licenses/>. 
+  <http://www.gnu.org/licenses/>.
 */
 
 #ifndef _aspect_material_model_rheology_friction_models_h
@@ -140,8 +140,8 @@ namespace aspect
           /**
            * Thresholds on the strain rate trace to classify convergent, neutral, or divergent regimes.
            */
-            double convergence_threshold;
-            double divergence_threshold;
+          double convergence_threshold;
+          double divergence_threshold;
       };
     }
   }

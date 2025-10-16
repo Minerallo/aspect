@@ -248,24 +248,6 @@ namespace aspect
                                   "Please change it to type generic so that it does not affect material properties."));
         }
 
-      // Initialize parameters for restarting FastScape
-      restart = this->get_parameters().resume_computation;
-
-      // Since we don't open these until we're on one process, we need to check if the
-      // restart files exist beforehand.
-      if (restart)
-        {
-          if (Utilities::MPI::this_mpi_process(this->get_mpi_communicator()) == 0)
-            {
-              AssertThrow(Utilities::fexists(this->get_output_directory() + "fastscape_elevation_restart.txt"),
-                          ExcMessage("Cannot open topography file to restart FastScape."));
-              AssertThrow(Utilities::fexists(this->get_output_directory() + "fastscape_basement_restart.txt"),
-                          ExcMessage("Cannot open basement file to restart FastScape."));
-              AssertThrow(Utilities::fexists(this->get_output_directory() + "fastscape_silt_fraction_restart.txt"),
-                          ExcMessage("Cannot open silt fraction file to restart FastScape."));
-            }
-        }
-
       std::array<unsigned int, dim> repetitions;
 
       if (use_boxlitho_2d)

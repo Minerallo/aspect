@@ -41,23 +41,23 @@ namespace aspect
 
         if(use_Murnaghan_densities)
         {
-            for (unsigned int c=0; c < out.densities.size(); ++c)
+            for (unsigned int c=0; c < eos_outputs.densities.size(); ++c)
             {
                 const double ak = thermal_expansivities[c]/reference_isothermal_compressibilities[c];
                 const double f = (1. + (in.pressure[input_index] - ak*(in.temperature[input_index] - reference_temperatures[c])) *
                                 isothermal_bulk_modulus_pressure_derivatives[c] *
                                 reference_isothermal_compressibilities[c]);
 
-                out.densities[c] = densities[c]*std::pow(f, 1./isothermal_bulk_modulus_pressure_derivatives[c]);
-                out.thermal_expansion_coefficients[c] = thermal_expansivities[c] / f;
-                out.specific_heat_capacities[c] = (specific_heats[c] +
+                eos_outputs.densities[c] = densities[c]*std::pow(f, 1./isothermal_bulk_modulus_pressure_derivatives[c]);
+                eos_outputs.thermal_expansion_coefficients[c] = thermal_expansivities[c] / f;
+                eos_outputs.specific_heat_capacities[c] = (specific_heats[c] +
                                                 (in.temperature[input_index]*thermal_expansivities[c] *
                                                     ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
                                                     / densities[c]));
-               out.compressibilities[c] = 0;
-                // out.compressibilities[c] = reference_isothermal_compressibilities[c]/f;
-                out.entropy_derivative_pressure[c] = 0.;
-                out.entropy_derivative_temperature[c] = 0.;
+               eos_outputs.compressibilities[c] = 0;
+                // eos_outputs.compressibilities[c] = reference_isothermal_compressibilities[c]/f;
+                eos_outputs.entropy_derivative_pressure[c] = 0.;
+                eos_outputs.entropy_derivative_temperature[c] = 0.;
             }
         }else{
 
@@ -71,12 +71,12 @@ namespace aspect
 
         for (unsigned int c=0; c < eos_outputs.densities.size(); ++c)
           {
-            out.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[input_index] - reference_T2));
-            out.thermal_expansion_coefficients[c] = thermal_expansivities[c];
-            out.specific_heat_capacities[c] = specific_heats[c];
-            out.compressibilities[c] = 0.0;
-            out.entropy_derivative_pressure[c] = 0.0;
-            out.entropy_derivative_temperature[c] = 0.0;
+            eos_outputs.densities[c] = densities[c] * (1 - thermal_expansivities[c] * (in.temperature[input_index] - reference_T2));
+            eos_outputs.thermal_expansion_coefficients[c] = thermal_expansivities[c];
+            eos_outputs.specific_heat_capacities[c] = specific_heats[c];
+            eos_outputs.compressibilities[c] = 0.0;
+            eos_outputs.entropy_derivative_pressure[c] = 0.0;
+            eos_outputs.entropy_derivative_temperature[c] = 0.0;
           }
         }
       }

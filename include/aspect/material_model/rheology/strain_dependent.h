@@ -67,7 +67,8 @@ namespace aspect
       enum HealingMechanism
       {
         no_healing,
-        temperature_dependent
+        temperature_dependent,
+        strain_rate_dependent
       };
 
       template <int dim>
@@ -101,9 +102,14 @@ namespace aspect
           /**
            * A function that computes the strain healing (reduction in accumulated strain)
            */
+	  // function was modified by 4 additional input parameters, redefine here: TN_v1
           double
           calculate_strain_healing (const MaterialModel::MaterialModelInputs<dim> &in,
-                                    const unsigned int j) const;
+                                    const unsigned int j,
+				    // const double strain_rate_slow,
+ 				    // const double strain_rate_fast,
+				    // const double b_slow,
+				    const double edot_ii) const;
 
           /**
            * A function that computes by how much the cohesion and internal friction
@@ -217,6 +223,16 @@ namespace aspect
            * A prefactor of viscosity used in the strain healing calculation.
            */
           double strain_healing_temperature_dependent_prefactor;
+
+
+        // Parameters for strain rate dependent healing
+          double strain_healing_strain_rate_dependent_slow_recovery_rate;
+
+          double strain_healing_strain_rate_dependent_fast_recovery_rate;
+
+          double strain_healing_strain_rate_dependent_slow_strain_rate;
+
+          double strain_healing_strain_rate_dependent_fast_strain_rate; 
 
           /**
            * We cache the evaluators that are necessary to evaluate the velocity

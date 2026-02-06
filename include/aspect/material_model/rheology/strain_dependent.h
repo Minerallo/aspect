@@ -36,6 +36,15 @@ namespace aspect
 
     namespace Rheology
     {
+
+      struct StrainHealingDiagnostics
+      {
+        double healed_strain = 0.0;
+        double recovery_rate = 0.0;
+        double temperature_factor = 1.0;
+      };
+
+      
       /**
        * Enumeration for selecting which type of weakening mechanism to use.
        * For none, no strain weakening occurs.
@@ -71,10 +80,36 @@ namespace aspect
         strain_rate_dependent
       };
 
+
+      /**
+       * Additional output fields for strain healing diagnostics.
+       */
+      template <int dim>
+      class StrainHealingAdditionalOutputs : public NamedAdditionalMaterialOutputs<dim>
+      {
+      public:
+        StrainHealingAdditionalOutputs(const unsigned int n_points);
+
+        std::vector<double> get_nth_output(const unsigned int idx) const override;
+
+        std::vector<double> healed_strain;
+        std::vector<double> recovery_rate;
+        std::vector<double> temperature_factor;
+      };
+
       template <int dim>
       class StrainDependent : public ::aspect::SimulatorAccess<dim>
       {
         public:
+
+          void
+          create_strain_healing_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const;
+
+          void
+          fill_strain_healing_outputs (const MaterialModel::MaterialModelInputs<dim> &in,
+                                      const unsigned int i,
+                                      MaterialModel::MaterialModelOutputs<dim> &out,
+                                      const double min_strain_rate) const;
           /**
            * Declare the parameters this function takes through input files.
            */
@@ -103,7 +138,7 @@ namespace aspect
            * A function that computes the strain healing (reduction in accumulated strain)
            */
 	  // function was modified by 4 additional input parameters, redefine here: TN_v1
-          double
+          StrainHealingDiagnostics
           calculate_strain_healing (const MaterialModel::MaterialModelInputs<dim> &in,
                                     const unsigned int j,
 				    // const double strain_rate_slow,

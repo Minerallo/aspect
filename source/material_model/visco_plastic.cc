@@ -277,6 +277,9 @@ namespace aspect
           // Calculate changes in strain invariants and update the reaction terms
           rheology->strain_rheology.fill_reaction_outputs(in, i, rheology->min_strain_rate, plastic_yielding, out);
 
+          // Fill strain-healing diagnostic outputs (computed internally in strain rheology)
+          rheology->strain_rheology.fill_strain_healing_outputs(in, i, out,rheology->min_strain_rate);
+
           // Fill plastic outputs if they exist.
           // The values in isostrain_viscosities only make sense when the calculate_isostrain_viscosities function
           // has been called.
@@ -448,6 +451,8 @@ namespace aspect
     ViscoPlastic<dim>::create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const
     {
       rheology->create_plastic_outputs(out);
+
+      rheology->strain_rheology.create_strain_healing_outputs(out);
 
       if (this->get_parameters().enable_elasticity)
         rheology->elastic_rheology.create_elastic_outputs(out);

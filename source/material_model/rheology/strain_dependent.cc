@@ -38,6 +38,49 @@ namespace aspect
   {
     namespace Rheology
     {
+      namespace
+      {
+        std::vector<std::string> make_strain_healing_additional_outputs_names()
+        {
+          std::vector<std::string> names;
+          names.emplace_back("healed_strain");
+          names.emplace_back("strain_healing_recovery_rate");
+          names.emplace_back("strain_healing_temperature_factor");
+          return names;
+        }
+      }
+
+      template <int dim>
+      StrainHealingAdditionalOutputs<dim>::
+      StrainHealingAdditionalOutputs(const unsigned int n_points)
+        :
+        NamedAdditionalMaterialOutputs<dim>(make_strain_healing_additional_outputs_names()),
+        healed_strain(n_points, numbers::signaling_nan<double>()),
+        recovery_rate(n_points, numbers::signaling_nan<double>()),
+        temperature_factor(n_points, numbers::signaling_nan<double>())
+      {}
+
+
+      template <int dim>
+      std::vector<double>
+      StrainHealingAdditionalOutputs<dim>::get_nth_output(const unsigned int idx) const
+      {
+        AssertIndexRange(idx, 3);
+        switch (idx)
+          {
+            case 0:
+              return healed_strain;
+            case 1:
+              return recovery_rate;
+            case 2:
+              return temperature_factor;
+            default:
+              AssertThrow(false, ExcInternalError());
+          }
+        return healed_strain; // never reached
+      }
+
+
       template <int dim>
       void
       StrainDependent<dim>::declare_parameters (ParameterHandler &prm)
@@ -479,13 +522,19 @@ namespace aspect
       }
 	// TN_v1: modifications to have a 3 regime strain_rate dependent strain_healing_temperature_dependent_prefactor
       template <int dim>
-      double
+      StrainHealingDiagnostics
       StrainDependent<dim>::
       calculate_strain_healing(const MaterialModel::MaterialModelInputs<dim> &in,
                                const unsigned int j,
                                const double edot_ii) const
       {
         const double reference_temperature = this->get_adiabatic_surface_temperature();
+
+        StrainHealingDiagnostics d;
+
+        if (healing_mechanism != no_healing)
+            d.temperature_factor = std::exp(-strain_healing_temperature_dependent_prefactor * 0.5 * (1.0 - in.temperature[j]/reference_temperature));
+
         double healed_strain = 0.0;
 	// define additional input values: TN_v1
         switch (healing_mechanism)
@@ -496,14 +545,7 @@ namespace aspect
             }
             case temperature_dependent:
             {
-            double recovery_rate;
-            double temperature_factor;
-
-            temperature_factor = std::exp(-strain_healing_temperature_dependent_prefactor * 0.5 * (1.0 - in.temperature[j]/reference_temperature));    
-
-            recovery_rate= strain_healing_temperature_dependent_recovery_rate;
-
-            healed_strain = recovery_rate * temperature_factor * this->get_timestep();
+            d.recovery_rate= strain_healing_temperature_dependent_recovery_rate;
                 break;
             }
             case strain_rate_dependent:
@@ -511,33 +553,28 @@ namespace aspect
             { 
               const double eps_dot = edot_ii;
               const double log_eps_dot = std::log(eps_dot);
-              const double log_eps_dot_slow  = std::log(strain_healing_strain_rate_dependent_slow_recovery_rate);
-              const double log_eps_dot_fast  = std::log(strain_healing_strain_rate_dependent_fast_recovery_rate);
-
-              double recovery_rate;
-              double temperature_factor;
-
-            temperature_factor = std::exp(-strain_healing_temperature_dependent_prefactor * 0.5 * (1.0 - in.temperature[j]/reference_temperature));
+              const double log_eps_dot_slow  = std::log(strain_healing_strain_rate_dependent_slow_strain_rate);
+              const double log_eps_dot_fast  = std::log(strain_healing_strain_rate_dependent_fast_strain_rate);
 
               if (log_eps_dot <= log_eps_dot_slow)
               {
-                  recovery_rate = strain_healing_strain_rate_dependent_slow_recovery_rate;
+                  d.recovery_rate = strain_healing_strain_rate_dependent_slow_recovery_rate;
               }
               else if (log_eps_dot >= log_eps_dot_fast)
               {
-                  recovery_rate = strain_healing_strain_rate_dependent_fast_recovery_rate;
+                  d.recovery_rate = strain_healing_strain_rate_dependent_fast_recovery_rate;
               }
               else
               {
                   double slope = (log_eps_dot_fast - log_eps_dot) / (log_eps_dot_fast - log_eps_dot_slow);
-                  recovery_rate = strain_healing_strain_rate_dependent_fast_recovery_rate + (strain_healing_strain_rate_dependent_slow_recovery_rate - strain_healing_strain_rate_dependent_fast_recovery_rate) * slope;
+                  d.recovery_rate = strain_healing_strain_rate_dependent_fast_recovery_rate + (strain_healing_strain_rate_dependent_slow_recovery_rate - strain_healing_strain_rate_dependent_fast_recovery_rate) * slope;
               }
-                    healed_strain = recovery_rate * temperature_factor
-                                    * this->get_timestep();
                     break;
             }
           }
-        return healed_strain;
+
+        d.healed_strain = d.recovery_rate * d.temperature_factor * this->get_timestep();
+        return d;
       }
 
       template <int dim>
@@ -618,11 +655,11 @@ namespace aspect
               {
                 // Temperature-dependent healing occurs independent of deformation state
 		// TN_v1: modify input for 4 input parameters
-                const double healed_strain = calculate_strain_healing(in,i, edot_ii);
+                const auto d = calculate_strain_healing(in,i, edot_ii);
 
-                delta_e_ii_plastic -= healed_strain;
-                delta_e_ii_viscous -= healed_strain;
-                delta_e_ii -= healed_strain;
+                delta_e_ii_plastic -= d.healed_strain;
+                delta_e_ii_viscous -= d.healed_strain;
+                delta_e_ii -= d.healed_strain;
               }
 
             // We need to obtain the strain values from compositional fields at the previous time step,
@@ -846,6 +883,47 @@ namespace aspect
           strain_mask.set(this->introspection().compositional_index_for_name("noninitial_plastic_strain"),false);
 
         return strain_mask;
+      }
+
+      template <int dim>
+      void
+      StrainDependent<dim>::
+      create_strain_healing_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const
+      {
+        if (out.template get_additional_output<StrainHealingAdditionalOutputs<dim>>() == nullptr)
+          {
+            const unsigned int n_points = out.n_evaluation_points();
+            out.additional_outputs.push_back(
+              std::make_unique<StrainHealingAdditionalOutputs<dim>>(n_points));
+          }
+      }
+
+      template <int dim>
+      void
+      StrainDependent<dim>::
+      fill_strain_healing_outputs (const MaterialModel::MaterialModelInputs<dim> &in,
+                                  const unsigned int i,
+                                  MaterialModel::MaterialModelOutputs<dim> &out,
+                                  const double min_strain_rate) const
+      {
+        StrainHealingAdditionalOutputs<dim> *healing_out =
+          out.template get_additional_output<StrainHealingAdditionalOutputs<dim>>();
+
+        if (healing_out == nullptr)
+          return;
+
+        // --- EXACT SAME edot_ii definition as in fill_reaction_outputs ---
+        Assert(std::isfinite(in.strain_rate[i].norm()),
+              ExcMessage("Invalid strain_rate in MaterialModelInputs."));
+
+        const double edot_ii = std::max(std::sqrt(std::max(-second_invariant(deviator(in.strain_rate[i])), 0.)),
+                                            min_strain_rate);
+
+        const auto d = calculate_strain_healing(in, i, edot_ii);
+
+        healing_out->healed_strain[i]      = d.healed_strain;
+        healing_out->recovery_rate[i]      = d.recovery_rate;
+        healing_out->temperature_factor[i] = d.temperature_factor;
       }
 
       template <int dim>

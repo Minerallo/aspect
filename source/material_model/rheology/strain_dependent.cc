@@ -185,7 +185,7 @@ namespace aspect
                            "Recovery rate prefactor for temperature dependent "
                            "strain healing. Units: $1/s$");
 
-        prm.declare_entry ("Fast healing recovery rate", "1e-15.", Patterns::Double(0),
+        prm.declare_entry ("Fast healing recovery rate", "1e-15", Patterns::Double(0),
                            "Prefactor for temperature dependent "
                            "strain healing. Units: None");
 
@@ -483,10 +483,6 @@ namespace aspect
       StrainDependent<dim>::
       calculate_strain_healing(const MaterialModel::MaterialModelInputs<dim> &in,
                                const unsigned int j,
-			                        //  const double strain_rate_slow,
-                              //  const double strain_rate_fast,
-                              //  const double b_slow,
-                              //  const double b_fast
                                const double edot_ii) const
       {
         const double reference_temperature = this->get_adiabatic_surface_temperature();
@@ -500,9 +496,14 @@ namespace aspect
             }
             case temperature_dependent:
             {
-            healed_strain = strain_healing_temperature_dependent_recovery_rate *
-                std::exp(-strain_healing_temperature_dependent_prefactor * 0.5 * (1.0 - in.temperature[j]/reference_temperature))
-                * this->get_timestep();
+            double recovery_rate;
+            double temperature_factor;
+
+            temperature_factor = std::exp(-strain_healing_temperature_dependent_prefactor * 0.5 * (1.0 - in.temperature[j]/reference_temperature));    
+
+            recovery_rate= strain_healing_temperature_dependent_recovery_rate;
+
+            healed_strain = recovery_rate * temperature_factor * this->get_timestep();
                 break;
             }
             case strain_rate_dependent:
@@ -514,6 +515,9 @@ namespace aspect
               const double log_eps_dot_fast  = std::log(strain_healing_strain_rate_dependent_fast_recovery_rate);
 
               double recovery_rate;
+              double temperature_factor;
+
+            temperature_factor = std::exp(-strain_healing_temperature_dependent_prefactor * 0.5 * (1.0 - in.temperature[j]/reference_temperature));
 
               if (log_eps_dot <= log_eps_dot_slow)
               {
@@ -528,8 +532,7 @@ namespace aspect
                   double slope = (log_eps_dot_fast - log_eps_dot) / (log_eps_dot_fast - log_eps_dot_slow);
                   recovery_rate = strain_healing_strain_rate_dependent_fast_recovery_rate + (strain_healing_strain_rate_dependent_slow_recovery_rate - strain_healing_strain_rate_dependent_fast_recovery_rate) * slope;
               }
-                    healed_strain = recovery_rate *
-                                    std::exp(-strain_healing_temperature_dependent_prefactor * 0.5 * (1.0 - in.temperature[j]/reference_temperature))
+                    healed_strain = recovery_rate * temperature_factor
                                     * this->get_timestep();
                     break;
             }

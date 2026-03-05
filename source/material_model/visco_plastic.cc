@@ -25,6 +25,7 @@
 #include <aspect/newton.h>
 #include <aspect/adiabatic_conditions/interface.h>
 #include <aspect/gravity_model/interface.h>
+#include <deal.II/fe/component_mask.h>
 
 namespace aspect
 {
@@ -40,6 +41,25 @@ namespace aspect
         }
     }
 
+    // template <int dim>
+    // std::vector<double>
+    // ViscoPlastic<dim>::compute_volume_fractions(
+    //   const std::vector<double> &composition) const
+    // {
+    //   const unsigned int n_components = composition.size();
+
+    //   ComponentMask mask(n_components, false);
+
+    //   for (const unsigned int idx :
+    //       this->introspection().chemical_composition_field_indices())
+    //     mask.set(idx, true);
+
+    //   return MaterialUtilities::compute_composition_fractions(
+    //           composition,
+    //           mask,
+    //           composition_fraction_scheme,
+    //           minimum_composition_fraction);
+    // }
 
     template <int dim>
     bool
@@ -48,8 +68,13 @@ namespace aspect
     {
       Assert(in.n_evaluation_points() == 1, ExcInternalError());
 
-      const std::vector<double> volume_fractions = MaterialUtilities::compute_only_composition_fractions(in.composition[0],
-                                                   this->introspection().chemical_composition_field_indices());
+      // const std::vector<double> volume_fractions = compute_volume_fractions(in.composition[0]);
+      const auto volume_fractions =MaterialUtilities::compute_only_composition_fractions(in.composition[0],
+                                                this->introspection().chemical_composition_field_indices(),
+                                                composition_fraction_scheme,
+                                                minimum_composition_fraction);
+      // const std::vector<double> volume_fractions = MaterialUtilities::compute_only_composition_fractions(in.composition[0],
+      //                                              this->introspection().chemical_composition_field_indices());
 
       /* The following handles phases in a similar way as in the 'evaluate' function.
        * Results then enter the calculation of plastic yielding.
@@ -151,8 +176,15 @@ namespace aspect
                                                   n_phase_transitions_for_each_chemical_composition,
                                                   eos_outputs);
 
-          const std::vector<double> volume_fractions = MaterialUtilities::compute_only_composition_fractions(in.composition[i],
-                                                       this->introspection().chemical_composition_field_indices());
+          // const std::vector<double> volume_fractions = compute_volume_fractions(in.composition[i]);
+
+          // const std::vector<double> volume_fractions = MaterialUtilities::compute_only_composition_fractions(in.composition[i],
+          //                                              this->introspection().chemical_composition_field_indices());
+
+          const auto volume_fractions =MaterialUtilities::compute_only_composition_fractions(in.composition[i],
+                                                    this->introspection().chemical_composition_field_indices(),
+                                                    composition_fraction_scheme,
+                                                    minimum_composition_fraction);
 
           // not strictly correct if thermal expansivities are different, since we are interpreting
           // these compositions as volume fractions, but the error introduced should not be too bad.
@@ -357,6 +389,19 @@ namespace aspect
       {
         prm.enter_subsection ("Visco Plastic");
         {
+          prm.enter_subsection("Composition fractions");
+          {
+            prm.declare_entry("Volume fraction calculation scheme", "standard",
+                              Patterns::Selection("standard|thresholded"),
+                              "Scheme used to convert compositional fields into "
+                              "volume fractions.");
+            prm.declare_entry("Minimum volume fraction", "0.0",
+                              Patterns::Double(0.0),
+                              "Minimum fraction below which compositional fields "
+                              "are ignored when computing volume fractions.");
+          }
+          prm.leave_subsection();
+
           prm.declare_entry ("Use dominant phase for viscosity","false",
                              Patterns::Bool (),
                              "Whether to look up the dominant phase for each composition in its respective "
@@ -407,6 +452,28 @@ namespace aspect
       {
         prm.enter_subsection ("Visco Plastic");
         {
+          prm.enter_subsection("Composition fractions");
+          {
+            // Parse how compositional fields are converted into volume fractions.
+            // The selected scheme controls whether all compositional fields are
+            // considered (standard) or whether small-volume-fraction components
+            // are ignored before renormalization (thresholded).
+            if (prm.get("Volume fraction calculation scheme") == "standard")
+              composition_fraction_scheme =
+                MaterialUtilities::CompositionFractionScheme::standard;
+            else if (prm.get("Volume fraction calculation scheme") == "thresholded")
+              composition_fraction_scheme =
+                MaterialUtilities::CompositionFractionScheme::thresholded;
+            else
+              AssertThrow(false, ExcMessage("Invalid composition fraction scheme."));
+
+          // Minimum fraction used by schemes that discard small compositional
+          // contributions.x
+            minimum_composition_fraction =
+              prm.get_double("Minimum volume fraction");
+          }
+          prm.leave_subsection();
+
           // Phase transition parameters
           phase_function.initialize_simulator (this->get_simulator());
           phase_function.parse_parameters (prm);

@@ -280,6 +280,23 @@ namespace aspect
          */
         std::unique_ptr<MaterialUtilities::PhaseFunctionDiscrete<dim>> phase_function_discrete;
 
+        /**
+         * Scheme used to convert compositional fields into volume fractions.
+         */
+        MaterialUtilities::CompositionFractionScheme composition_fraction_scheme;
+
+        /**
+         * Minimum volume fraction below which compositional fields are ignored
+         * when computing volume fractions.
+         */
+        double minimum_composition_fraction;
+
+        /**
+         * Compute volume fractions from compositional fields using the selected
+         * composition fraction scheme.
+         */
+        // std::vector<double>
+        // compute_volume_fractions(const std::vector<double> &composition) const;
     };
 
   }

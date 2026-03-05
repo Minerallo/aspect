@@ -67,6 +67,19 @@ namespace aspect
      */
     namespace MaterialUtilities
     {
+      enum class CompositionFractionScheme
+      {
+        /**
+         * Use all compositional fields to compute volume fractions.
+         */
+        standard,
+
+        /**
+         * Ignore compositional fields whose volume fraction is smaller
+         * than a user-defined threshold before renormalization.
+         */
+        thresholded
+      };
       namespace Lookup
       {
         /**
@@ -373,6 +386,12 @@ namespace aspect
       compute_only_composition_fractions(const std::vector<double> &compositional_fields,
                                          const std::vector<unsigned int> &indices_to_use);
 
+      std::vector<double>
+      compute_only_composition_fractions(const std::vector<double> &compositional_fields,
+                                         const std::vector<unsigned int> &indices_to_use,
+                                         const CompositionFractionScheme scheme,
+                                         const double min_fraction);                               
+
       /**
        * For multicomponent material models: Given a vector of compositional
        * field values of length N, this function returns a vector of fractions
@@ -394,6 +413,22 @@ namespace aspect
       std::vector<double>
       compute_composition_fractions(const std::vector<double> &compositional_fields,
                                     const ComponentMask &field_mask = ComponentMask());
+
+
+      /**
+       * Like the function above, but allows selecting how compositional field
+       * values are converted into fractions. In addition to the standard
+       * behavior, this function can apply alternative schemes such as
+       * thresholding, in which compositional fields whose local fraction is
+       * smaller than a prescribed minimum value are ignored before
+       * renormalization. The background fraction is computed after applying
+       * the selected scheme.
+       */
+      std::vector<double>
+      compute_composition_fractions(const std::vector<double> &compositional_fields,
+                                    const ComponentMask &field_mask,
+                                    const CompositionFractionScheme scheme,
+                                    const double min_fraction);                              
 
       /**
        * Given a vector of component masses,
@@ -422,8 +457,6 @@ namespace aspect
         geometric,
         maximum_composition
       };
-
-
 
       /**
        * Read the compositional averaging operation from the parameter file,

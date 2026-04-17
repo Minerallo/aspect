@@ -255,7 +255,7 @@ namespace aspect
         grid_extent[0].first = 0;
         grid_extent[1].first = 0;
         grid_extent[0].second = x_extent_2d;
-        grid_extent[1].second = y_extent_2d_bl;
+        grid_extent[1].second = model_height;
         repetitions[0] = x_repetitions_2d;
         repetitions[1] = y_repetitions_2d;
       }
@@ -269,7 +269,7 @@ namespace aspect
           }
       // Get the x and y repetitions used in the parameter file so
       // the FastScape cell size can be properly set.
-      const std::array<unsigned int, dim> repetitions = geometry->get_repetitions();
+      repetitions = geometry->get_repetitions();
       }
       // Set number of x points, which is generally 1+(FastScape refinement level)^2.
       // The FastScape refinement level is a combination of the maximum ASPECT refinement level
@@ -1980,7 +1980,7 @@ namespace aspect
           prm.declare_entry("X extent in 2d", "2208000",
                             Patterns::Double(),
                             "Set a X extent in meters.");  
-          prm.declare_entry("Y extent in 2d", "100000",
+          prm.declare_entry("Model height", "100000",
                             Patterns::Double(),
                             "Y extent when used with 2D");                                                
           prm.declare_entry("X repetitions in 2d", "69",
@@ -2028,7 +2028,7 @@ namespace aspect
           prm.enter_subsection("Box with lithosphere 2d");
           {
             x_extent_2d = prm.get_double("X extent in 2d");
-            y_extent_2d_bl = prm.get_double("Y extent in 2d");            
+            model_height = prm.get_double("Model height");            
             x_repetitions_2d = prm.get_double("X repetitions in 2d");
             y_repetitions_2d = prm.get_double("Y repetitions in 2d");
           }

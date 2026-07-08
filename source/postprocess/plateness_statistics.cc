@@ -10,6 +10,7 @@
 #include <cmath>
 #include <sstream>
 #include <vector>
+#include <aspect/geometry_model/interface.h>
 
 namespace aspect
 {

@@ -233,10 +233,22 @@ namespace aspect
           IsostrainViscosities
           calculate_isostrain_viscosities ( const MaterialModel::MaterialModelInputs<dim> &in,
                                             const unsigned int i,
+                                            const double current_surface_adiabatic_pressure,
                                             const std::vector<double> &volume_fractions,
                                             const std::vector<double> &phase_function_values = std::vector<double>(),
                                             const std::vector<unsigned int> &n_phase_transitions_per_composition =
                                               std::vector<unsigned int>()) const;
+
+          /**
+           * Return adiabatic pressures evaluated using depth below the current
+           * surface at all evaluation points. These values are used by the
+           * pressure-dependent parts of the rheology for which adiabatic
+           * pressure is enabled. A NaN entry indicates that the existing
+           * pressure selection in the rheology should be used.
+           */
+          std::vector<double>
+          compute_current_surface_adiabatic_pressures(
+            const MaterialModel::MaterialModelInputs<dim> &in) const;
 
           /**
            * A function that fills the viscosity derivatives in the
@@ -250,6 +262,7 @@ namespace aspect
           void compute_viscosity_derivatives(const unsigned int point_index,
                                              const std::vector<double> &volume_fractions,
                                              const IsostrainViscosities &isostrain_values,
+                                             const double current_surface_adiabatic_pressure,
                                              const MaterialModel::MaterialModelInputs<dim> &in,
                                              MaterialModel::MaterialModelOutputs<dim> &out,
                                              const std::vector<double> &phase_function_values = std::vector<double>(),
@@ -297,6 +310,7 @@ namespace aspect
           void fill_plastic_outputs(const unsigned int point_index,
                                     const std::vector<double> &volume_fractions,
                                     const bool plastic_yielding,
+                                    const double current_surface_adiabatic_pressure,
                                     const MaterialModel::MaterialModelInputs<dim> &in,
                                     MaterialModel::MaterialModelOutputs<dim> &out,
                                     const IsostrainViscosities &isostrain_viscosities) const;

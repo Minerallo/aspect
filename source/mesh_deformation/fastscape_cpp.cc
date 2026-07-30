@@ -180,7 +180,9 @@ public:
             const xt::xarray<double> &erosion_strength,
             const xt::xarray<double> &surface_runoff,
             const bool advect_surface_state,
-            const double maximum_advection_courant)
+            const double maximum_advection_courant,
+            const double hillslope_diffusivity,
+            const double maximum_diffusion_courant)
     {
         Assert(grid && flow_graph && eroder, ExcInternalError());
         AssertDimension(uplift_rate.size(), elevation.size());
@@ -221,6 +223,10 @@ public:
                 eroder->erode(uplifted, effective_drainage_area, step_years);
             sediment_flux = flow_graph->accumulate(erosion / step_years);
             elevation = uplifted - erosion;
+            if (hillslope_diffusivity > 0.0)
+                diffuse_hillslopes(step_years,
+                                   hillslope_diffusivity,
+                                   maximum_diffusion_courant);
 
             const auto areas = grid->nodes_areas();
             for (unsigned int i = 0; i < erosion.size(); ++i)
@@ -261,6 +267,73 @@ public:
     }
 
 private:
+    /**
+     * Apply conservative linear diffusion on the unstructured surface grid.
+     * Shared faces are visited once, so the volume removed from one cell is
+     * exactly added to its neighbor.
+     */
+    void
+    diffuse_hillslopes(const double step_years,
+                       const double diffusivity,
+                       const double maximum_courant)
+    {
+        AssertThrow(maximum_courant > 0.0,
+                    ExcMessage("Maximum hillslope-diffusion Courant number "
+                               "must be positive."));
+        const auto areas = grid->nodes_areas();
+        std::vector<double> conductance_sum(elevation.size(), 0.0);
+        for (std::size_t i = 0; i < elevation.size(); ++i)
+            for (std::size_t n = 0;
+                    n < grid->number_of_cell_neighbors(i); ++n)
+            {
+                const std::size_t j = grid->cell_neighbor(i, n);
+                if (j <= i)
+                    continue;
+                const double conductance =
+                    diffusivity *
+                    grid->cell_shared_face_measure(i, n) /
+                    grid->cell_neighbor_distance(i, n);
+                conductance_sum[i] += conductance;
+                conductance_sum[j] += conductance;
+            }
+
+        double largest_courant = 0.0;
+        for (std::size_t i = 0; i < elevation.size(); ++i)
+            largest_courant =
+                std::max(largest_courant,
+                         step_years * conductance_sum[i] / areas[i]);
+        const unsigned int diffusion_steps =
+            std::max(1u,
+                     static_cast<unsigned int>(
+                         std::ceil(largest_courant / maximum_courant)));
+        const double diffusion_step_years =
+            step_years / diffusion_steps;
+
+        for (unsigned int step = 0; step < diffusion_steps; ++step)
+        {
+            std::vector<double> volume_change(elevation.size(), 0.0);
+            for (std::size_t i = 0; i < elevation.size(); ++i)
+                for (std::size_t n = 0;
+                        n < grid->number_of_cell_neighbors(i); ++n)
+                {
+                    const std::size_t j = grid->cell_neighbor(i, n);
+                    if (j <= i)
+                        continue;
+                    const double volume =
+                        diffusivity *
+                        grid->cell_shared_face_measure(i, n) /
+                        grid->cell_neighbor_distance(i, n) *
+                        (elevation[i] - elevation[j]) *
+                        diffusion_step_years;
+                    volume_change[i] -= volume;
+                    volume_change[j] += volume;
+                }
+
+            for (std::size_t i = 0; i < elevation.size(); ++i)
+                elevation[i] += volume_change[i] / areas[i];
+        }
+    }
+
     /**
      * Conservatively advect elevation over the fixed landscape grid with a
      * first-order upwind finite-volume scheme. Velocities are tangential to
@@ -774,7 +847,9 @@ std::vector<Tensor<1,dim>>
             spatial_erosion_strength->get_values(),
             spatial_surface_runoff->get_values(),
             advect_surface_state,
-            maximum_surface_advection_courant);
+            maximum_surface_advection_courant,
+            hillslope_diffusion_coefficient,
+            maximum_hillslope_diffusion_courant);
 
     for (unsigned int i = 0; i < result.size(); ++i)
     {
@@ -902,6 +977,15 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
                           Patterns::Double(0),
                           "Maximum finite-volume Courant number used while "
                           "advecting FastScape surface state.");
+        prm.declare_entry("Hillslope diffusion coefficient", "0",
+                          Patterns::Double(0),
+                          "Conservative linear hillslope diffusivity in "
+                          "square meters per year on the unstructured "
+                          "FastScape surface grid.");
+        prm.declare_entry("Maximum hillslope diffusion Courant number", "0.25",
+                          Patterns::Double(0),
+                          "Maximum explicit Courant number used for "
+                          "unstructured hillslope diffusion.");
         prm.declare_entry("Spatial erosion strength file", "",
                           Patterns::Anything(),
                           "Optional ASPECT structured text-data file containing "
@@ -950,6 +1034,10 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
             prm.get_bool("Advect surface state");
         maximum_surface_advection_courant =
             prm.get_double("Maximum surface advection Courant number");
+        hillslope_diffusion_coefficient =
+            prm.get_double("Hillslope diffusion coefficient");
+        maximum_hillslope_diffusion_courant =
+            prm.get_double("Maximum hillslope diffusion Courant number");
         spatial_erosion_strength_file =
             prm.get("Spatial erosion strength file");
         spatial_surface_runoff_file =

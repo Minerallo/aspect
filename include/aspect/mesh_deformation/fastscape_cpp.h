@@ -104,6 +104,8 @@ private:
     double initial_relief = 0.0;
     double sea_level = 0.0;
     double maximum_surface_advection_courant = 0.5;
+    double hillslope_diffusion_coefficient = 0.0;
+    double maximum_hillslope_diffusion_courant = 0.25;
     std::string spatial_erosion_strength_file;
     std::string spatial_surface_runoff_file;
     unsigned int result_interval = 1;

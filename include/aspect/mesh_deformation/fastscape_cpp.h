@@ -103,6 +103,9 @@ private:
     double nonlinear_tolerance = 1e-5;
     double initial_relief = 0.0;
     double sea_level = 0.0;
+    double marine_sediment_transport_coefficient = 0.0;
+    double marine_sediment_porosity = 0.4;
+    double marine_transport_depth_scale = 0.0;
     double maximum_surface_advection_courant = 0.5;
     double hillslope_diffusion_coefficient = 0.0;
     double maximum_hillslope_diffusion_courant = 0.25;

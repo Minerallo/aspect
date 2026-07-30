@@ -15,8 +15,8 @@
 
 #include <aspect/geometry_model/box.h>
 #include <aspect/geometry_model/spherical_shell.h>
-#include <aspect/gravity_model/interface.h>
 #include <aspect/geometry_model/initial_topography_model/interface.h>
+#include <aspect/gravity_model/interface.h>
 #include <aspect/structured_data.h>
 
 #include <fastscapelib/flow/flow_router.hpp>
@@ -137,6 +137,9 @@ public:
         xt::xarray<double> previous_elevation;
         double eroded_volume = 0.0;
         double exported_sediment_flux = 0.0;
+        double coastal_sediment_flux = 0.0;
+        double deposited_sediment_volume = 0.0;
+        double stored_sediment_volume = 0.0;
     };
 
     void
@@ -146,10 +149,16 @@ public:
                const double river_incision_coefficient,
                const double area_exponent,
                const double surface_slope_exponent,
-               const double solver_tolerance)
+               const double solver_tolerance,
+               const double marine_transport_coefficient,
+               const double sediment_porosity,
+               const double transport_depth_scale)
     {
         spherical_geometry = closed_surface;
         drainage_area_exponent = area_exponent;
+        marine_sediment_transport_coefficient = marine_transport_coefficient;
+        marine_sediment_porosity = sediment_porosity;
+        marine_transport_depth_scale = transport_depth_scale;
         grid = std::make_unique<Grid>(surface_mesh, closed_surface);
         flow_graph = std::make_unique<FlowGraph>(
                          *grid,
@@ -165,9 +174,13 @@ public:
                                           solver_tolerance);
 
         elevation = initial_elevation;
+        bedrock_elevation = initial_elevation;
         drainage_area = xt::zeros<double>(flow_graph->grid_shape());
         erosion = xt::zeros<double>(flow_graph->grid_shape());
         sediment_flux = xt::zeros<double>(flow_graph->grid_shape());
+        marine_sediment_flux = xt::zeros<double>(flow_graph->grid_shape());
+        sediment_thickness = xt::zeros<double>(flow_graph->grid_shape());
+        deposition_rate = xt::zeros<double>(flow_graph->grid_shape());
     }
 
     StepResult
@@ -201,11 +214,12 @@ public:
         for (unsigned int step = 0; step < number_of_steps; ++step)
         {
             if (advect_surface_state)
-                advect_elevation(tangential_velocity,
-                                  step_years,
-                                  maximum_advection_courant);
+                advect_surface_fields(tangential_velocity,
+                                      step_years,
+                                      maximum_advection_courant);
+            bedrock_elevation += step_years * uplift_rate;
             const xt::xarray<double> uplifted =
-                elevation + step_years * uplift_rate;
+                bedrock_elevation + sediment_thickness;
             set_base_levels(uplifted, sea_level);
             flow_graph->update_routes(uplifted);
             flow_graph->accumulate(drainage_area, surface_runoff);
@@ -222,19 +236,67 @@ public:
             erosion =
                 eroder->erode(uplifted, effective_drainage_area, step_years);
             sediment_flux = flow_graph->accumulate(erosion / step_years);
-            elevation = uplifted - erosion;
+
+            const auto areas = grid->nodes_areas();
+            for (unsigned int i = 0; i < erosion.size(); ++i)
+            {
+                const double sediment_erosion =
+                    std::min(sediment_thickness[i], erosion[i]);
+                sediment_thickness[i] -= sediment_erosion;
+                bedrock_elevation[i] -= erosion[i] - sediment_erosion;
+                result.eroded_volume += erosion[i] * areas[i];
+            }
+
+            elevation = bedrock_elevation + sediment_thickness;
             if (hillslope_diffusivity > 0.0)
                 diffuse_hillslopes(step_years,
                                    hillslope_diffusivity,
                                    maximum_diffusion_courant);
+            if (marine_sediment_transport_coefficient > 0.0)
+            {
+                const xt::xarray<double> sediment_before_deposition =
+                    sediment_thickness;
+                for (const auto index : flow_graph->base_levels())
+                    if (elevation[index] <= sea_level)
+                    {
+                        const double solid_volume =
+                            sediment_flux[index] * step_years;
+                        sediment_thickness[index] +=
+                            solid_volume /
+                            ((1.0 - marine_sediment_porosity) * areas[index]);
+                        result.coastal_sediment_flux += solid_volume;
+                        result.deposited_sediment_volume +=
+                            solid_volume / (1.0 - marine_sediment_porosity);
+                    }
 
-            const auto areas = grid->nodes_areas();
-            for (unsigned int i = 0; i < erosion.size(); ++i)
-                result.eroded_volume += erosion[i] * areas[i];
+                elevation = bedrock_elevation + sediment_thickness;
+                transport_marine_sediment(step_years, sea_level);
+                elevation = bedrock_elevation + sediment_thickness;
+                for (unsigned int i = 0; i < sediment_thickness.size(); ++i)
+                    deposition_rate[i] =
+                        (sediment_thickness[i] -
+                         sediment_before_deposition[i]) / step_years;
+            }
+            else
+            {
+                deposition_rate.fill(0.0);
+                marine_sediment_flux.fill(0.0);
+            }
         }
 
-        for (const auto index : flow_graph->base_levels())
-            result.exported_sediment_flux += sediment_flux[index];
+        if (marine_sediment_transport_coefficient > 0.0 &&
+                total_time_years > 0.0)
+            result.coastal_sediment_flux /= total_time_years;
+
+        if (marine_sediment_transport_coefficient == 0.0)
+            for (const auto index : flow_graph->base_levels())
+                result.exported_sediment_flux += sediment_flux[index];
+
+        const auto areas = grid->nodes_areas();
+        for (unsigned int i = 0; i < sediment_thickness.size(); ++i)
+            result.stored_sediment_volume +=
+                sediment_thickness[i] * areas[i] *
+                (1.0 - marine_sediment_porosity);
 
         return result;
     }
@@ -259,18 +321,44 @@ public:
         return sediment_flux;
     }
 
+    const xt::xarray<double> &get_marine_sediment_flux() const
+    {
+        return marine_sediment_flux;
+    }
+
+    const xt::xarray<double> &get_sediment_thickness() const
+    {
+        return sediment_thickness;
+    }
+
+    const xt::xarray<double> &get_deposition_rate() const
+    {
+        return deposition_rate;
+    }
+
     void
     set_elevation(const std::vector<double> &values)
     {
         AssertDimension(values.size(), elevation.size());
         std::copy(values.begin(), values.end(), elevation.begin());
+        for (unsigned int i = 0; i < elevation.size(); ++i)
+            bedrock_elevation[i] = elevation[i] - sediment_thickness[i];
+    }
+
+    void
+    set_sediment_thickness(const std::vector<double> &values)
+    {
+        AssertDimension(values.size(), sediment_thickness.size());
+        std::copy(values.begin(), values.end(), sediment_thickness.begin());
+        for (unsigned int i = 0; i < elevation.size(); ++i)
+            bedrock_elevation[i] = elevation[i] - sediment_thickness[i];
     }
 
 private:
     /**
-     * Apply conservative linear diffusion on the unstructured surface grid.
-     * Shared faces are visited once, so the volume removed from one cell is
-     * exactly added to its neighbor.
+     * Apply conservative linear hillslope transport on the unstructured
+     * surface grid. Material removed from a high cell is first taken from
+     * mobile sediment and then bedrock; deposition becomes mobile sediment.
      */
     void
     diffuse_hillslopes(const double step_years,
@@ -330,19 +418,35 @@ private:
                 }
 
             for (std::size_t i = 0; i < elevation.size(); ++i)
-                elevation[i] += volume_change[i] / areas[i];
+            {
+                const double elevation_change =
+                    volume_change[i] / areas[i];
+                if (elevation_change >= 0.0)
+                    sediment_thickness[i] += elevation_change;
+                else
+                {
+                    const double removal = -elevation_change;
+                    const double sediment_removal =
+                        std::min(sediment_thickness[i], removal);
+                    sediment_thickness[i] -= sediment_removal;
+                    bedrock_elevation[i] -= removal - sediment_removal;
+                }
+                elevation[i] =
+                    bedrock_elevation[i] + sediment_thickness[i];
+            }
         }
     }
 
     /**
-     * Conservatively advect elevation over the fixed landscape grid with a
-     * first-order upwind finite-volume scheme. Velocities are tangential to
-     * the ASPECT surface and expressed in meters per year.
+     * Conservatively advect bedrock elevation and mobile-sediment thickness
+     * over the fixed landscape grid using a first-order upwind finite-volume
+     * scheme. The velocity is tangential to the ASPECT surface and expressed
+     * in meters per year. Courant substeps keep the mobile thickness positive.
      */
     void
-    advect_elevation(const std::vector<SurfaceVelocity> &velocity,
-                     const double step_years,
-                     const double maximum_courant)
+    advect_surface_fields(const std::vector<SurfaceVelocity> &velocity,
+                          const double step_years,
+                          const double maximum_courant)
     {
         AssertThrow(maximum_courant > 0.0,
                     ExcMessage("Maximum surface-advection Courant number "
@@ -366,44 +470,155 @@ private:
                 absolute_face_rate[j] += std::abs(rate);
             }
 
-        double largest_courant = 0.0;
+        double maximum_cell_courant = 0.0;
         for (std::size_t i = 0; i < elevation.size(); ++i)
-            largest_courant =
-                std::max(largest_courant,
+            maximum_cell_courant =
+                std::max(maximum_cell_courant,
                          step_years * absolute_face_rate[i] / areas[i]);
         const unsigned int advection_steps =
             std::max(1u,
                      static_cast<unsigned int>(
-                         std::ceil(largest_courant / maximum_courant)));
+                         std::ceil(maximum_cell_courant /
+                                   maximum_courant)));
         const double advection_step_years =
             step_years / advection_steps;
 
         for (unsigned int step = 0; step < advection_steps; ++step)
         {
-            std::vector<double> extensive_change(elevation.size(), 0.0);
-            for (std::size_t i = 0; i < elevation.size(); ++i)
-                for (std::size_t n = 0;
-                        n < grid->number_of_cell_neighbors(i); ++n)
-                {
-                    const std::size_t j = grid->cell_neighbor(i, n);
-                    if (j <= i)
-                        continue;
-                    const SurfaceVelocity face_velocity =
-                        0.5 * (velocity[i] + velocity[j]);
-                    const double signed_rate =
-                        (face_velocity * grid->cell_neighbor_direction(i, n)) *
-                        grid->cell_shared_face_measure(i, n);
-                    const std::size_t donor = signed_rate >= 0.0 ? i : j;
-                    const std::size_t receiver = signed_rate >= 0.0 ? j : i;
-                    const double transported =
-                        std::abs(signed_rate) * advection_step_years *
-                        elevation[donor];
-                    extensive_change[donor] -= transported;
-                    extensive_change[receiver] += transported;
-                }
+            advect_field(bedrock_elevation, velocity,
+                         advection_step_years, areas);
+            advect_field(sediment_thickness, velocity,
+                         advection_step_years, areas);
+            for (double &thickness : sediment_thickness)
+                thickness = std::max(0.0, thickness);
+        }
+        elevation = bedrock_elevation + sediment_thickness;
+    }
 
-            for (std::size_t i = 0; i < elevation.size(); ++i)
-                elevation[i] += extensive_change[i] / areas[i];
+    void
+    advect_field(xt::xarray<double> &field,
+                 const std::vector<SurfaceVelocity> &velocity,
+                 const double step_years,
+                 const typename Grid::container_type &areas)
+    {
+        std::vector<double> extensive_change(field.size(), 0.0);
+        for (std::size_t i = 0; i < field.size(); ++i)
+            for (std::size_t n = 0;
+                    n < grid->number_of_cell_neighbors(i); ++n)
+            {
+                const std::size_t j = grid->cell_neighbor(i, n);
+                if (j <= i)
+                    continue;
+                const SurfaceVelocity face_velocity =
+                    0.5 * (velocity[i] + velocity[j]);
+                const double signed_rate =
+                    (face_velocity * grid->cell_neighbor_direction(i, n)) *
+                    grid->cell_shared_face_measure(i, n);
+                const std::size_t donor = signed_rate >= 0.0 ? i : j;
+                const std::size_t receiver = signed_rate >= 0.0 ? j : i;
+                const double transported =
+                    std::abs(signed_rate) * step_years * field[donor];
+                extensive_change[donor] -= transported;
+                extensive_change[receiver] += transported;
+            }
+
+        for (std::size_t i = 0; i < field.size(); ++i)
+            field[i] += extensive_change[i] / areas[i];
+    }
+
+    /**
+     * Move deposited sediment down the seafloor gradient. Each shared face
+     * is visited once, and equal volumes are removed from the donor and
+     * added to the receiver. A donor-wide limiter prevents transport from
+     * removing more sediment than is locally available.
+     */
+    void
+    transport_marine_sediment(const double step_years,
+                              const double sea_level)
+    {
+        struct Transfer
+        {
+            std::size_t donor;
+            std::size_t receiver;
+            double volume;
+        };
+
+        const auto areas = grid->nodes_areas();
+        std::vector<Transfer> transfers;
+        std::vector<double> requested_outflow(elevation.size(), 0.0);
+        marine_sediment_flux.fill(0.0);
+
+        for (std::size_t i = 0; i < elevation.size(); ++i)
+        {
+            if (elevation[i] > sea_level)
+                continue;
+
+            for (std::size_t neighbor_number = 0;
+                    neighbor_number < grid->number_of_cell_neighbors(i);
+                    ++neighbor_number)
+            {
+                const std::size_t j =
+                    grid->cell_neighbor(i, neighbor_number);
+                if (j <= i || elevation[j] > sea_level)
+                    continue;
+
+                const double elevation_difference =
+                    elevation[i] - elevation[j];
+                const double distance =
+                    grid->cell_neighbor_distance(i, neighbor_number);
+                if (elevation_difference == 0.0 || distance <= 0.0)
+                    continue;
+
+                const std::size_t donor =
+                    elevation_difference > 0.0 ? i : j;
+                const std::size_t receiver =
+                    elevation_difference > 0.0 ? j : i;
+                const double mean_water_depth =
+                    std::max(0.0,
+                             sea_level -
+                             0.5 * (elevation[i] + elevation[j]));
+                const double depth_factor =
+                    marine_transport_depth_scale > 0.0
+                    ? std::exp(-mean_water_depth /
+                               marine_transport_depth_scale)
+                    : 1.0;
+                const double volume =
+                    marine_sediment_transport_coefficient * depth_factor *
+                    grid->cell_shared_face_measure(i, neighbor_number) /
+                    distance * std::abs(elevation_difference) * step_years;
+
+                if (volume > 0.0)
+                {
+                    transfers.push_back({donor, receiver, volume});
+                    requested_outflow[donor] += volume;
+                }
+            }
+        }
+
+        std::vector<double> outflow_scale(elevation.size(), 1.0);
+        for (unsigned int i = 0; i < elevation.size(); ++i)
+            if (requested_outflow[i] > 0.0)
+                outflow_scale[i] =
+                    std::min(1.0,
+                             sediment_thickness[i] * areas[i] /
+                             requested_outflow[i]);
+
+        std::vector<double> volume_change(elevation.size(), 0.0);
+        for (const Transfer &transfer : transfers)
+        {
+            const double volume =
+                transfer.volume * outflow_scale[transfer.donor];
+            volume_change[transfer.donor] -= volume;
+            volume_change[transfer.receiver] += volume;
+            marine_sediment_flux[transfer.donor] += volume / step_years;
+            marine_sediment_flux[transfer.receiver] += volume / step_years;
+        }
+
+        for (unsigned int i = 0; i < elevation.size(); ++i)
+        {
+            sediment_thickness[i] += volume_change[i] / areas[i];
+            sediment_thickness[i] =
+                std::max(0.0, sediment_thickness[i]);
         }
     }
 
@@ -430,13 +645,20 @@ private:
 
     bool spherical_geometry = false;
     double drainage_area_exponent = 0.4;
+    double marine_sediment_transport_coefficient = 0.0;
+    double marine_sediment_porosity = 0.4;
+    double marine_transport_depth_scale = 0.0;
     std::unique_ptr<Grid> grid;
     std::unique_ptr<FlowGraph> flow_graph;
     std::unique_ptr<Eroder> eroder;
     xt::xarray<double> elevation;
+    xt::xarray<double> bedrock_elevation;
     xt::xarray<double> drainage_area;
     xt::xarray<double> erosion;
     xt::xarray<double> sediment_flux;
+    xt::xarray<double> marine_sediment_flux;
+    xt::xarray<double> sediment_thickness;
+    xt::xarray<double> deposition_rate;
 };
 
 
@@ -473,7 +695,10 @@ public:
           const xt::xarray<double> &erosion_strength,
           const xt::xarray<double> &surface_runoff,
           const double eroded_volume,
-          const double exported_sediment_flux)
+          const double exported_sediment_flux,
+          const double coastal_sediment_flux,
+          const double deposited_sediment_volume,
+          const double stored_sediment_volume)
     {
         const std::string directory =
             output_directory + "fastscape_surface_evolution/";
@@ -483,6 +708,12 @@ public:
         const auto &drainage_area = landscape.get_drainage_area();
         const auto &erosion = landscape.get_erosion();
         const auto &sediment_flux = landscape.get_sediment_flux();
+        const auto &marine_sediment_flux =
+            landscape.get_marine_sediment_flux();
+        const auto &sediment_thickness =
+            landscape.get_sediment_thickness();
+        const auto &deposition_rate =
+            landscape.get_deposition_rate();
 
         const std::string budget_file =
             directory + "sediment_budget.csv";
@@ -492,12 +723,18 @@ public:
             if (write_header)
                 output << "timestep,time_years,eroded_volume_m3,"
                        << "sediment_outflux_m3_per_year,"
+                       << "coastal_sediment_flux_m3_per_year,"
+                       << "deposited_sediment_volume_m3,"
+                       << "stored_sediment_solid_volume_m3,"
                        << "max_drainage_area_m2,"
                        << "min_elevation_m,max_elevation_m\n";
             output << timestep_number << ','
                    << std::setprecision(16) << time_years << ','
                    << eroded_volume << ','
                    << exported_sediment_flux << ','
+                   << coastal_sediment_flux << ','
+                   << deposited_sediment_volume << ','
+                   << stored_sediment_volume << ','
                    << *std::max_element(drainage_area.begin(),
                                         drainage_area.end()) << ','
                    << *std::min_element(elevation.begin(), elevation.end()) << ','
@@ -510,6 +747,8 @@ public:
         std::ofstream surface(surface_file);
         surface << "longitude_deg,latitude_deg,elevation_m,erosion_m,"
                 << "drainage_area_m2,sediment_flux_m3_per_year,"
+                << "marine_sediment_flux_m3_per_year,"
+                << "sediment_thickness_m,deposition_rate_m_per_year,"
                 << "erosion_strength,surface_runoff_factor,"
                 << "elevation_change_m\n";
         surface << std::setprecision(16);
@@ -524,7 +763,8 @@ public:
                     std::asin(point[2] / point.norm()) * 180.0 / numbers::PI;
             surface << longitude << ',' << latitude << ',' << elevation[i] << ','
                     << erosion[i] << ',' << drainage_area[i] << ','
-                    << sediment_flux[i] << ','
+                    << sediment_flux[i] << ',' << marine_sediment_flux[i] << ','
+                    << sediment_thickness[i] << ',' << deposition_rate[i] << ','
                     << erosion_strength[i] << ','
                     << surface_runoff[i] << ','
                     << elevation[i] - reference_elevation[i] << '\n';
@@ -537,12 +777,18 @@ public:
         Vector<double> erosion_output(erosion.size());
         Vector<double> drainage_output(drainage_area.size());
         Vector<double> flux_output(sediment_flux.size());
+        Vector<double> marine_flux_output(marine_sediment_flux.size());
+        Vector<double> sediment_thickness_output(sediment_thickness.size());
+        Vector<double> deposition_rate_output(deposition_rate.size());
         for (unsigned int i = 0; i < elevation.size(); ++i)
         {
             elevation_output[i] = elevation[i];
             erosion_output[i] = erosion[i];
             drainage_output[i] = drainage_area[i];
             flux_output[i] = sediment_flux[i];
+            marine_flux_output[i] = marine_sediment_flux[i];
+            sediment_thickness_output[i] = sediment_thickness[i];
+            deposition_rate_output[i] = deposition_rate[i];
         }
 
         DataOut<dim-1,dim> data_out;
@@ -554,6 +800,12 @@ public:
         data_out.add_data_vector(drainage_output, "drainage_area",
                                  DataOut<dim-1,dim>::type_cell_data);
         data_out.add_data_vector(flux_output, "sediment_flux",
+                                 DataOut<dim-1,dim>::type_cell_data);
+        data_out.add_data_vector(marine_flux_output, "marine_sediment_flux",
+                                 DataOut<dim-1,dim>::type_cell_data);
+        data_out.add_data_vector(sediment_thickness_output, "sediment_thickness",
+                                 DataOut<dim-1,dim>::type_cell_data);
+        data_out.add_data_vector(deposition_rate_output, "deposition_rate",
                                  DataOut<dim-1,dim>::type_cell_data);
         data_out.build_patches();
 
@@ -746,7 +998,10 @@ FastscapeCpp<dim>::build_surface_mesh()
                           incision_rate,
                           drainage_area_exponent,
                           slope_exponent,
-                          nonlinear_tolerance);
+                          nonlinear_tolerance,
+                          marine_sediment_transport_coefficient,
+                          marine_sediment_porosity,
+                          marine_transport_depth_scale);
     spatial_erosion_strength->initialize(spatial_erosion_strength_file,
                                          surface_coordinates);
     spatial_surface_runoff->initialize(spatial_surface_runoff_file,
@@ -873,7 +1128,10 @@ std::vector<Tensor<1,dim>>
             spatial_erosion_strength->get_values(),
             spatial_surface_runoff->get_values(),
             landscape_step.eroded_volume,
-            landscape_step.exported_sediment_flux);
+            landscape_step.exported_sediment_flux,
+            landscape_step.coastal_sediment_flux,
+            landscape_step.deposited_sediment_volume,
+            landscape_step.stored_sediment_volume);
 
     return result;
 }
@@ -897,12 +1155,22 @@ FastscapeCpp<dim>::save(
 
     std::vector<double> elevation_values(landscape->get_elevation().begin(),
                                          landscape->get_elevation().end());
+    std::vector<double> sediment_thickness_values(
+        landscape->get_sediment_thickness().begin(),
+        landscape->get_sediment_thickness().end());
     std::ostringstream stream;
     {
         aspect::oarchive archive(stream);
         archive << elevation_values;
     }
     status_strings["FastscapeSurfaceEvolution"] = stream.str();
+
+    std::ostringstream sediment_stream;
+    {
+        aspect::oarchive archive(sediment_stream);
+        archive << sediment_thickness_values;
+    }
+    status_strings["FastscapeMarineSediment"] = sediment_stream.str();
 }
 
 
@@ -925,6 +1193,17 @@ FastscapeCpp<dim>::load(
     aspect::iarchive archive(stream);
     archive >> elevation_values;
     landscape->set_elevation(elevation_values);
+
+    const auto sediment_state =
+        status_strings.find("FastscapeMarineSediment");
+    if (sediment_state != status_strings.end())
+    {
+        std::vector<double> sediment_thickness_values;
+        std::istringstream sediment_stream(sediment_state->second);
+        aspect::iarchive sediment_archive(sediment_stream);
+        sediment_archive >> sediment_thickness_values;
+        landscape->set_sediment_thickness(sediment_thickness_values);
+    }
     surface_results->reset_reference_elevation(landscape->get_elevation());
 }
 
@@ -968,11 +1247,26 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
         prm.declare_entry("Sea level", "0", Patterns::Double(),
                           "For a global closed surface, nodes at or below this "
                           "elevation are drainage base levels.");
+        prm.declare_entry("Marine sediment transport coefficient", "0",
+                          Patterns::Double(0),
+                          "Diffusive transport coefficient in square meters "
+                          "per year for deposited ocean sediment. Zero keeps "
+                          "the earlier behavior in which river sediment leaves "
+                          "the landscape at drainage base levels.");
+        prm.declare_entry("Marine sediment porosity", "0.4",
+                          Patterns::Double(0, 0.999999),
+                          "Pore-space fraction used to convert solid sediment "
+                          "delivered by rivers into deposited bulk thickness.");
+        prm.declare_entry("Marine transport depth scale", "0",
+                          Patterns::Double(0),
+                          "Water-depth scale in meters over which marine "
+                          "transport decreases exponentially. Zero uses a "
+                          "depth-independent transport coefficient.");
         prm.declare_entry("Advect surface state", "false",
                           Patterns::Bool(),
-                          "Conservatively advect elevation over the fixed "
-                          "FastScape grid using tangential ASPECT material "
-                          "velocity.");
+                          "Conservatively advect bedrock elevation and mobile "
+                          "sediment over the fixed FastScape grid using the "
+                          "tangential ASPECT material velocity.");
         prm.declare_entry("Maximum surface advection Courant number", "0.5",
                           Patterns::Double(0),
                           "Maximum finite-volume Courant number used while "
@@ -1030,6 +1324,12 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
         nonlinear_tolerance = prm.get_double("Nonlinear tolerance");
         initial_relief = prm.get_double("Initial relief");
         sea_level = prm.get_double("Sea level");
+        marine_sediment_transport_coefficient =
+            prm.get_double("Marine sediment transport coefficient");
+        marine_sediment_porosity =
+            prm.get_double("Marine sediment porosity");
+        marine_transport_depth_scale =
+            prm.get_double("Marine transport depth scale");
         advect_surface_state =
             prm.get_bool("Advect surface state");
         maximum_surface_advection_courant =
@@ -1062,8 +1362,8 @@ ASPECT_REGISTER_MESH_DEFORMATION_MODEL(
     "fastscape surface evolution",
     "Uses the FastScape library to evolve an independent surface mesh. "
     "The model transfers ASPECT material velocity to the landscape, computes "
-    "river incision and sediment routing, and returns surface-normal velocity "
-    "to ASPECT. "
+    "river incision, sediment routing, and optional conservative marine "
+    "sediment deposition, and returns surface-normal velocity to ASPECT. "
     "It supports box and global spherical-shell geometries.")
 }
 }

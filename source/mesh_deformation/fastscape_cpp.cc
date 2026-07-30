@@ -130,6 +130,7 @@ public:
     using Grid = fastscapelib::dealii_surface_grid<SurfaceMesh>;
     using FlowGraph = fastscapelib::flow_graph<Grid>;
     using Eroder = fastscapelib::spl_eroder<FlowGraph>;
+    using SurfaceVelocity = Tensor<1,dim>;
 
     struct StepResult
     {
@@ -171,15 +172,19 @@ public:
 
     StepResult
     advance(const xt::xarray<double> &uplift_rate,
+            const std::vector<SurfaceVelocity> &tangential_velocity,
             const double total_time_years,
             unsigned int number_of_steps,
             const double maximum_step_years,
             const double sea_level,
             const xt::xarray<double> &erosion_strength,
-            const xt::xarray<double> &surface_runoff)
+            const xt::xarray<double> &surface_runoff,
+            const bool advect_surface_state,
+            const double maximum_advection_courant)
     {
         Assert(grid && flow_graph && eroder, ExcInternalError());
         AssertDimension(uplift_rate.size(), elevation.size());
+        AssertDimension(tangential_velocity.size(), elevation.size());
         AssertDimension(erosion_strength.size(), elevation.size());
         AssertDimension(surface_runoff.size(), elevation.size());
 
@@ -193,6 +198,10 @@ public:
 
         for (unsigned int step = 0; step < number_of_steps; ++step)
         {
+            if (advect_surface_state)
+                advect_elevation(tangential_velocity,
+                                  step_years,
+                                  maximum_advection_courant);
             const xt::xarray<double> uplifted =
                 elevation + step_years * uplift_rate;
             set_base_levels(uplifted, sea_level);
@@ -252,6 +261,79 @@ public:
     }
 
 private:
+    /**
+     * Conservatively advect elevation over the fixed landscape grid with a
+     * first-order upwind finite-volume scheme. Velocities are tangential to
+     * the ASPECT surface and expressed in meters per year.
+     */
+    void
+    advect_elevation(const std::vector<SurfaceVelocity> &velocity,
+                     const double step_years,
+                     const double maximum_courant)
+    {
+        AssertThrow(maximum_courant > 0.0,
+                    ExcMessage("Maximum surface-advection Courant number "
+                               "must be positive."));
+        const auto areas = grid->nodes_areas();
+        std::vector<double> absolute_face_rate(elevation.size(), 0.0);
+
+        for (std::size_t i = 0; i < elevation.size(); ++i)
+            for (std::size_t n = 0;
+                    n < grid->number_of_cell_neighbors(i); ++n)
+            {
+                const std::size_t j = grid->cell_neighbor(i, n);
+                if (j <= i)
+                    continue;
+                const SurfaceVelocity face_velocity =
+                    0.5 * (velocity[i] + velocity[j]);
+                const double rate =
+                    (face_velocity * grid->cell_neighbor_direction(i, n)) *
+                    grid->cell_shared_face_measure(i, n);
+                absolute_face_rate[i] += std::abs(rate);
+                absolute_face_rate[j] += std::abs(rate);
+            }
+
+        double largest_courant = 0.0;
+        for (std::size_t i = 0; i < elevation.size(); ++i)
+            largest_courant =
+                std::max(largest_courant,
+                         step_years * absolute_face_rate[i] / areas[i]);
+        const unsigned int advection_steps =
+            std::max(1u,
+                     static_cast<unsigned int>(
+                         std::ceil(largest_courant / maximum_courant)));
+        const double advection_step_years =
+            step_years / advection_steps;
+
+        for (unsigned int step = 0; step < advection_steps; ++step)
+        {
+            std::vector<double> extensive_change(elevation.size(), 0.0);
+            for (std::size_t i = 0; i < elevation.size(); ++i)
+                for (std::size_t n = 0;
+                        n < grid->number_of_cell_neighbors(i); ++n)
+                {
+                    const std::size_t j = grid->cell_neighbor(i, n);
+                    if (j <= i)
+                        continue;
+                    const SurfaceVelocity face_velocity =
+                        0.5 * (velocity[i] + velocity[j]);
+                    const double signed_rate =
+                        (face_velocity * grid->cell_neighbor_direction(i, n)) *
+                        grid->cell_shared_face_measure(i, n);
+                    const std::size_t donor = signed_rate >= 0.0 ? i : j;
+                    const std::size_t receiver = signed_rate >= 0.0 ? j : i;
+                    const double transported =
+                        std::abs(signed_rate) * advection_step_years *
+                        elevation[donor];
+                    extensive_change[donor] -= transported;
+                    extensive_change[receiver] += transported;
+                }
+
+            for (std::size_t i = 0; i < elevation.size(); ++i)
+                elevation[i] += extensive_change[i] / areas[i];
+        }
+    }
+
     void
     set_base_levels(const xt::xarray<double> &surface_elevation,
                     const double sea_level)
@@ -663,6 +745,8 @@ std::vector<Tensor<1,dim>>
     const double aspect_dt_years = this->get_timestep() / year_in_seconds;
     xt::xarray<double> uplift_rate =
         xt::zeros<double>(landscape->get_elevation().shape());
+    std::vector<Tensor<1,dim>> tangential_velocity(
+        solution_at_points.size());
     for (unsigned int i = 0; i < solution_at_points.size(); ++i)
     {
         Tensor<1,dim> material_velocity;
@@ -674,17 +758,23 @@ std::vector<Tensor<1,dim>>
         const double normal_material_velocity =
             material_velocity * surface_normal;
         uplift_rate[i] = normal_material_velocity * year_in_seconds;
+        tangential_velocity[i] =
+            (material_velocity -
+             normal_material_velocity * surface_normal) * year_in_seconds;
     }
 
     const typename FastscapeLandscape<dim>::StepResult landscape_step =
         landscape->advance(
             uplift_rate,
+            tangential_velocity,
             aspect_dt_years,
             landscape_steps_per_geodynamic_step,
             maximum_landscape_step_years,
             sea_level,
             spatial_erosion_strength->get_values(),
-            spatial_surface_runoff->get_values());
+            spatial_surface_runoff->get_values(),
+            advect_surface_state,
+            maximum_surface_advection_courant);
 
     for (unsigned int i = 0; i < result.size(); ++i)
     {
@@ -803,6 +893,15 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
         prm.declare_entry("Sea level", "0", Patterns::Double(),
                           "For a global closed surface, nodes at or below this "
                           "elevation are drainage base levels.");
+        prm.declare_entry("Advect surface state", "false",
+                          Patterns::Bool(),
+                          "Conservatively advect elevation over the fixed "
+                          "FastScape grid using tangential ASPECT material "
+                          "velocity.");
+        prm.declare_entry("Maximum surface advection Courant number", "0.5",
+                          Patterns::Double(0),
+                          "Maximum finite-volume Courant number used while "
+                          "advecting FastScape surface state.");
         prm.declare_entry("Spatial erosion strength file", "",
                           Patterns::Anything(),
                           "Optional ASPECT structured text-data file containing "
@@ -847,6 +946,10 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
         nonlinear_tolerance = prm.get_double("Nonlinear tolerance");
         initial_relief = prm.get_double("Initial relief");
         sea_level = prm.get_double("Sea level");
+        advect_surface_state =
+            prm.get_bool("Advect surface state");
+        maximum_surface_advection_courant =
+            prm.get_double("Maximum surface advection Courant number");
         spatial_erosion_strength_file =
             prm.get("Spatial erosion strength file");
         spatial_surface_runoff_file =

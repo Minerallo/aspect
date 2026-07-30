@@ -103,10 +103,12 @@ private:
     double nonlinear_tolerance = 1e-5;
     double initial_relief = 0.0;
     double sea_level = 0.0;
+    double maximum_surface_advection_courant = 0.5;
     std::string spatial_erosion_strength_file;
     std::string spatial_surface_runoff_file;
     unsigned int result_interval = 1;
     bool write_visualization_results = true;
+    bool advect_surface_state = false;
     bool spherical_geometry = false;
 };
 }

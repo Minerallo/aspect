@@ -117,6 +117,7 @@ private:
     bool write_visualization_results = true;
     bool advect_surface_state = false;
     bool use_sea_level_function = false;
+    bool restrict_ocean_to_largest_connected_component = true;
     bool spherical_geometry = false;
 };
 }

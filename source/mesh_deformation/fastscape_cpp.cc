@@ -152,13 +152,16 @@ public:
                const double solver_tolerance,
                const double marine_transport_coefficient,
                const double sediment_porosity,
-               const double transport_depth_scale)
+               const double transport_depth_scale,
+               const bool restrict_ocean_connectivity)
     {
         spherical_geometry = closed_surface;
         drainage_area_exponent = area_exponent;
         marine_sediment_transport_coefficient = marine_transport_coefficient;
         marine_sediment_porosity = sediment_porosity;
         marine_transport_depth_scale = transport_depth_scale;
+        restrict_ocean_to_largest_connected_component =
+            restrict_ocean_connectivity;
         grid = std::make_unique<Grid>(surface_mesh, closed_surface);
         flow_graph = std::make_unique<FlowGraph>(
                          *grid,
@@ -181,6 +184,7 @@ public:
         marine_sediment_flux = xt::zeros<double>(flow_graph->grid_shape());
         sediment_thickness = xt::zeros<double>(flow_graph->grid_shape());
         deposition_rate = xt::zeros<double>(flow_graph->grid_shape());
+        ocean_mask = xt::zeros<double>(flow_graph->grid_shape());
     }
 
     StepResult
@@ -334,6 +338,11 @@ public:
     const xt::xarray<double> &get_deposition_rate() const
     {
         return deposition_rate;
+    }
+
+    const xt::xarray<double> &get_ocean_mask() const
+    {
+        return ocean_mask;
     }
 
     void
@@ -550,7 +559,7 @@ private:
 
         for (std::size_t i = 0; i < elevation.size(); ++i)
         {
-            if (elevation[i] > sea_level)
+            if (ocean_mask[i] < 0.5)
                 continue;
 
             for (std::size_t neighbor_number = 0;
@@ -559,7 +568,7 @@ private:
             {
                 const std::size_t j =
                     grid->cell_neighbor(i, neighbor_number);
-                if (j <= i || elevation[j] > sea_level)
+                if (j <= i || ocean_mask[j] < 0.5)
                     continue;
 
                 const double elevation_difference =
@@ -626,13 +635,65 @@ private:
     set_base_levels(const xt::xarray<double> &surface_elevation,
                     const double sea_level)
     {
-        if (!spherical_geometry)
-            return;
-
-        std::vector<std::size_t> base_levels;
+        ocean_mask.fill(0.0);
+        std::vector<std::size_t> wet_nodes;
         for (std::size_t i = 0; i < surface_elevation.size(); ++i)
             if (surface_elevation[i] <= sea_level)
-                base_levels.push_back(i);
+                wet_nodes.push_back(i);
+
+        if (!spherical_geometry)
+        {
+            for (const std::size_t index : wet_nodes)
+                ocean_mask[index] = 1.0;
+            return;
+        }
+
+        std::vector<std::size_t> base_levels;
+        if (!restrict_ocean_to_largest_connected_component)
+            base_levels = wet_nodes;
+        else if (!wet_nodes.empty())
+        {
+            const auto areas = grid->nodes_areas();
+            std::vector<bool> wet(surface_elevation.size(), false);
+            std::vector<bool> visited(surface_elevation.size(), false);
+            for (const std::size_t index : wet_nodes)
+                wet[index] = true;
+
+            double largest_area = -1.0;
+            for (const std::size_t seed : wet_nodes)
+                if (!visited[seed])
+                {
+                    std::vector<std::size_t> component;
+                    std::vector<std::size_t> frontier(1, seed);
+                    visited[seed] = true;
+                    double component_area = 0.0;
+                    while (!frontier.empty())
+                    {
+                        const std::size_t index = frontier.back();
+                        frontier.pop_back();
+                        component.push_back(index);
+                        component_area += areas[index];
+                        for (std::size_t n = 0;
+                                n < grid->number_of_cell_neighbors(index);
+                                ++n)
+                        {
+                            const std::size_t neighbor =
+                                grid->cell_neighbor(index, n);
+                            if (wet[neighbor] && !visited[neighbor])
+                            {
+                                visited[neighbor] = true;
+                                frontier.push_back(neighbor);
+                            }
+                        }
+                    }
+
+                    if (component_area > largest_area)
+                    {
+                        largest_area = component_area;
+                        base_levels = std::move(component);
+                    }
+                }
+        }
 
         if (base_levels.empty())
             base_levels.push_back(static_cast<std::size_t>(
@@ -640,6 +701,9 @@ private:
                                           surface_elevation.begin(),
                                           std::min_element(surface_elevation.begin(),
                                                   surface_elevation.end()))));
+        else
+            for (const std::size_t index : base_levels)
+                ocean_mask[index] = 1.0;
         flow_graph->set_base_levels(base_levels);
     }
 
@@ -648,6 +712,7 @@ private:
     double marine_sediment_transport_coefficient = 0.0;
     double marine_sediment_porosity = 0.4;
     double marine_transport_depth_scale = 0.0;
+    bool restrict_ocean_to_largest_connected_component = true;
     std::unique_ptr<Grid> grid;
     std::unique_ptr<FlowGraph> flow_graph;
     std::unique_ptr<Eroder> eroder;
@@ -659,6 +724,7 @@ private:
     xt::xarray<double> marine_sediment_flux;
     xt::xarray<double> sediment_thickness;
     xt::xarray<double> deposition_rate;
+    xt::xarray<double> ocean_mask;
 };
 
 
@@ -715,6 +781,7 @@ public:
             landscape.get_sediment_thickness();
         const auto &deposition_rate =
             landscape.get_deposition_rate();
+        const auto &ocean_mask = landscape.get_ocean_mask();
 
         const std::string budget_file =
             directory + "sediment_budget.csv";
@@ -751,6 +818,7 @@ public:
                 << "drainage_area_m2,sediment_flux_m3_per_year,"
                 << "marine_sediment_flux_m3_per_year,"
                 << "sediment_thickness_m,deposition_rate_m_per_year,"
+                << "is_connected_ocean,"
                 << "erosion_strength,surface_runoff_factor,"
                 << "elevation_change_m\n";
         surface << std::setprecision(16);
@@ -767,6 +835,7 @@ public:
                     << erosion[i] << ',' << drainage_area[i] << ','
                     << sediment_flux[i] << ',' << marine_sediment_flux[i] << ','
                     << sediment_thickness[i] << ',' << deposition_rate[i] << ','
+                    << ocean_mask[i] << ','
                     << erosion_strength[i] << ','
                     << surface_runoff[i] << ','
                     << elevation[i] - reference_elevation[i] << '\n';
@@ -782,6 +851,7 @@ public:
         Vector<double> marine_flux_output(marine_sediment_flux.size());
         Vector<double> sediment_thickness_output(sediment_thickness.size());
         Vector<double> deposition_rate_output(deposition_rate.size());
+        Vector<double> ocean_mask_output(ocean_mask.size());
         for (unsigned int i = 0; i < elevation.size(); ++i)
         {
             elevation_output[i] = elevation[i];
@@ -791,6 +861,7 @@ public:
             marine_flux_output[i] = marine_sediment_flux[i];
             sediment_thickness_output[i] = sediment_thickness[i];
             deposition_rate_output[i] = deposition_rate[i];
+            ocean_mask_output[i] = ocean_mask[i];
         }
 
         DataOut<dim-1,dim> data_out;
@@ -808,6 +879,8 @@ public:
         data_out.add_data_vector(sediment_thickness_output, "sediment_thickness",
                                  DataOut<dim-1,dim>::type_cell_data);
         data_out.add_data_vector(deposition_rate_output, "deposition_rate",
+                                 DataOut<dim-1,dim>::type_cell_data);
+        data_out.add_data_vector(ocean_mask_output, "is_connected_ocean",
                                  DataOut<dim-1,dim>::type_cell_data);
         data_out.build_patches();
 
@@ -1003,7 +1076,8 @@ FastscapeCpp<dim>::build_surface_mesh()
                           nonlinear_tolerance,
                           marine_sediment_transport_coefficient,
                           marine_sediment_porosity,
-                          marine_transport_depth_scale);
+                          marine_transport_depth_scale,
+                          restrict_ocean_to_largest_connected_component);
     spatial_erosion_strength->initialize(spatial_erosion_strength_file,
                                          surface_coordinates);
     spatial_surface_runoff->initialize(spatial_surface_runoff_file,
@@ -1281,6 +1355,13 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
                           "Water-depth scale in meters over which marine "
                           "transport decreases exponentially. Zero uses a "
                           "depth-independent transport coefficient.");
+        prm.declare_entry("Restrict ocean to largest connected water body",
+                          "true",
+                          Patterns::Bool(),
+                          "Treat only the largest face-connected group of "
+                          "below-sea-level cells as the global ocean. This "
+                          "prevents disconnected inland depressions from "
+                          "receiving marine sediment.");
         prm.declare_entry("Advect surface state", "false",
                           Patterns::Bool(),
                           "Conservatively advect bedrock elevation and mobile "
@@ -1358,6 +1439,8 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
             prm.get_double("Marine sediment porosity");
         marine_transport_depth_scale =
             prm.get_double("Marine transport depth scale");
+        restrict_ocean_to_largest_connected_component =
+            prm.get_bool("Restrict ocean to largest connected water body");
         advect_surface_state =
             prm.get_bool("Advect surface state");
         maximum_surface_advection_courant =

@@ -4,3 +4,11 @@ whether the projected surface-velocity divergence indicates a convergent,
 neutral/transform, or divergent tectonic regime.
 <br>
 (Michaël Pons, 2026/07/28)
+
+New: The visco-plastic material model now provides the dominant deformation
+mechanism selected during rheology evaluation as a named additional output.
+The output contains categorical values for diffusion creep, dislocation creep,
+plastic yielding, Peierls creep, the maximum-viscosity limiter, grain-boundary
+sliding, and Frank-Kamenetskii rheology.
+<br>
+(Michael Pons, 2026/07/28)

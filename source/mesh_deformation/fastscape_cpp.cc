@@ -694,6 +694,7 @@ public:
           const FastscapeLandscape<dim> &landscape,
           const xt::xarray<double> &erosion_strength,
           const xt::xarray<double> &surface_runoff,
+          const double sea_level,
           const double eroded_volume,
           const double exported_sediment_flux,
           const double coastal_sediment_flux,
@@ -721,7 +722,7 @@ public:
         {
             std::ofstream output(budget_file, std::ios::app);
             if (write_header)
-                output << "timestep,time_years,eroded_volume_m3,"
+                output << "timestep,time_years,sea_level_m,eroded_volume_m3,"
                        << "sediment_outflux_m3_per_year,"
                        << "coastal_sediment_flux_m3_per_year,"
                        << "deposited_sediment_volume_m3,"
@@ -730,6 +731,7 @@ public:
                        << "min_elevation_m,max_elevation_m\n";
             output << timestep_number << ','
                    << std::setprecision(16) << time_years << ','
+                   << sea_level << ','
                    << eroded_volume << ','
                    << exported_sediment_flux << ','
                    << coastal_sediment_flux << ','
@@ -1048,6 +1050,9 @@ FastscapeCpp<dim>::update()
 {
     if (!this->remote_point_evaluator)
         this->set_evaluation_points(fastscape_points);
+
+    if (use_sea_level_function)
+        sea_level_function.set_time(this->get_time() / year_in_seconds);
 }
 
 
@@ -1071,6 +1076,10 @@ std::vector<Tensor<1,dim>>
                     landscape->get_elevation().size());
 
     const double aspect_dt_years = this->get_timestep() / year_in_seconds;
+    const double current_sea_level =
+        use_sea_level_function
+        ? sea_level_function.value(Point<1>())
+        : sea_level;
     xt::xarray<double> uplift_rate =
         xt::zeros<double>(landscape->get_elevation().shape());
     std::vector<Tensor<1,dim>> tangential_velocity(
@@ -1098,7 +1107,7 @@ std::vector<Tensor<1,dim>>
             aspect_dt_years,
             landscape_steps_per_geodynamic_step,
             maximum_landscape_step_years,
-            sea_level,
+            current_sea_level,
             spatial_erosion_strength->get_values(),
             spatial_surface_runoff->get_values(),
             advect_surface_state,
@@ -1127,6 +1136,7 @@ std::vector<Tensor<1,dim>>
             *landscape,
             spatial_erosion_strength->get_values(),
             spatial_surface_runoff->get_values(),
+            current_sea_level,
             landscape_step.eroded_volume,
             landscape_step.exported_sediment_flux,
             landscape_step.coastal_sediment_flux,
@@ -1247,6 +1257,15 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
         prm.declare_entry("Sea level", "0", Patterns::Double(),
                           "For a global closed surface, nodes at or below this "
                           "elevation are drainage base levels.");
+        prm.declare_entry("Use sea level function", "false",
+                          Patterns::Bool(),
+                          "Use a time-dependent sea-level function instead of "
+                          "the constant sea-level value.");
+        prm.enter_subsection("Sea level function");
+        {
+            Functions::ParsedFunction<1>::declare_parameters(prm, 1);
+        }
+        prm.leave_subsection();
         prm.declare_entry("Marine sediment transport coefficient", "0",
                           Patterns::Double(0),
                           "Diffusive transport coefficient in square meters "
@@ -1324,6 +1343,15 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
         nonlinear_tolerance = prm.get_double("Nonlinear tolerance");
         initial_relief = prm.get_double("Initial relief");
         sea_level = prm.get_double("Sea level");
+        use_sea_level_function = prm.get_bool("Use sea level function");
+        if (use_sea_level_function)
+        {
+            prm.enter_subsection("Sea level function");
+            {
+                sea_level_function.parse_parameters(prm);
+            }
+            prm.leave_subsection();
+        }
         marine_sediment_transport_coefficient =
             prm.get_double("Marine sediment transport coefficient");
         marine_sediment_porosity =

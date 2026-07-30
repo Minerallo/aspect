@@ -22,6 +22,7 @@
 #include <fastscapelib/eroders/spl.hpp>
 #include <fastscapelib/flow/flow_graph.hpp>
 
+#include <deal.II/base/parsed_function.h>
 #include <deal.II/grid/tria.h>
 
 #include <map>
@@ -103,6 +104,7 @@ private:
     double nonlinear_tolerance = 1e-5;
     double initial_relief = 0.0;
     double sea_level = 0.0;
+    Functions::ParsedFunction<1> sea_level_function;
     double marine_sediment_transport_coefficient = 0.0;
     double marine_sediment_porosity = 0.4;
     double marine_transport_depth_scale = 0.0;
@@ -114,6 +116,7 @@ private:
     unsigned int result_interval = 1;
     bool write_visualization_results = true;
     bool advect_surface_state = false;
+    bool use_sea_level_function = false;
     bool spherical_geometry = false;
 };
 }

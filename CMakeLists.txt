@@ -351,6 +351,20 @@ if(ASPECT_WITH_FASTSCAPE)
   endif()
 endif()
 
+# C++ FastScape library. This is independent from the older Fortran
+# FastScape coupling above and is intentionally opt-in.
+set(ASPECT_WITH_FASTSCAPELIB OFF CACHE BOOL
+    "Whether to compile ASPECT with the C++ FastScape library.")
+message(STATUS "Using ASPECT_WITH_FASTSCAPELIB = '${ASPECT_WITH_FASTSCAPELIB}'")
+if(ASPECT_WITH_FASTSCAPELIB)
+  find_package(Threads REQUIRED)
+  find_package(xtl CONFIG REQUIRED)
+  find_package(xtensor CONFIG REQUIRED)
+  find_package(fastscapelib CONFIG REQUIRED)
+  message(STATUS "  fastscapelib_INCLUDE_DIRS: ${fastscapelib_INCLUDE_DIRS}")
+  message(STATUS "  xtensor_INCLUDE_DIRS: ${xtensor_INCLUDE_DIRS}")
+endif()
+
 
 # NetCDF (c including parallel)
 set(ASPECT_WITH_NETCDF ON CACHE BOOL "Check if the user wants to compile ASPECT with the NetCDF libraries.")
@@ -853,6 +867,15 @@ if (FASTSCAPE_LIB_NAME)
       target_link_libraries(${_T} gfortran)
     endforeach()
   endif()
+endif()
+
+# Linking the imported interface targets propagates their include directories
+# and any transitive dependencies.
+if(ASPECT_WITH_FASTSCAPELIB)
+  message(STATUS "Linking ASPECT against C++ FastScape")
+  foreach(_T ${TARGET_EXECUTABLES})
+    target_link_libraries(${_T} fastscapelib xtensor xtl)
+  endforeach()
 endif()
 
 # NetCDF

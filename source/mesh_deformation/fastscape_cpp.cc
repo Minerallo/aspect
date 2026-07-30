@@ -744,10 +744,30 @@ public:
         reference_elevation = initial_elevation;
     }
 
-    void
-    reset_reference_elevation(const xt::xarray<double> &elevation)
+    std::vector<double>
+    get_reference_elevation() const
     {
-        reference_elevation = elevation;
+        return std::vector<double>(reference_elevation.begin(),
+                                   reference_elevation.end());
+    }
+
+    const std::vector<std::pair<double,std::string>> &
+    get_output_history() const
+    {
+        return output_history;
+    }
+
+    void
+    restore_output_state(
+        const std::vector<double> &stored_reference_elevation,
+        const std::vector<std::pair<double,std::string>> &stored_output_history)
+    {
+        AssertDimension(stored_reference_elevation.size(),
+                        reference_elevation.size());
+        std::copy(stored_reference_elevation.begin(),
+                  stored_reference_elevation.end(),
+                  reference_elevation.begin());
+        output_history = stored_output_history;
     }
 
     void
@@ -1255,6 +1275,15 @@ FastscapeCpp<dim>::save(
         archive << sediment_thickness_values;
     }
     status_strings["FastscapeMarineSediment"] = sediment_stream.str();
+
+    std::ostringstream output_state_stream;
+    {
+        aspect::oarchive archive(output_state_stream);
+        archive << surface_results->get_reference_elevation();
+        archive << surface_results->get_output_history();
+    }
+    status_strings["FastscapeSurfaceOutputState"] =
+        output_state_stream.str();
 }
 
 
@@ -1288,7 +1317,20 @@ FastscapeCpp<dim>::load(
         sediment_archive >> sediment_thickness_values;
         landscape->set_sediment_thickness(sediment_thickness_values);
     }
-    surface_results->reset_reference_elevation(landscape->get_elevation());
+
+    const auto output_state =
+        status_strings.find("FastscapeSurfaceOutputState");
+    if (output_state != status_strings.end())
+    {
+        std::vector<double> reference_elevation;
+        std::vector<std::pair<double,std::string>> output_history;
+        std::istringstream output_state_stream(output_state->second);
+        aspect::iarchive output_state_archive(output_state_stream);
+        output_state_archive >> reference_elevation;
+        output_state_archive >> output_history;
+        surface_results->restore_output_state(reference_elevation,
+                                              output_history);
+    }
 }
 
 

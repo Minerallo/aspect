@@ -172,6 +172,16 @@ namespace aspect
         interpolate_external_velocities_to_surface_support_points (const std::vector<Tensor<1,dim>> &velocities) const;
 
         /**
+         * Select whether transfer distances and vector components should be
+         * interpreted on a unit sphere. When enabled, source normal speeds are
+         * reconstructed along the target ASPECT surface normal instead of
+         * interpolating Cartesian components. This avoids introducing
+         * artificial tangential motion on global spherical meshes.
+         */
+        void
+        set_normalized_surface_transfer(const bool normalize_coordinates);
+
+        /**
          * The list of evaluation points owned by the current process. These are the points where the
          * external tool will receive the ASPECT solution values and return the updated velocities.
          */
@@ -181,6 +191,21 @@ namespace aspect
          * deal.II RemotePointEvaluation object used to do point evaluation in the evaluation points.
          */
         std::unique_ptr<Utilities::MPI::RemotePointEvaluation<dim, dim>> remote_point_evaluator;
+
+        struct SurfaceSupportPointData
+        {
+          types::global_dof_index dof_index;
+          unsigned int component;
+          Point<dim> point;
+
+          template <class Archive>
+          void serialize(Archive &ar, const unsigned int /*version*/)
+          {
+            ar &dof_index;
+            ar &component;
+            ar &point;
+          }
+        };
 
         /**
          * A struct to map between DoF indices and evaluation points
@@ -192,6 +217,8 @@ namespace aspect
           unsigned int            evaluation_point_index;
           unsigned int            component;
           double                  squared_distance;
+          double                  weight;
+          double                  target_normal_component;
 
           template <class Archive>
           void
@@ -202,6 +229,8 @@ namespace aspect
             ar &evaluation_point_index;
             ar &component;
             ar &squared_distance;
+            ar &weight;
+            ar &target_normal_component;
           }
         };
 
@@ -212,13 +241,16 @@ namespace aspect
          * the index of the evaluation point that is closest to the DoF. As each support point has
          * several components (x,y,z velocity), the map contains one entry for each component.
          *
-         * In a parallel computation, this map only contains entries for evaluation points owned by the
-         * current process. Note that the DoF indices are not necessarily locally owned.
+         * Rank zero stores the global map. It inserts the resulting values
+         * into a distributed vector, whose compress operation communicates
+         * nonlocal entries to the processes that own the corresponding DoFs.
          *
          * This map is used in interpolate_external_velocities_to_surface_support_points() to copy
          * external velocities to each surface DoF from the closest evaluation point.
          */
         std::vector<DofToEvalPointData> map_dof_to_eval_point;
+        std::vector<std::vector<Point<dim>>> gathered_evaluation_points;
+        bool normalize_transfer_coordinates = false;
     };
   }
 }

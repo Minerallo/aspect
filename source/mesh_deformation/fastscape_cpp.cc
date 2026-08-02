@@ -118,6 +118,74 @@ private:
 
 
 /**
+ * Read ice thickness in meters and interpolate it onto the independent
+ * landscape mesh. An omitted file represents an ice-free surface.
+ */
+template <int dim>
+class SpatialIceThickness
+{
+public:
+    void
+    initialize(const std::string &filename,
+               const std::vector<Point<dim-1>> &surface_coordinates)
+    {
+        values = xt::zeros<double>({surface_coordinates.size()});
+        if (filename.empty())
+            return;
+
+        Utilities::StructuredDataLookup<dim-1> lookup(1, 1.0);
+        lookup.load_file(filename, MPI_COMM_SELF);
+        for (unsigned int i = 0; i < surface_coordinates.size(); ++i)
+            values[i] = std::max(0.0,
+                                 lookup.get_data(surface_coordinates[i], 0));
+    }
+
+    const xt::xarray<double> &
+    get_values() const
+    {
+        return values;
+    }
+
+private:
+    xt::xarray<double> values;
+};
+
+
+/**
+ * Read basal ice velocity in meters per year and interpolate it onto the
+ * independent landscape mesh. An omitted file represents no sliding.
+ */
+template <int dim>
+class SpatialBasalIceVelocity
+{
+public:
+    void
+    initialize(const std::string &filename,
+               const std::vector<Point<dim-1>> &surface_coordinates)
+    {
+        values = xt::zeros<double>({surface_coordinates.size()});
+        if (filename.empty())
+            return;
+
+        Utilities::StructuredDataLookup<dim-1> lookup(1, 1.0);
+        lookup.load_file(filename, MPI_COMM_SELF);
+        for (unsigned int i = 0; i < surface_coordinates.size(); ++i)
+            values[i] = std::max(0.0,
+                                 lookup.get_data(surface_coordinates[i], 0));
+    }
+
+    const xt::xarray<double> &
+    get_values() const
+    {
+        return values;
+    }
+
+private:
+    xt::xarray<double> values;
+};
+
+
+/**
  * Own the FastScape grid, routing graph, erosion solver, and evolving
  * landscape fields. ASPECT-specific field transfer and file output remain
  * outside this class.
@@ -136,6 +204,8 @@ public:
     {
         xt::xarray<double> previous_elevation;
         double eroded_volume = 0.0;
+        double fluvial_eroded_volume = 0.0;
+        double glacial_eroded_volume = 0.0;
         double exported_sediment_flux = 0.0;
         double coastal_sediment_flux = 0.0;
         double deposited_sediment_volume = 0.0;
@@ -180,6 +250,8 @@ public:
         bedrock_elevation = initial_elevation;
         drainage_area = xt::zeros<double>(flow_graph->grid_shape());
         erosion = xt::zeros<double>(flow_graph->grid_shape());
+        fluvial_erosion = xt::zeros<double>(flow_graph->grid_shape());
+        glacial_erosion = xt::zeros<double>(flow_graph->grid_shape());
         sediment_flux = xt::zeros<double>(flow_graph->grid_shape());
         marine_sediment_flux = xt::zeros<double>(flow_graph->grid_shape());
         sediment_thickness = xt::zeros<double>(flow_graph->grid_shape());
@@ -196,6 +268,11 @@ public:
             const double sea_level,
             const xt::xarray<double> &erosion_strength,
             const xt::xarray<double> &surface_runoff,
+            const xt::xarray<double> &ice_thickness,
+            const xt::xarray<double> &basal_ice_velocity,
+            const double glacial_erosion_coefficient,
+            const double glacial_velocity_exponent,
+            const double minimum_ice_thickness,
             const bool advect_surface_state,
             const double maximum_advection_courant,
             const double hillslope_diffusivity,
@@ -206,6 +283,8 @@ public:
         AssertDimension(tangential_velocity.size(), elevation.size());
         AssertDimension(erosion_strength.size(), elevation.size());
         AssertDimension(surface_runoff.size(), elevation.size());
+        AssertDimension(ice_thickness.size(), elevation.size());
+        AssertDimension(basal_ice_velocity.size(), elevation.size());
 
         number_of_steps = std::max(1u, number_of_steps);
         while (total_time_years / number_of_steps > maximum_step_years)
@@ -237,8 +316,16 @@ public:
                     std::pow(erosion_strength[i],
                              1.0 / drainage_area_exponent);
 
-            erosion =
+            fluvial_erosion =
                 eroder->erode(uplifted, effective_drainage_area, step_years);
+            for (unsigned int i = 0; i < glacial_erosion.size(); ++i)
+                glacial_erosion[i] =
+                    ice_thickness[i] >= minimum_ice_thickness
+                    ? step_years * glacial_erosion_coefficient *
+                    std::pow(basal_ice_velocity[i],
+                             glacial_velocity_exponent)
+                    : 0.0;
+            erosion = fluvial_erosion + glacial_erosion;
             sediment_flux = flow_graph->accumulate(erosion / step_years);
 
             const auto areas = grid->nodes_areas();
@@ -249,6 +336,8 @@ public:
                 sediment_thickness[i] -= sediment_erosion;
                 bedrock_elevation[i] -= erosion[i] - sediment_erosion;
                 result.eroded_volume += erosion[i] * areas[i];
+                result.fluvial_eroded_volume += fluvial_erosion[i] * areas[i];
+                result.glacial_eroded_volume += glacial_erosion[i] * areas[i];
             }
 
             elevation = bedrock_elevation + sediment_thickness;
@@ -318,6 +407,16 @@ public:
     const xt::xarray<double> &get_erosion() const
     {
         return erosion;
+    }
+
+    const xt::xarray<double> &get_fluvial_erosion() const
+    {
+        return fluvial_erosion;
+    }
+
+    const xt::xarray<double> &get_glacial_erosion() const
+    {
+        return glacial_erosion;
     }
 
     const xt::xarray<double> &get_sediment_flux() const
@@ -720,6 +819,8 @@ private:
     xt::xarray<double> bedrock_elevation;
     xt::xarray<double> drainage_area;
     xt::xarray<double> erosion;
+    xt::xarray<double> fluvial_erosion;
+    xt::xarray<double> glacial_erosion;
     xt::xarray<double> sediment_flux;
     xt::xarray<double> marine_sediment_flux;
     xt::xarray<double> sediment_thickness;
@@ -780,8 +881,12 @@ public:
           const FastscapeLandscape<dim> &landscape,
           const xt::xarray<double> &erosion_strength,
           const xt::xarray<double> &surface_runoff,
+          const xt::xarray<double> &ice_thickness,
+          const xt::xarray<double> &basal_ice_velocity,
           const double sea_level,
           const double eroded_volume,
+          const double fluvial_eroded_volume,
+          const double glacial_eroded_volume,
           const double exported_sediment_flux,
           const double coastal_sediment_flux,
           const double deposited_sediment_volume,
@@ -794,6 +899,8 @@ public:
         const auto &elevation = landscape.get_elevation();
         const auto &drainage_area = landscape.get_drainage_area();
         const auto &erosion = landscape.get_erosion();
+        const auto &fluvial_erosion = landscape.get_fluvial_erosion();
+        const auto &glacial_erosion = landscape.get_glacial_erosion();
         const auto &sediment_flux = landscape.get_sediment_flux();
         const auto &marine_sediment_flux =
             landscape.get_marine_sediment_flux();
@@ -810,6 +917,7 @@ public:
             std::ofstream output(budget_file, std::ios::app);
             if (write_header)
                 output << "timestep,time_years,sea_level_m,eroded_volume_m3,"
+                       << "fluvial_eroded_volume_m3,glacial_eroded_volume_m3,"
                        << "sediment_outflux_m3_per_year,"
                        << "coastal_sediment_flux_m3_per_year,"
                        << "deposited_sediment_volume_m3,"
@@ -820,6 +928,8 @@ public:
                    << std::setprecision(16) << time_years << ','
                    << sea_level << ','
                    << eroded_volume << ','
+                   << fluvial_eroded_volume << ','
+                   << glacial_eroded_volume << ','
                    << exported_sediment_flux << ','
                    << coastal_sediment_flux << ','
                    << deposited_sediment_volume << ','
@@ -835,11 +945,13 @@ public:
             Utilities::int_to_string(timestep_number, 5) + ".csv";
         std::ofstream surface(surface_file);
         surface << "longitude_deg,latitude_deg,elevation_m,erosion_m,"
+                << "fluvial_erosion_m,glacial_erosion_m,"
                 << "drainage_area_m2,sediment_flux_m3_per_year,"
                 << "marine_sediment_flux_m3_per_year,"
                 << "sediment_thickness_m,deposition_rate_m_per_year,"
                 << "is_connected_ocean,"
                 << "erosion_strength,surface_runoff_factor,"
+                << "ice_thickness_m,basal_ice_velocity_m_per_year,"
                 << "elevation_change_m\n";
         surface << std::setprecision(16);
         for (unsigned int i = 0; i < elevation.size(); ++i)
@@ -852,12 +964,15 @@ public:
                 latitude =
                     std::asin(point[2] / point.norm()) * 180.0 / numbers::PI;
             surface << longitude << ',' << latitude << ',' << elevation[i] << ','
-                    << erosion[i] << ',' << drainage_area[i] << ','
+                    << erosion[i] << ',' << fluvial_erosion[i] << ','
+                    << glacial_erosion[i] << ',' << drainage_area[i] << ','
                     << sediment_flux[i] << ',' << marine_sediment_flux[i] << ','
                     << sediment_thickness[i] << ',' << deposition_rate[i] << ','
                     << ocean_mask[i] << ','
                     << erosion_strength[i] << ','
                     << surface_runoff[i] << ','
+                    << ice_thickness[i] << ','
+                    << basal_ice_velocity[i] << ','
                     << elevation[i] - reference_elevation[i] << '\n';
         }
 
@@ -866,22 +981,30 @@ public:
 
         Vector<double> elevation_output(elevation.size());
         Vector<double> erosion_output(erosion.size());
+        Vector<double> fluvial_erosion_output(fluvial_erosion.size());
+        Vector<double> glacial_erosion_output(glacial_erosion.size());
         Vector<double> drainage_output(drainage_area.size());
         Vector<double> flux_output(sediment_flux.size());
         Vector<double> marine_flux_output(marine_sediment_flux.size());
         Vector<double> sediment_thickness_output(sediment_thickness.size());
         Vector<double> deposition_rate_output(deposition_rate.size());
         Vector<double> ocean_mask_output(ocean_mask.size());
+        Vector<double> ice_thickness_output(ice_thickness.size());
+        Vector<double> basal_ice_velocity_output(basal_ice_velocity.size());
         for (unsigned int i = 0; i < elevation.size(); ++i)
         {
             elevation_output[i] = elevation[i];
             erosion_output[i] = erosion[i];
+            fluvial_erosion_output[i] = fluvial_erosion[i];
+            glacial_erosion_output[i] = glacial_erosion[i];
             drainage_output[i] = drainage_area[i];
             flux_output[i] = sediment_flux[i];
             marine_flux_output[i] = marine_sediment_flux[i];
             sediment_thickness_output[i] = sediment_thickness[i];
             deposition_rate_output[i] = deposition_rate[i];
             ocean_mask_output[i] = ocean_mask[i];
+            ice_thickness_output[i] = ice_thickness[i];
+            basal_ice_velocity_output[i] = basal_ice_velocity[i];
         }
 
         DataOut<dim-1,dim> data_out;
@@ -889,6 +1012,10 @@ public:
         data_out.add_data_vector(elevation_output, "elevation",
                                  DataOut<dim-1,dim>::type_cell_data);
         data_out.add_data_vector(erosion_output, "erosion",
+                                 DataOut<dim-1,dim>::type_cell_data);
+        data_out.add_data_vector(fluvial_erosion_output, "fluvial_erosion",
+                                 DataOut<dim-1,dim>::type_cell_data);
+        data_out.add_data_vector(glacial_erosion_output, "glacial_erosion",
                                  DataOut<dim-1,dim>::type_cell_data);
         data_out.add_data_vector(drainage_output, "drainage_area",
                                  DataOut<dim-1,dim>::type_cell_data);
@@ -901,6 +1028,11 @@ public:
         data_out.add_data_vector(deposition_rate_output, "deposition_rate",
                                  DataOut<dim-1,dim>::type_cell_data);
         data_out.add_data_vector(ocean_mask_output, "is_connected_ocean",
+                                 DataOut<dim-1,dim>::type_cell_data);
+        data_out.add_data_vector(ice_thickness_output, "ice_thickness",
+                                 DataOut<dim-1,dim>::type_cell_data);
+        data_out.add_data_vector(basal_ice_velocity_output,
+                                 "basal_ice_velocity",
                                  DataOut<dim-1,dim>::type_cell_data);
         data_out.build_patches();
 
@@ -928,6 +1060,10 @@ FastscapeCpp<dim>::FastscapeCpp()
         std::make_unique<SpatialErosionStrength<dim>>()),
     spatial_surface_runoff(
         std::make_unique<SpatialSurfaceRunoff<dim>>()),
+    spatial_ice_thickness(
+        std::make_unique<SpatialIceThickness<dim>>()),
+    spatial_basal_ice_velocity(
+        std::make_unique<SpatialBasalIceVelocity<dim>>()),
     surface_results(std::make_unique<SurfaceResults<dim>>())
 {}
 
@@ -1102,6 +1238,10 @@ FastscapeCpp<dim>::build_surface_mesh()
                                          surface_coordinates);
     spatial_surface_runoff->initialize(spatial_surface_runoff_file,
                                        surface_coordinates);
+    spatial_ice_thickness->initialize(spatial_ice_thickness_file,
+                                      surface_coordinates);
+    spatial_basal_ice_velocity->initialize(spatial_basal_ice_velocity_file,
+                                           surface_coordinates);
     surface_results->initialize(initial_elevation);
 
     // ASPECT applies the initial topography directly to the triangulation,
@@ -1164,7 +1304,8 @@ std::vector<Tensor<1,dim>>
         return result;
 
     Assert(landscape && spatial_erosion_strength &&
-           spatial_surface_runoff && surface_results,
+           spatial_surface_runoff && spatial_ice_thickness &&
+           spatial_basal_ice_velocity && surface_results,
            ExcInternalError());
     AssertDimension(solution_at_points.size(),
                     landscape->get_elevation().size());
@@ -1204,6 +1345,11 @@ std::vector<Tensor<1,dim>>
             current_sea_level,
             spatial_erosion_strength->get_values(),
             spatial_surface_runoff->get_values(),
+            spatial_ice_thickness->get_values(),
+            spatial_basal_ice_velocity->get_values(),
+            glacial_erosion_coefficient,
+            glacial_velocity_exponent,
+            minimum_ice_thickness,
             advect_surface_state,
             maximum_surface_advection_courant,
             hillslope_diffusion_coefficient,
@@ -1230,8 +1376,12 @@ std::vector<Tensor<1,dim>>
             *landscape,
             spatial_erosion_strength->get_values(),
             spatial_surface_runoff->get_values(),
+            spatial_ice_thickness->get_values(),
+            spatial_basal_ice_velocity->get_values(),
             current_sea_level,
             landscape_step.eroded_volume,
+            landscape_step.fluvial_eroded_volume,
+            landscape_step.glacial_eroded_volume,
             landscape_step.exported_sediment_flux,
             landscape_step.coastal_sediment_flux,
             landscape_step.deposited_sediment_volume,
@@ -1365,6 +1515,21 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
         prm.declare_entry("Nonlinear tolerance", "1e-5", Patterns::Double(0),
                           "Convergence tolerance used by the nonlinear river "
                           "incision solver.");
+        prm.declare_entry("Glacial erosion coefficient", "0",
+                          Patterns::Double(0),
+                          "Coefficient in the glacial erosion law E = K u^m, "
+                          "where E is erosion rate in meters per year, u is "
+                          "basal ice velocity in meters per year, and m is the "
+                          "glacial velocity exponent. Zero disables glacial "
+                          "erosion.");
+        prm.declare_entry("Glacial velocity exponent", "1",
+                          Patterns::Double(0),
+                          "Exponent m applied to basal ice velocity in the "
+                          "glacial erosion law.");
+        prm.declare_entry("Minimum ice thickness", "1",
+                          Patterns::Double(0),
+                          "Minimum ice thickness in meters required for "
+                          "glacial erosion.");
         prm.declare_entry("Initial relief", "0", Patterns::Double(0),
                           "Amplitude in meters of a deterministic initial "
                           "FastScape relief field. This is independent of "
@@ -1434,6 +1599,16 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
                           "multiplies cell area by this value before accumulating "
                           "water supply downstream. An empty filename uses a "
                           "uniform value of one.");
+        prm.declare_entry("Spatial ice thickness file", "",
+                          Patterns::Anything(),
+                          "Optional ASPECT structured text-data file containing "
+                          "ice thickness in meters. An empty filename represents "
+                          "an ice-free surface.");
+        prm.declare_entry("Spatial basal ice velocity file", "",
+                          Patterns::Anything(),
+                          "Optional ASPECT structured text-data file containing "
+                          "basal ice velocity in meters per year. An empty "
+                          "filename represents no basal sliding.");
         prm.declare_entry("Result interval", "1", Patterns::Integer(0),
                           "Number of geodynamic steps between landscape result "
                           "files. Zero disables result files.");
@@ -1464,6 +1639,14 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
         drainage_area_exponent = prm.get_double("Drainage area exponent");
         slope_exponent = prm.get_double("Slope exponent");
         nonlinear_tolerance = prm.get_double("Nonlinear tolerance");
+        glacial_erosion_coefficient =
+            prm.get_double("Glacial erosion coefficient");
+        glacial_velocity_exponent =
+            prm.get_double("Glacial velocity exponent");
+        AssertThrow(glacial_velocity_exponent > 0.0,
+                    ExcMessage("Glacial velocity exponent must be positive."));
+        minimum_ice_thickness =
+            prm.get_double("Minimum ice thickness");
         initial_relief = prm.get_double("Initial relief");
         sea_level = prm.get_double("Sea level");
         use_sea_level_function = prm.get_bool("Use sea level function");
@@ -1495,6 +1678,10 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
             prm.get("Spatial erosion strength file");
         spatial_surface_runoff_file =
             prm.get("Spatial surface runoff file");
+        spatial_ice_thickness_file =
+            prm.get("Spatial ice thickness file");
+        spatial_basal_ice_velocity_file =
+            prm.get("Spatial basal ice velocity file");
         result_interval = prm.get_integer("Result interval");
         write_visualization_results =
             prm.get_bool("Write visualization results");

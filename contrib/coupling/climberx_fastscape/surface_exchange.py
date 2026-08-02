@@ -214,6 +214,16 @@ def main() -> None:
     climate_parser.add_argument("exchange", type=Path)
     climate_parser.add_argument("--erosion-strength", type=Path, required=True)
     climate_parser.add_argument("--surface-runoff", type=Path, required=True)
+    climate_parser.add_argument("--ice-thickness", type=Path)
+    climate_parser.add_argument("--basal-ice-velocity", type=Path)
+    climate_parser.add_argument(
+        "--prescribed-basal-ice-velocity",
+        type=float,
+        help=(
+            "replace unavailable dynamic basal velocity with this explicit "
+            "constant in grounded-ice cells, in meters per year"
+        ),
+    )
     return_parser = subparsers.add_parser("surface-to-climate")
     return_parser.add_argument("--surface", type=Path, required=True)
     return_parser.add_argument("--climate", type=Path, required=True)
@@ -230,6 +240,25 @@ def main() -> None:
         erosion_strength, runoff = climate_controls(exchange)
         write_aspect_structured(arguments.erosion_strength, exchange, erosion_strength)
         write_aspect_structured(arguments.surface_runoff, exchange, runoff)
+        if arguments.ice_thickness is not None:
+            write_aspect_structured(
+                arguments.ice_thickness, exchange, exchange.fields["ice_thickness"]
+            )
+        if arguments.basal_ice_velocity is not None:
+            basal_ice_velocity = exchange.fields["basal_ice_velocity"]
+            if arguments.prescribed_basal_ice_velocity is not None:
+                if arguments.prescribed_basal_ice_velocity < 0.0:
+                    parser.error("prescribed basal ice velocity must be nonnegative")
+                basal_ice_velocity = np.where(
+                    exchange.fields["grounded_ice_fraction"] > 0.0,
+                    arguments.prescribed_basal_ice_velocity,
+                    0.0,
+                )
+            write_aspect_structured(
+                arguments.basal_ice_velocity,
+                exchange,
+                basal_ice_velocity,
+            )
     else:
         surface_to_climate_exchange(arguments.surface, arguments.climate, arguments.output)
 

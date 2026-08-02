@@ -30,11 +30,15 @@ class SurfaceExchangeTests(unittest.TestCase):
                 "precipitation_rate": precipitation,
                 "surface_temperature": np.full(longitude.size, 288.15),
                 "surface_elevation": np.zeros(longitude.size),
+                "ice_thickness": np.linspace(0.0, 1000.0, longitude.size),
+                "basal_ice_velocity": np.linspace(0.0, 100.0, longitude.size),
             },
             {
                 "precipitation_rate": "kg m-2 s-1",
                 "surface_temperature": "K",
                 "surface_elevation": "m",
+                "ice_thickness": "m",
+                "basal_ice_velocity": "m yr-1",
             },
         )
         with tempfile.TemporaryDirectory() as directory:

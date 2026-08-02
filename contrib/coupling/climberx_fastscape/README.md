@@ -5,15 +5,31 @@ landscape, and geodynamic fields. It avoids opening and rewriting large
 NetCDF restart files during every coupling window. NetCDF remains the archival
 and recovery format.
 
-CLIMBER-X writes `precipitation_rate`, `surface_temperature`, and
-`surface_elevation` when `CLIMBERX_CLIMATE_EXCHANGE_FILE` names an output file.
-The adapter converts those live fields into ASPECT structured inputs:
+CLIMBER-X writes `precipitation_rate`, `surface_temperature`,
+`surface_elevation`, `ice_thickness`, `basal_ice_velocity`, and
+`grounded_ice_fraction` when `CLIMBERX_CLIMATE_EXCHANGE_FILE` names an output
+file. Dynamic-ice runs obtain basal velocity directly from Yelmo. Prescribed
+ice runs export ice thickness but use zero basal velocity, so they do not
+silently invent ice motion. The adapter converts the live fields into ASPECT
+structured inputs:
 
 ```bash
 python3 surface_exchange.py climate-to-aspect climate.cxe \
   --erosion-strength erosion-strength.txt \
-  --surface-runoff surface-runoff.txt
+  --surface-runoff surface-runoff.txt \
+  --ice-thickness ice-thickness.txt \
+  --basal-ice-velocity basal-ice-velocity.txt
 ```
+
+FastScape uses the standard sliding law `E = K u^m` only where ice thickness
+exceeds the configured threshold. Both river and glacial erosion enter the
+same sediment-routing and deposition calculation, while separate result
+fields preserve their individual contributions.
+
+For prescribed-ice climate runs, the exported basal velocity is zero. A
+deliberate sensitivity test can assign a constant velocity only in grounded
+ice cells with `--prescribed-basal-ice-velocity VALUE`. This is an explicit
+model assumption that needs calibration; it is not used automatically.
 
 After ASPECT/FastScape writes its surface table, create the compact return
 field on the climate grid:

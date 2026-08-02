@@ -44,6 +44,12 @@ template <int dim>
 class SpatialSurfaceRunoff;
 
 template <int dim>
+class SpatialIceThickness;
+
+template <int dim>
+class SpatialBasalIceVelocity;
+
+template <int dim>
 class SurfaceResults;
 
 /**
@@ -92,6 +98,8 @@ private:
     mutable std::unique_ptr<FastscapeLandscape<dim>> landscape;
     std::unique_ptr<SpatialErosionStrength<dim>> spatial_erosion_strength;
     std::unique_ptr<SpatialSurfaceRunoff<dim>> spatial_surface_runoff;
+    std::unique_ptr<SpatialIceThickness<dim>> spatial_ice_thickness;
+    std::unique_ptr<SpatialBasalIceVelocity<dim>> spatial_basal_ice_velocity;
     mutable std::unique_ptr<SurfaceResults<dim>> surface_results;
 
     unsigned int box_repetitions = 8;
@@ -102,6 +110,9 @@ private:
     double drainage_area_exponent = 0.4;
     double slope_exponent = 1.0;
     double nonlinear_tolerance = 1e-5;
+    double glacial_erosion_coefficient = 0.0;
+    double glacial_velocity_exponent = 1.0;
+    double minimum_ice_thickness = 1.0;
     double initial_relief = 0.0;
     double sea_level = 0.0;
     Functions::ParsedFunction<1> sea_level_function;
@@ -113,6 +124,8 @@ private:
     double maximum_hillslope_diffusion_courant = 0.25;
     std::string spatial_erosion_strength_file;
     std::string spatial_surface_runoff_file;
+    std::string spatial_ice_thickness_file;
+    std::string spatial_basal_ice_velocity_file;
     unsigned int result_interval = 1;
     bool write_visualization_results = true;
     bool advect_surface_state = false;

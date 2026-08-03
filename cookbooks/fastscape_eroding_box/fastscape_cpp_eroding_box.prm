@@ -1,0 +1,102 @@
+# FastScape C++ counterpart of fastscape_eroding_box.prm. The independent
+# landscape grid is deliberately much finer than the ASPECT volume mesh.
+set Dimension                     = 3
+set Use years instead of seconds = true
+set End time                      = 2.5e5
+set Maximum time step             = 50000
+set Nonlinear solver scheme       = no Advection, single Stokes
+set Output directory              = output-fastscape-cpp-eroding-box
+set Pressure normalization        = no
+set Surface pressure              = 0
+
+subsection Geometry model
+  set Model name = box
+  subsection Box
+    set X extent      = 125e3
+    set Y extent      = 100e3
+    set Z extent      = 25e3
+    set X repetitions = 5
+    set Y repetitions = 4
+  end
+  subsection Initial topography model
+    set Model name = function
+    subsection Function
+      set Function constants  = h=2500, a=12, xmin=32.5e3, xmax=92.5e3, ymin=20e3, ymax=80e3
+      set Function expression = if(x>xmin & x<xmax & y>ymin & y<ymax, h+a*(sin(2*pi*x/11e3)*sin(2*pi*y/13e3)+0.5*sin(2*pi*x/7e3)*sin(2*pi*y/17e3)), 0)
+      set Maximum topography value = 2520
+    end
+  end
+end
+
+subsection Mesh deformation
+  set Mesh deformation boundary indicators = top: fastscape surface evolution
+  set Additional tangential mesh velocity boundary indicators = left, right, front, back
+  subsection FastScape surface evolution
+    set Box repetitions                     = 20
+    set Surface refinement level            = 3
+    set Surface transfer scheme             = conservative
+    set Surface transfer neighbors          = 8
+    set Landscape steps per geodynamic step = 5
+    set Maximum landscape step              = 10000
+    set River incision coefficient          = 1e-4
+    set Drainage area exponent              = 0.4
+    set Slope exponent                      = 1
+    set Hillslope diffusion coefficient     = 1e-2
+    set Glacial erosion coefficient         = 0
+    set Glacial velocity exponent           = 1
+    set Minimum ice thickness               = 500
+    set Spatial ice thickness file          = fastscape_cpp_eroding_box_ice.txt
+    set Spatial basal ice velocity file     = fastscape_cpp_eroding_box_ice_velocity.txt
+    set Result interval                     = 1
+    set Write visualization results         = true
+  end
+end
+
+subsection Boundary velocity model
+  set Tangential velocity boundary indicators = bottom, front, back, left, right
+end
+
+subsection Gravity model
+  set Model name = vertical
+  subsection Vertical
+    set Magnitude = 0
+  end
+end
+
+subsection Initial temperature model
+  set Model name = function
+  subsection Function
+    set Function expression = 0
+  end
+end
+
+subsection Boundary temperature model
+  set Fixed temperature boundary indicators = bottom, top
+  set List of model names = initial temperature
+end
+
+subsection Material model
+  set Model name = simple
+  subsection Simple model
+    set Reference density             = 1
+    set Reference specific heat       = 1
+    set Reference temperature         = 0
+    set Thermal conductivity          = 1
+    set Thermal expansion coefficient = 1
+    set Viscosity                     = 1
+  end
+end
+
+subsection Formulation
+  set Formulation = Boussinesq approximation
+end
+
+subsection Mesh refinement
+  set Initial global refinement          = 1
+  set Initial adaptive refinement        = 0
+  set Time steps between mesh refinement = 0
+end
+
+subsection Postprocess
+  set List of postprocessors = topography
+end

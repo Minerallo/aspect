@@ -1,0 +1,9 @@
+include local_uplift_no_glacial.prm
+
+set Output directory = output-local-uplift-with-glacial
+
+subsection Mesh deformation
+  subsection FastScape surface evolution
+    set Glacial erosion coefficient = 2e-5
+  end
+end

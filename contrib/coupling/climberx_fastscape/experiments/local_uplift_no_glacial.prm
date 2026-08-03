@@ -1,0 +1,100 @@
+# A paired, inexpensive 100 km by 100 km experiment. The top of the central
+# 30 km by 30 km block rises while the open bottom supplies the compensating
+# material flux.
+set Dimension                     = 3
+set Use years instead of seconds = true
+set End time                      = 10000
+set Maximum time step             = 1000
+set Nonlinear solver scheme       = no Advection, single Stokes
+set Output directory              = output-local-uplift-no-glacial
+
+subsection Geometry model
+  set Model name = box
+  subsection Box
+    set X extent = 100e3
+    set Y extent = 100e3
+    set Z extent = 50e3
+  end
+  subsection Initial topography model
+    set Model name = function
+    subsection Function
+      set Function constants      = L=100e3, H=500
+      set Function expression     = H*cos(2*pi*x/L)*cos(2*pi*y/L)
+      set Maximum topography value = 500
+    end
+  end
+end
+
+subsection Mesh deformation
+  set Mesh deformation boundary indicators = top: fastscape surface evolution
+  set Additional tangential mesh velocity boundary indicators = left, right, front, back
+  subsection FastScape surface evolution
+    set Box repetitions                       = 8
+    set Surface refinement level              = 1
+    set Landscape steps per geodynamic step   = 2
+    set Maximum landscape step                = 500
+    set River incision coefficient            = 1e-5
+    set Glacial erosion coefficient           = 0
+    set Glacial velocity exponent             = 1
+    set Minimum ice thickness                 = 500
+    set Spatial ice thickness file            = local_ice_thickness.txt
+    set Spatial basal ice velocity file       = local_basal_ice_velocity.txt
+    set Result interval                       = 1
+    set Write visualization results           = true
+  end
+end
+
+subsection Boundary velocity model
+  set Zero velocity boundary indicators       = left, right, front, back
+  set Prescribed velocity boundary indicators = top: function
+  subsection Function
+    set Variable names = x,y,z,t
+    set Function constants = xmin=35000, xmax=65000, ymin=35000, ymax=65000
+    set Function expression = 0; 0; if(x>=xmin & x<=xmax & y>=ymin & y<=ymax, 0.005, 0)
+  end
+end
+
+subsection Gravity model
+  set Model name = vertical
+  subsection Vertical
+    set Magnitude = 10
+  end
+end
+
+subsection Initial temperature model
+  set Model name = function
+  subsection Function
+    set Function expression = 273
+  end
+end
+
+subsection Boundary temperature model
+  set Fixed temperature boundary indicators = bottom, top
+  set List of model names = initial temperature
+end
+
+subsection Material model
+  set Model name = simple
+  subsection Simple model
+    set Reference density             = 3300
+    set Reference specific heat       = 1250
+    set Reference temperature         = 273
+    set Thermal conductivity          = 3
+    set Thermal expansion coefficient = 0
+    set Viscosity                     = 1e21
+  end
+end
+
+subsection Formulation
+  set Formulation = Boussinesq approximation
+end
+
+subsection Mesh refinement
+  set Initial global refinement          = 1
+  set Initial adaptive refinement        = 0
+  set Time steps between mesh refinement = 0
+end
+
+subsection Postprocess
+  set List of postprocessors = topography
+end

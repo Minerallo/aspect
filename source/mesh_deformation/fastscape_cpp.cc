@@ -1123,6 +1123,7 @@ void
 FastscapeCpp<dim>::build_surface_mesh()
 {
     fastscape_points.clear();
+    fastscape_point_areas.clear();
 
     spherical_geometry =
         (dynamic_cast<const GeometryModel::SphericalShell<dim> *>(
@@ -1132,7 +1133,9 @@ FastscapeCpp<dim>::build_surface_mesh()
                     &this->get_geometry_model()) != nullptr,
                 ExcMessage("The FastScape C++ coupling supports only Box and "
                            "SphericalShell geometry models."));
-    this->set_normalized_surface_transfer(spherical_geometry);
+    this->set_surface_transfer_options(surface_transfer_scheme,
+                                       surface_transfer_neighbors,
+                                       spherical_geometry);
 
     if (Utilities::MPI::this_mpi_process(this->get_mpi_communicator()) != 0)
         return;
@@ -1180,7 +1183,10 @@ FastscapeCpp<dim>::build_surface_mesh()
         Assert(false, ExcInternalError());
 
     for (const auto &cell : surface_mesh.active_cell_iterators())
+    {
         fastscape_points.push_back(reference_surface_point(cell->center()));
+        fastscape_point_areas.push_back(cell->measure());
+    }
 
     AssertThrow(drainage_area_exponent > 0.0,
                 ExcMessage("The drainage area exponent must be positive."));
@@ -1283,7 +1289,10 @@ void
 FastscapeCpp<dim>::update()
 {
     if (!this->remote_point_evaluator)
+    {
+        this->set_evaluation_point_areas(fastscape_point_areas);
         this->set_evaluation_points(fastscape_points);
+    }
 
     if (use_sea_level_function)
         sea_level_function.set_time(this->get_time() / year_in_seconds);
@@ -1496,6 +1505,17 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
                           "direction before surface refinement.");
         prm.declare_entry("Surface refinement level", "2", Patterns::Integer(0),
                           "Global refinement of the independent surface grid.");
+        prm.declare_entry("Surface transfer scheme", "conservative",
+                          Patterns::Selection("nearest|weighted|conservative"),
+                          "Method used to transfer FastScape surface motion "
+                          "back to ASPECT. 'nearest' copies the closest cell, "
+                          "'weighted' uses an inverse-distance stencil, and "
+                          "'conservative' additionally preserves the separate "
+                          "area-integrated positive and negative surface motions.");
+        prm.declare_entry("Surface transfer neighbors", "8",
+                          Patterns::Integer(1),
+                          "Number of nearby FastScape cells used by the "
+                          "weighted and conservative transfer methods.");
         prm.declare_entry("Landscape steps per geodynamic step", "4",
                           Patterns::Integer(1),
                           "Minimum number of landscape-evolution steps during "
@@ -1631,6 +1651,9 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
     {
         box_repetitions = prm.get_integer("Box repetitions");
         surface_refinement = prm.get_integer("Surface refinement level");
+        surface_transfer_scheme = prm.get("Surface transfer scheme");
+        surface_transfer_neighbors =
+            prm.get_integer("Surface transfer neighbors");
         landscape_steps_per_geodynamic_step =
             prm.get_integer("Landscape steps per geodynamic step");
         maximum_landscape_step_years =

@@ -37,9 +37,32 @@ namespace aspect
     template <int dim>
     void
     ParallelUnstructuredInterface<dim>::
-    set_normalized_surface_transfer(const bool normalize_coordinates)
+    set_surface_transfer_options(const std::string &scheme,
+                                 const unsigned int neighbors,
+                                 const bool normalize_coordinates)
     {
+      if (scheme == "nearest")
+        surface_transfer_scheme = SurfaceTransferScheme::nearest;
+      else if (scheme == "weighted")
+        surface_transfer_scheme = SurfaceTransferScheme::weighted;
+      else if (scheme == "conservative")
+        surface_transfer_scheme = SurfaceTransferScheme::conservative;
+      else
+        AssertThrow(false,
+                    ExcMessage("Unknown surface transfer scheme '" + scheme + "'."));
+
+      surface_transfer_neighbors = std::max(1u, neighbors);
       normalize_transfer_coordinates = normalize_coordinates;
+    }
+
+
+
+    template <int dim>
+    void
+    ParallelUnstructuredInterface<dim>::
+    set_evaluation_point_areas(const std::vector<double> &areas)
+    {
+      evaluation_point_areas = areas;
     }
 
     template <int dim>
@@ -130,10 +153,10 @@ namespace aspect
             }
         }
 
-      // Create a global nearest-neighbor mapping from external evaluation
-      // points to every ASPECT surface support point. This must not be limited
-      // to points that happen to lie in the same volume cell: an independent
-      // external mesh may be coarser or have a different topology.
+      // Create a global mapping from external evaluation points to every
+      // ASPECT surface support point. This must not be limited to points that
+      // happen to lie in the same volume cell: an independent external mesh
+      // may be coarser or have a different topology.
       {
         const unsigned int my_rank = Utilities::MPI::this_mpi_process(this->get_mpi_communicator());
         const DoFHandler<dim> &mesh_dof_handler = this->get_mesh_deformation_handler().get_mesh_deformation_dof_handler();
@@ -154,12 +177,22 @@ namespace aspect
                   {
                     const unsigned int coordinate = face / 2;
                     const double side = face % 2;
+                    unsigned int scalar_support_points_on_face = 0;
+                    for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                      if (mesh_dof_handler.get_fe().system_to_component_index(j).first == 0
+                          && std::abs(unit_support_points[j][coordinate] - side) < 1e-12)
+                        ++scalar_support_points_on_face;
+
+                    Assert(scalar_support_points_on_face > 0, ExcInternalError());
+                    const double nodal_area =
+                      cell->face(face)->measure() / scalar_support_points_on_face;
                     for (unsigned int j = 0; j < dofs_per_cell; ++j)
                       if (std::abs(unit_support_points[j][coordinate] - side) < 1e-12)
                         local_support_points.push_back(
                           {local_dof_indices[j],
                            mesh_dof_handler.get_fe().system_to_component_index(j).first,
-                           mapping.transform_unit_to_real_cell(cell, unit_support_points[j])});
+                           mapping.transform_unit_to_real_cell(cell, unit_support_points[j]),
+                           nodal_area});
                   }
             }
 
@@ -171,7 +204,12 @@ namespace aspect
           Utilities::MPI::gather(this->get_mpi_communicator(),
                                  this->evaluation_points,
                                  0);
+        gathered_evaluation_point_areas =
+          Utilities::MPI::gather(this->get_mpi_communicator(),
+                                 evaluation_point_areas,
+                                 0);
 
+        map_dof_to_eval_point.clear();
         if (my_rank == 0)
           {
             struct SourcePoint
@@ -198,29 +236,72 @@ namespace aspect
             AssertThrow(!sources.empty(),
                         ExcMessage("No external surface evaluation points were provided."));
             const auto tree = pack_rtree(tree_entries);
+            // Merge repeated contributions to nodal control areas, including
+            // support points shared by surface faces and MPI subdomains.
             std::map<types::global_dof_index,SurfaceSupportPointData> targets;
             for (const auto &rank_points : gathered_support_points)
               for (const auto &target : rank_points)
-                targets.emplace(target.dof_index, target);
+                {
+                  const auto position = targets.find(target.dof_index);
+                  if (position == targets.end())
+                    targets.emplace(target.dof_index, target);
+                  else
+                    position->second.area += target.area;
+                }
 
             namespace bgi = boost::geometry::index;
-            map_dof_to_eval_point.clear();
+            const unsigned int requested_neighbors =
+              (surface_transfer_scheme == SurfaceTransferScheme::nearest
+               ? 1
+               : surface_transfer_neighbors);
+            const unsigned int n_neighbors =
+              std::min<unsigned int>(requested_neighbors, sources.size());
+
             for (const auto &[dof_index, target] : targets)
               {
                 Point<dim> target_point = target.point;
                 if (normalize_transfer_coordinates && target_point.norm() > 0.0)
                   target_point /= target_point.norm();
+
                 std::vector<std::pair<Point<dim>,unsigned int>> nearest;
-                tree.query(bgi::nearest(target_point, 1), std::back_inserter(nearest));
-                const SourcePoint &source = sources[nearest.front().second];
+                tree.query(bgi::nearest(target_point, n_neighbors),
+                           std::back_inserter(nearest));
+                std::vector<double> weights(nearest.size(), 0.0);
+                unsigned int exact_neighbor = numbers::invalid_unsigned_int;
+                double weight_sum = 0.0;
+                for (unsigned int i = 0; i < nearest.size(); ++i)
+                  {
+                    const double distance_squared =
+                      target_point.distance_square(nearest[i].first);
+                    if (distance_squared < 1e-28)
+                      exact_neighbor = i;
+                    else
+                      {
+                        weights[i] = 1.0 / distance_squared;
+                        weight_sum += weights[i];
+                      }
+                  }
+                if (exact_neighbor != numbers::invalid_unsigned_int)
+                  {
+                    std::fill(weights.begin(), weights.end(), 0.0);
+                    weights[exact_neighbor] = 1.0;
+                  }
+                else
+                  for (double &weight : weights)
+                    weight /= weight_sum;
+
                 const double normal_component =
                   target.point.norm() > 0.0
                   ? target.point[target.component] / target.point.norm()
                   : 0.0;
-                map_dof_to_eval_point.push_back(
-                  {dof_index, source.rank, source.index, target.component,
-                   target_point.distance_square(source.point), 1.0,
-                   normal_component});
+                for (unsigned int i = 0; i < nearest.size(); ++i)
+                  {
+                    const SourcePoint &source = sources[nearest[i].second];
+                    map_dof_to_eval_point.push_back(
+                      {dof_index, source.rank, source.index, target.component,
+                       target_point.distance_square(source.point), weights[i],
+                       normal_component, target.area});
+                  }
               }
           }
       }
@@ -231,7 +312,9 @@ namespace aspect
       .connect([this](typename parallel::distributed::Triangulation<dim> &)
       {
         this->evaluation_points.clear();
+        this->evaluation_point_areas.clear();
         this->gathered_evaluation_points.clear();
+        this->gathered_evaluation_point_areas.clear();
         this->map_dof_to_eval_point.clear();
         this->remote_point_evaluator.reset();
       });
@@ -323,17 +406,173 @@ namespace aspect
                                             [entry.evaluation_point_index]
                        * source_normal);
                 }
+
+              double positive_scale = 1.0;
+              double negative_scale = 1.0;
+              if (surface_transfer_scheme == SurfaceTransferScheme::conservative)
+                {
+                  double source_area = 0.0;
+                  double source_positive = 0.0;
+                  double source_negative = 0.0;
+                  for (unsigned int rank = 0;
+                       rank < gathered_evaluation_points.size();
+                       ++rank)
+                    {
+                      AssertThrow(gathered_evaluation_point_areas[rank].size()
+                                  == gathered_evaluation_points[rank].size(),
+                                  ExcMessage("The conservative surface transfer requires "
+                                             "one positive area for every external "
+                                             "evaluation point."));
+                      for (unsigned int i = 0;
+                           i < gathered_evaluation_points[rank].size();
+                           ++i)
+                        {
+                          const Point<dim> &point =
+                            gathered_evaluation_points[rank][i];
+                          Tensor<1,dim> normal;
+                          for (unsigned int d = 0; d < dim; ++d)
+                            normal[d] = point[d] / point.norm();
+                          const double value =
+                            gathered_velocities[rank][i] * normal;
+                          const double area =
+                            gathered_evaluation_point_areas[rank][i];
+                          AssertThrow(area >= 0.0,
+                                      ExcMessage("External surface point areas "
+                                                 "must be nonnegative."));
+                          source_area += area;
+                          source_positive += area * std::max(value, 0.0);
+                          source_negative += area * std::max(-value, 0.0);
+                        }
+                    }
+
+                  double target_area = 0.0;
+                  double target_positive = 0.0;
+                  double target_negative = 0.0;
+                  std::set<types::global_dof_index> counted_target_dofs;
+                  for (const auto &entry : map_dof_to_eval_point)
+                    if (entry.component == 0
+                        && counted_target_dofs.insert(entry.dof_index).second)
+                      {
+                        const double value = normal_speeds[entry.dof_index];
+                        target_area += entry.target_area;
+                        target_positive += entry.target_area * std::max(value, 0.0);
+                        target_negative += entry.target_area * std::max(-value, 0.0);
+                      }
+
+                  AssertThrow(source_area > 0.0 && target_area > 0.0,
+                              ExcMessage("The conservative surface transfer requires "
+                                         "positive source and target areas."));
+                  const double source_area_normalization = target_area / source_area;
+                  source_positive *= source_area_normalization;
+                  source_negative *= source_area_normalization;
+                  if (source_positive > 0.0)
+                    AssertThrow(target_positive > 0.0,
+                                ExcMessage("The target stencil lost all positive "
+                                           "normal surface motion."));
+                  if (source_negative > 0.0)
+                    AssertThrow(target_negative > 0.0,
+                                ExcMessage("The target stencil lost all negative "
+                                           "normal surface motion."));
+                  positive_scale =
+                    source_positive > 0.0 ? source_positive / target_positive : 0.0;
+                  negative_scale =
+                    source_negative > 0.0 ? source_negative / target_negative : 0.0;
+                }
+
               for (const auto &entry : map_dof_to_eval_point)
-                transferred_values[entry.dof_index] =
-                  normal_speeds[entry.dof_index] * entry.target_normal_component;
+                {
+                  double normal_speed = normal_speeds[entry.dof_index];
+                  normal_speed *= normal_speed >= 0.0
+                                  ? positive_scale
+                                  : negative_scale;
+                  transferred_values[entry.dof_index] =
+                    normal_speed * entry.target_normal_component;
+                }
             }
           else
-            for (const auto &entry : map_dof_to_eval_point)
-              transferred_values[entry.dof_index] +=
-                entry.weight
-                * gathered_velocities[entry.evaluation_point_rank]
-                                       [entry.evaluation_point_index]
-                                       [entry.component];
+            {
+              for (const auto &entry : map_dof_to_eval_point)
+                transferred_values[entry.dof_index] +=
+                  entry.weight
+                  * gathered_velocities[entry.evaluation_point_rank]
+                                         [entry.evaluation_point_index]
+                                         [entry.component];
+
+              if (surface_transfer_scheme == SurfaceTransferScheme::conservative)
+                for (unsigned int component = 0; component < dim; ++component)
+                  {
+                    double source_area = 0.0;
+                    double source_positive = 0.0;
+                    double source_negative = 0.0;
+                    for (unsigned int rank = 0;
+                         rank < gathered_evaluation_points.size();
+                         ++rank)
+                      {
+                        AssertThrow(gathered_evaluation_point_areas[rank].size()
+                                    == gathered_evaluation_points[rank].size(),
+                                    ExcMessage("The conservative surface transfer requires "
+                                               "one positive area for every external "
+                                               "evaluation point."));
+                        for (unsigned int i = 0;
+                             i < gathered_evaluation_points[rank].size();
+                             ++i)
+                          {
+                            const double area =
+                              gathered_evaluation_point_areas[rank][i];
+                            AssertThrow(area >= 0.0,
+                                        ExcMessage("External surface point areas "
+                                                   "must be nonnegative."));
+                            const double value =
+                              gathered_velocities[rank][i][component];
+                            source_area += area;
+                            source_positive += area * std::max(value, 0.0);
+                            source_negative += area * std::max(-value, 0.0);
+                          }
+                      }
+
+                    double target_area = 0.0;
+                    double target_positive = 0.0;
+                    double target_negative = 0.0;
+                    std::set<types::global_dof_index> counted_target_dofs;
+                    for (const auto &entry : map_dof_to_eval_point)
+                      if (entry.component == component
+                          && counted_target_dofs.insert(entry.dof_index).second)
+                        {
+                          const double value = transferred_values[entry.dof_index];
+                          target_area += entry.target_area;
+                          target_positive += entry.target_area * std::max(value, 0.0);
+                          target_negative += entry.target_area * std::max(-value, 0.0);
+                        }
+
+                    AssertThrow(source_area > 0.0 && target_area > 0.0,
+                                ExcMessage("The conservative surface transfer requires "
+                                           "positive source and target areas."));
+                    const double source_area_normalization = target_area / source_area;
+                    source_positive *= source_area_normalization;
+                    source_negative *= source_area_normalization;
+                    if (source_positive > 0.0)
+                      AssertThrow(target_positive > 0.0,
+                                  ExcMessage("The target stencil lost all positive "
+                                             "surface motion."));
+                    if (source_negative > 0.0)
+                      AssertThrow(target_negative > 0.0,
+                                  ExcMessage("The target stencil lost all negative "
+                                             "surface motion."));
+                    const double positive_scale =
+                      source_positive > 0.0 ? source_positive / target_positive : 0.0;
+                    const double negative_scale =
+                      source_negative > 0.0 ? source_negative / target_negative : 0.0;
+
+                    counted_target_dofs.clear();
+                    for (const auto &entry : map_dof_to_eval_point)
+                      if (entry.component == component
+                          && counted_target_dofs.insert(entry.dof_index).second)
+                        {
+                          double &value = transferred_values[entry.dof_index];
+                          value *= value >= 0.0 ? positive_scale : negative_scale;
+                        }
+                  }
+            }
 
           for (const auto &[dof_index, value] : transferred_values)
             vector_with_surface_velocities[dof_index] = value;

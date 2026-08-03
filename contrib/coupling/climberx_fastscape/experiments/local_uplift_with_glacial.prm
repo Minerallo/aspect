@@ -1,6 +1,6 @@
 include local_uplift_no_glacial.prm
 
-set Output directory = output-local-uplift-with-glacial
+set Output directory = output-local-uplift-with-glacial-high-resolution
 
 subsection Mesh deformation
   subsection FastScape surface evolution

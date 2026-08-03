@@ -95,6 +95,7 @@ private:
 
     mutable SurfaceMesh surface_mesh;
     std::vector<Point<dim>> fastscape_points;
+    std::vector<double> fastscape_point_areas;
     mutable std::unique_ptr<FastscapeLandscape<dim>> landscape;
     std::unique_ptr<SpatialErosionStrength<dim>> spatial_erosion_strength;
     std::unique_ptr<SpatialSurfaceRunoff<dim>> spatial_surface_runoff;
@@ -104,6 +105,8 @@ private:
 
     unsigned int box_repetitions = 8;
     unsigned int surface_refinement = 2;
+    std::string surface_transfer_scheme = "conservative";
+    unsigned int surface_transfer_neighbors = 8;
     unsigned int landscape_steps_per_geodynamic_step = 4;
     double maximum_landscape_step_years = 10000.0;
     double incision_rate = 5e-5;

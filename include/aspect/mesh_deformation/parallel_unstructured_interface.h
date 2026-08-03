@@ -172,14 +172,29 @@ namespace aspect
         interpolate_external_velocities_to_surface_support_points (const std::vector<Tensor<1,dim>> &velocities) const;
 
         /**
-         * Select whether transfer distances and vector components should be
-         * interpreted on a unit sphere. When enabled, source normal speeds are
-         * reconstructed along the target ASPECT surface normal instead of
-         * interpolating Cartesian components. This avoids introducing
-         * artificial tangential motion on global spherical meshes.
+         * Select the method used to transfer values from the external surface
+         * points to ASPECT's surface support points. The weighted method uses
+         * an inverse-distance-squared stencil. The conservative method applies
+         * the same stencil and then preserves the separate area integrals of
+         * positive and negative surface motion.
+         *
+         * If @p normalize_coordinates is true, distances are measured on the
+         * unit sphere and normal speeds are reconstructed along each target
+         * point's radial direction. This avoids artificial tangential motion
+         * on spherical meshes.
          */
         void
-        set_normalized_surface_transfer(const bool normalize_coordinates);
+        set_surface_transfer_options(const std::string &scheme,
+                                     const unsigned int neighbors,
+                                     const bool normalize_coordinates);
+
+        /**
+         * Set the control area represented by every external evaluation point.
+         * One nonnegative value is required per point when the conservative
+         * transfer method is selected.
+         */
+        void
+        set_evaluation_point_areas(const std::vector<double> &areas);
 
         /**
          * The list of evaluation points owned by the current process. These are the points where the
@@ -197,6 +212,7 @@ namespace aspect
           types::global_dof_index dof_index;
           unsigned int component;
           Point<dim> point;
+          double area;
 
           template <class Archive>
           void serialize(Archive &ar, const unsigned int /*version*/)
@@ -204,6 +220,7 @@ namespace aspect
             ar &dof_index;
             ar &component;
             ar &point;
+            ar &area;
           }
         };
 
@@ -219,6 +236,7 @@ namespace aspect
           double                  squared_distance;
           double                  weight;
           double                  target_normal_component;
+          double                  target_area;
 
           template <class Archive>
           void
@@ -231,25 +249,36 @@ namespace aspect
             ar &squared_distance;
             ar &weight;
             ar &target_normal_component;
+            ar &target_area;
           }
+        };
+
+        enum class SurfaceTransferScheme
+        {
+          nearest,
+          weighted,
+          conservative
         };
 
         /**
          * A vector to store a map between Dof indices and evaluation points.
          *
-         * The map will contain an entry for each DoF on the surface of the ASPECT mesh and contains
-         * the index of the evaluation point that is closest to the DoF. As each support point has
-         * several components (x,y,z velocity), the map contains one entry for each component.
+         * The map contains one entry per source point in the transfer stencil
+         * for every component of every ASPECT surface support point.
          *
          * Rank zero stores the global map. It inserts the resulting values
          * into a distributed vector, whose compress operation communicates
          * nonlocal entries to the processes that own the corresponding DoFs.
          *
-         * This map is used in interpolate_external_velocities_to_surface_support_points() to copy
-         * external velocities to each surface DoF from the closest evaluation point.
+         * This map is used in interpolate_external_velocities_to_surface_support_points()
+         * to transfer external velocities to each surface DoF.
          */
         std::vector<DofToEvalPointData> map_dof_to_eval_point;
         std::vector<std::vector<Point<dim>>> gathered_evaluation_points;
+        std::vector<double> evaluation_point_areas;
+        std::vector<std::vector<double>> gathered_evaluation_point_areas;
+        SurfaceTransferScheme surface_transfer_scheme = SurfaceTransferScheme::nearest;
+        unsigned int surface_transfer_neighbors = 1;
         bool normalize_transfer_coordinates = false;
     };
   }

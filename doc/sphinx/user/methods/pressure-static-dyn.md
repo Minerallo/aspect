@@ -61,6 +61,15 @@ pressure solution is dynamic pressure. This option is not available for
 compressible or melt-transport models, or for material models that declare
 pressure-dependent properties, because those models require consistent
 reconstruction of total pressure before material properties are evaluated.
+For a supported compressible material model, the option `anelastic reference
+density profile deviation` can instead be used together with `Formulation =
+anelastic liquid approximation`. In this formulation the solved pressure is
+dynamic pressure, while pressure-dependent thermodynamic and rheological
+properties are evaluated at the adiabatic reference pressure. The full
+material density is retained for output and the density deviation from the
+adiabatic reference profile enters the momentum equation. This is an
+anelastic approximation: dynamic pressure does not feed back into material
+properties.
 With most traditional methods, this would lead to a catastrophic loss of accuracy in the dynamic pressure since it is many orders of magnitude smaller than the total pressure at the bottom of the earth mantle.
 We avoid this problem in ASPECT by using a cleverly chosen iterative solver that ensures that the full pressure we compute is accurate enough so that the dynamic pressure can be extracted from it with the same accuracy one would get if one were to solve for only the dynamic component.
 The methods that ensure this are described in detail in {cite:t}`kronbichler:etal:2012` and in particular in the appendix of that paper.

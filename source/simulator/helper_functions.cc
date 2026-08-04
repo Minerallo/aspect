@@ -2158,6 +2158,21 @@ namespace aspect
                                "material properties are evaluated."));
       }
 
+    if (parameters.formulation_buoyancy_density
+        == Parameters<dim>::Formulation::BuoyancyDensity::anelastic_reference_density_profile_deviation)
+      {
+        AssertThrow(material_model->is_compressible(),
+                    ExcMessage("The `anelastic reference density profile deviation' buoyancy density "
+                               "formulation requires a compressible material model."));
+        AssertThrow(parameters.include_melt_transport == false,
+                    ExcMessage("The `anelastic reference density profile deviation' buoyancy density "
+                               "formulation is not implemented for models with melt transport."));
+        AssertThrow(parameters.formulation
+                    == Parameters<dim>::Formulation::anelastic_liquid_approximation,
+                    ExcMessage("The `anelastic reference density profile deviation' buoyancy density "
+                               "formulation must be used with `Formulation = anelastic liquid approximation'."));
+      }
+
     // Replace Formulation::MassConservation::ask_material_model by the respective terms to avoid
     // complicated checks later on
     if (parameters.formulation_mass_conservation == Parameters<dim>::Formulation::MassConservation::ask_material_model)

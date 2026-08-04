@@ -37,6 +37,19 @@ namespace aspect
                const unsigned int input_index,
                MaterialModel::EquationOfStateOutputs<dim> &eos_outputs) const
       {
+        evaluate(in, input_index, in.pressure[input_index], eos_outputs);
+      }
+
+
+
+      template <int dim>
+      void
+      MulticomponentIncompressible<dim>::
+      evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
+               const unsigned int input_index,
+               const double pressure,
+               MaterialModel::EquationOfStateOutputs<dim> &eos_outputs) const
+      {
 
 
         if(use_Murnaghan_densities)
@@ -44,7 +57,7 @@ namespace aspect
             for (unsigned int c=0; c < eos_outputs.densities.size(); ++c)
             {
                 const double ak = thermal_expansivities[c]/reference_isothermal_compressibilities[c];
-                const double f = (1. + (in.pressure[input_index] - ak*(in.temperature[input_index] - reference_temperatures[c])) *
+                const double f = (1. + (pressure - ak*(in.temperature[input_index] - reference_temperatures[c])) *
                                 isothermal_bulk_modulus_pressure_derivatives[c] *
                                 reference_isothermal_compressibilities[c]);
 
@@ -54,8 +67,9 @@ namespace aspect
                                                 (in.temperature[input_index]*thermal_expansivities[c] *
                                                     ak * std::pow(f, -1.-(1./isothermal_bulk_modulus_pressure_derivatives[c]))
                                                     / densities[c]));
-               eos_outputs.compressibilities[c] = 0;
-                // eos_outputs.compressibilities[c] = reference_isothermal_compressibilities[c]/f;
+                eos_outputs.compressibilities[c] = (is_compressible()
+                                                     ? reference_isothermal_compressibilities[c]/f
+                                                     : 0.0);
                 eos_outputs.entropy_derivative_pressure[c] = 0.;
                 eos_outputs.entropy_derivative_temperature[c] = 0.;
             }
@@ -88,7 +102,9 @@ namespace aspect
       MulticomponentIncompressible<dim>::
       is_compressible () const
       {
-        return false;
+        return (use_Murnaghan_densities
+                && this->get_parameters().formulation_buoyancy_density
+                   == Parameters<dim>::Formulation::BuoyancyDensity::anelastic_reference_density_profile_deviation);
       }
 
 

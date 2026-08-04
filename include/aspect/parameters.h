@@ -363,7 +363,8 @@ namespace aspect
         enum Kind
         {
           full_density,
-          reference_density_profile_deviation
+          reference_density_profile_deviation,
+          anelastic_reference_density_profile_deviation
         };
 
         static
@@ -374,6 +375,8 @@ namespace aspect
             return Formulation::BuoyancyDensity::full_density;
           else if (input == "reference density profile deviation")
             return Formulation::BuoyancyDensity::reference_density_profile_deviation;
+          else if (input == "anelastic reference density profile deviation")
+            return Formulation::BuoyancyDensity::anelastic_reference_density_profile_deviation;
           else
             AssertThrow(false, ExcNotImplemented());
 

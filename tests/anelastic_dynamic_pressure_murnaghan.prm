@@ -1,0 +1,111 @@
+# Enable if: QUICK_TEST
+
+# Verify the anelastic dynamic-pressure formulation with the Murnaghan
+# equation of state. The material density and the prescribed adiabatic
+# reference density are identical, so buoyancy and velocity should vanish.
+
+set Dimension                    = 2
+set End time                     = 0
+set Pressure normalization       = no
+set Output directory             = output-anelastic_dynamic_pressure_murnaghan
+set Nonlinear solver scheme      = single Advection, single Stokes
+
+subsection Formulation
+  set Formulation      = anelastic liquid approximation
+  set Buoyancy density = anelastic reference density profile deviation
+end
+
+subsection Geometry model
+  set Model name = box
+
+  subsection Box
+    set X extent = 100e3
+    set Y extent = 100e3
+  end
+end
+
+subsection Gravity model
+  set Model name = vertical
+
+  subsection Vertical
+    set Magnitude = 10
+  end
+end
+
+subsection Adiabatic conditions model
+  set Model name = function
+
+  subsection Function
+    set Function constants  = rho0=3300, kappa0=4e-12, Kprime=4, g=10
+    set Function expression = 293; rho0*g*depth; rho0*exp(log(1+Kprime*kappa0*rho0*g*depth)/Kprime)
+  end
+end
+
+subsection Material model
+  set Model name = visco plastic
+
+  subsection Visco Plastic
+    set Use Murnaghan density formulation              = true
+    set Densities                                      = 3300
+    set Reference temperatures                         = 293
+    set Reference isothermal compressibilities        = 4e-12
+    set Isothermal bulk modulus pressure derivatives   = 4
+    set Thermal expansivities                          = 3e-5
+    set Reference strain rate                          = 1e-15
+    set Minimum viscosity                              = 1e20
+    set Maximum viscosity                              = 1e22
+  end
+end
+
+subsection Initial temperature model
+  set Model name = function
+
+  subsection Function
+    set Function expression = 293
+  end
+end
+
+subsection Heating model
+  set List of model names = adiabatic heating, shear heating
+
+  subsection Adiabatic heating
+    set Use simplified adiabatic heating = true
+  end
+end
+
+subsection Boundary velocity model
+  set Tangential velocity boundary indicators = left, right, bottom
+end
+
+subsection Mesh deformation
+  set Mesh deformation boundary indicators = top: free surface
+
+  subsection Free surface
+    set Surface velocity projection = normal
+  end
+end
+
+subsection Mesh refinement
+  set Initial adaptive refinement = 0
+  set Initial global refinement   = 1
+end
+
+subsection Solver parameters
+  subsection Stokes solver parameters
+    set Stokes solver type                   = block AMG
+    set Linear solver tolerance              = 1e-10
+    set Number of cheap Stokes solver steps  = 0
+  end
+end
+
+subsection Postprocess
+  set List of postprocessors = velocity statistics, visualization
+
+  subsection Visualization
+    set List of output variables       = material properties, depth, depth including mesh deformation
+    set Output format                  = vtu
+    set Interpolate output             = false
+    set Time between graphical output  = 0
+    set Number of grouped files        = 1
+  end
+end

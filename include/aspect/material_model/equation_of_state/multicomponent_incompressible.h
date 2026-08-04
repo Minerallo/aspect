@@ -62,6 +62,16 @@ namespace aspect
                         MaterialModel::EquationOfStateOutputs<dim> &eos_outputs) const;
 
           /**
+           * Evaluate the equation of state using an explicitly supplied
+           * pressure. This is used by dynamic-pressure formulations that
+           * evaluate thermodynamic properties at a reference pressure.
+           */
+          void evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
+                        const unsigned int input_index,
+                        const double pressure,
+                        MaterialModel::EquationOfStateOutputs<dim> &eos_outputs) const;
+
+          /**
            * Return whether the model is compressible or not. Incompressibility
            * does not necessarily imply that the density is constant; rather, it
            * may still depend on temperature or pressure. In the current

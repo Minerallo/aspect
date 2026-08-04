@@ -256,6 +256,16 @@ namespace aspect
           edot_ii = std::max(std::sqrt(std::max(-Utilities::Tensors::consistent_second_invariant_of_deviatoric_tensor(Utilities::Tensors::consistent_deviator(in.strain_rate[i])), 0.)),
                              min_strain_rate);
 
+        const bool use_anelastic_reference_pressure =
+          (this->get_parameters().formulation_buoyancy_density
+           == Parameters<dim>::Formulation::BuoyancyDensity::anelastic_reference_density_profile_deviation);
+        const double reference_pressure =
+          (this->get_adiabatic_conditions().is_initialized() == false
+           ? in.pressure[i]
+           : std::isnan(current_surface_adiabatic_pressure)
+           ? this->get_adiabatic_conditions().pressure(in.position[i])
+           : current_surface_adiabatic_pressure);
+
         // Calculate viscosities for each of the individual compositional phases
         for (unsigned int j=0; j < volume_fractions.size(); ++j)
           {
@@ -269,7 +279,8 @@ namespace aspect
             // to be used in incompressible and compressible models.
             const double temperature_for_viscosity = (this->simulator_is_past_initialization())
                                                      ?
-                                                     in.temperature[i] + adiabatic_temperature_gradient_for_viscosity*in.pressure[i]
+                                                     in.temperature[i] + adiabatic_temperature_gradient_for_viscosity
+                                                     * (use_anelastic_reference_pressure ? reference_pressure : in.pressure[i])
                                                      :
                                                      this->get_adiabatic_conditions().temperature(in.position[i]);
 
@@ -289,13 +300,8 @@ namespace aspect
               // when calculating creep viscosity.
               double pressure_for_creep = in.pressure[i];
 
-              if (use_adiabatic_pressure_in_creep)
-                pressure_for_creep =
-                  (std::isnan(current_surface_adiabatic_pressure)
-                   ?
-                   this->get_adiabatic_conditions().pressure(in.position[i])
-                   :
-                   current_surface_adiabatic_pressure);
+              if (use_adiabatic_pressure_in_creep || use_anelastic_reference_pressure)
+                pressure_for_creep = reference_pressure;
 
               const double viscosity_diffusion
                 = (viscous_flow_law != dislocation
@@ -521,13 +527,8 @@ namespace aspect
             // than the lithostatic pressure.
 
             double pressure_for_plasticity = in.pressure[i];
-            if (use_adiabatic_pressure_in_plasticity)
-              pressure_for_plasticity =
-                (std::isnan(current_surface_adiabatic_pressure)
-                 ?
-                 this->get_adiabatic_conditions().pressure(in.position[i])
-                 :
-                 current_surface_adiabatic_pressure);
+            if (use_adiabatic_pressure_in_plasticity || use_anelastic_reference_pressure)
+              pressure_for_plasticity = reference_pressure;
 
             if (allow_negative_pressures_in_plasticity == false)
               pressure_for_plasticity = std::max(pressure_for_plasticity,0.0);
@@ -626,8 +627,13 @@ namespace aspect
           in.n_evaluation_points(),
           std::numeric_limits<double>::quiet_NaN());
 
+        const bool use_anelastic_reference_pressure =
+          (this->get_parameters().formulation_buoyancy_density
+           == Parameters<dim>::Formulation::BuoyancyDensity::anelastic_reference_density_profile_deviation);
+
         if ((use_adiabatic_pressure_in_plasticity == false
-             && use_adiabatic_pressure_in_creep == false)
+             && use_adiabatic_pressure_in_creep == false
+             && use_anelastic_reference_pressure == false)
             || this->get_parameters().mesh_deformation_enabled == false
             || in.current_cell.state() != IteratorState::valid)
           return pressures;
@@ -1193,7 +1199,9 @@ namespace aspect
             plastic_out->yielding[i] = plastic_yielding ? 1 : 0;
 
             double pressure_for_plasticity = in.pressure[i];
-            if (use_adiabatic_pressure_in_plasticity)
+            if (use_adiabatic_pressure_in_plasticity
+                || this->get_parameters().formulation_buoyancy_density
+                   == Parameters<dim>::Formulation::BuoyancyDensity::anelastic_reference_density_profile_deviation)
               pressure_for_plasticity =
                 (std::isnan(current_surface_adiabatic_pressure)
                  ?

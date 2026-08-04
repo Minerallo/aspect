@@ -390,7 +390,7 @@ namespace aspect
 
           double density = scratch.material_model_outputs.densities[q];
           if (this->get_parameters().formulation_buoyancy_density
-              == Parameters<dim>::Formulation::BuoyancyDensity::reference_density_profile_deviation)
+              != Parameters<dim>::Formulation::BuoyancyDensity::full_density)
             density -= this->get_adiabatic_conditions().density(
               scratch.finite_element_values.quadrature_point(q));
           const double JxW = scratch.finite_element_values.JxW(q);

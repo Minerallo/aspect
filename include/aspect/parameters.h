@@ -352,6 +352,34 @@ namespace aspect
           return Formulation::TemperatureEquation::Kind();
         }
       };
+
+      /**
+       * This struct determines whether the momentum equation uses the full
+       * material density or its deviation from the adiabatic reference
+       * density profile in the gravitational body-force term.
+       */
+      struct BuoyancyDensity
+      {
+        enum Kind
+        {
+          full_density,
+          reference_density_profile_deviation
+        };
+
+        static
+        Kind
+        parse(const std::string &input)
+        {
+          if (input == "full density")
+            return Formulation::BuoyancyDensity::full_density;
+          else if (input == "reference density profile deviation")
+            return Formulation::BuoyancyDensity::reference_density_profile_deviation;
+          else
+            AssertThrow(false, ExcNotImplemented());
+
+          return Formulation::BuoyancyDensity::Kind();
+        }
+      };
     };
 
     /**
@@ -697,6 +725,12 @@ namespace aspect
      * 'real density'.
      */
     typename Formulation::TemperatureEquation::Kind formulation_temperature_equation;
+
+    /**
+     * Determines which density enters the gravitational body-force term in
+     * the momentum equation.
+     */
+    typename Formulation::BuoyancyDensity::Kind formulation_buoyancy_density;
 
     /**
      * This variable determines whether additional terms related to elastic forces

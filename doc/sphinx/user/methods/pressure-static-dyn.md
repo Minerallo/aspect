@@ -50,7 +50,17 @@ We do note that most of the codes available today, and that we are aware of, spl
 This may, in part, be due to the fact that historically most codes were written to solve problems in which the medium was considered incompressible, i.e., where the definition of a static density was simple.
 
 On the other hand, we intend ASPECT to be a code that can solve more general models for which this definition is not as simple.
-As a consequence, we have chosen to solve the equations as stated originally - i.e., we solve for the *full* pressure rather than just its *dynamic* component.
+As a consequence, the default formulation solves the equations as stated
+originally - i.e., for the *full* pressure rather than just its *dynamic*
+component. For incompressible models, users can instead set
+`Formulation/Buoyancy density` to `reference density profile deviation`. This
+subtracts the density supplied by the adiabatic reference profile only in the
+gravitational body-force term, while preserving the full material density for
+the energy equation, postprocessors, and other consumers. The resulting
+pressure solution is dynamic pressure. This option is not available for
+compressible or melt-transport models, or for material models that declare
+pressure-dependent properties, because those models require consistent
+reconstruction of total pressure before material properties are evaluated.
 With most traditional methods, this would lead to a catastrophic loss of accuracy in the dynamic pressure since it is many orders of magnitude smaller than the total pressure at the bottom of the earth mantle.
 We avoid this problem in ASPECT by using a cleverly chosen iterative solver that ensures that the full pressure we compute is accurate enough so that the dynamic pressure can be extracted from it with the same accuracy one would get if one were to solve for only the dynamic component.
 The methods that ensure this are described in detail in {cite:t}`kronbichler:etal:2012` and in particular in the appendix of that paper.

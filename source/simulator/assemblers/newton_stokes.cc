@@ -20,6 +20,7 @@
 
 #include <aspect/simulator.h>
 #include <aspect/newton.h>
+#include <aspect/adiabatic_conditions/interface.h>
 #include <aspect/simulator_access.h>
 #include <aspect/utilities.h>
 #include <aspect/material_model/rheology/elasticity.h>
@@ -528,7 +529,11 @@ namespace aspect
           const Tensor<1,dim>
           gravity = this->get_gravity_model().gravity_vector (scratch.finite_element_values.quadrature_point(q));
 
-          const double density = scratch.material_model_outputs.densities[q];
+          double density = scratch.material_model_outputs.densities[q];
+          if (this->get_parameters().formulation_buoyancy_density
+              == Parameters<dim>::Formulation::BuoyancyDensity::reference_density_profile_deviation)
+            density -= this->get_adiabatic_conditions().density(
+              scratch.finite_element_values.quadrature_point(q));
 
           const double JxW = scratch.finite_element_values.JxW(q);
           const double pressure_scaling = this->get_pressure_scaling();

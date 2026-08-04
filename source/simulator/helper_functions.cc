@@ -2126,6 +2126,38 @@ namespace aspect
   void
   Simulator<dim>::check_consistency_of_formulation()
   {
+    if (parameters.formulation_buoyancy_density
+        == Parameters<dim>::Formulation::BuoyancyDensity::reference_density_profile_deviation)
+      {
+        AssertThrow(material_model->is_compressible() == false,
+                    ExcMessage("The `reference density profile deviation' buoyancy density "
+                               "formulation is currently only implemented for incompressible "
+                               "material models. Compressible models require reconstruction of "
+                               "the total pressure before evaluating material properties."));
+        AssertThrow(parameters.include_melt_transport == false,
+                    ExcMessage("The `reference density profile deviation' buoyancy density "
+                               "formulation is not implemented for models with melt transport."));
+
+        const MaterialModel::NonlinearDependence::ModelDependence &dependence
+          = material_model->get_model_dependence();
+        const auto depends_on_pressure =
+          [](const MaterialModel::NonlinearDependence::Dependence value)
+        {
+          return (static_cast<unsigned int>(value)
+                  & static_cast<unsigned int>(MaterialModel::NonlinearDependence::pressure)) != 0;
+        };
+        AssertThrow(!depends_on_pressure(dependence.viscosity)
+                    && !depends_on_pressure(dependence.density)
+                    && !depends_on_pressure(dependence.compressibility)
+                    && !depends_on_pressure(dependence.specific_heat)
+                    && !depends_on_pressure(dependence.thermal_conductivity),
+                    ExcMessage("The `reference density profile deviation' buoyancy density "
+                               "formulation solves for dynamic pressure and can not be used with "
+                               "a material model that declares pressure-dependent properties. "
+                               "Such a model requires reconstruction of total pressure before "
+                               "material properties are evaluated."));
+      }
+
     // Replace Formulation::MassConservation::ask_material_model by the respective terms to avoid
     // complicated checks later on
     if (parameters.formulation_mass_conservation == Parameters<dim>::Formulation::MassConservation::ask_material_model)

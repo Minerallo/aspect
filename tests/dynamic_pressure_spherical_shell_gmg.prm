@@ -1,0 +1,13 @@
+# Enable if: QUICK_TEST
+
+include $ASPECT_SOURCE_DIR/tests/dynamic_pressure_spherical_shell.prm
+
+set Output directory          = output-dynamic_pressure_spherical_shell_gmg
+set Nonlinear solver scheme   = single Advection, single Stokes
+
+subsection Solver parameters
+  subsection Stokes solver parameters
+    set Stokes solver type = block GMG
+  end
+end
+

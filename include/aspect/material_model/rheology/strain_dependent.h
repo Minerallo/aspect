@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2019 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -32,8 +32,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     namespace Rheology
     {
 
@@ -125,14 +123,34 @@ namespace aspect
 
           /**
            * A function that computes by how much the rheologic parameters change
-           * if strain weakening is applied. Given a compositional field with
-           * the index j and a vector of all compositional fields, it returns
-           * reduction factors for the cohesion, friction angle and the prefactor
-           * of the viscous flow law(s) used in the computation for that composition.
+           * if strain weakening is applied. Given a vector @p composition of all
+           * fields, it returns reduction factors for the cohesion, friction angle
+           * and the prefactor of the viscous flow law(s) for the compositional
+           * field with index @p j. The reason all fields are passed is that
+           * the weakening factors can depend on the values of fields that track
+           * different measures of previously applied strain.
            */
+          std::array<double, 3>
+          compute_strain_weakening_factors(const std::vector<double> &composition,
+                                           const unsigned int j) const;
+
+          /**
+           * @deprecated: Deprecated version of the function of the same
+           * name described above.
+           */
+          DEAL_II_DEPRECATED
           std::array<double, 3>
           compute_strain_weakening_factors(const unsigned int j,
                                            const std::vector<double> &composition) const;
+
+          /**
+           * A function that alters the viscous weakening factor based on the
+           * temperature field.
+           */
+          std::array<double, 3>
+          apply_temperature_dependence_to_strain_weakening_factors(const std::array<double, 3> &weakening_factors,
+                                                                   const double temperature,
+                                                                   const unsigned int j) const;
 
           /**
            * A function that computes the strain healing (reduction in accumulated strain)
@@ -163,6 +181,13 @@ namespace aspect
           double
           calculate_viscous_weakening (const double strain_ii,
                                        const unsigned int j) const;
+
+          /**
+           * Whether to use the temperature-activated viscous strain weakening.
+           *
+           * This variable is read from the parameter file through a parameter called 'Use temperature activated strain softening'.
+           */
+          bool use_temperature_activated_strain_softening;
 
           /**
            * A function that fills the reaction terms for the finite strain tensor in
@@ -202,25 +227,34 @@ namespace aspect
 
         private:
 
+          /**
+           *  This variable is read from the parameter file through a parameter called 'Strain weakening mechanism'.
+           */
           WeakeningMechanism weakening_mechanism;
 
+          /**
+           *  This variable is read from the parameter file through a parameter called 'Strain healing mechanism'.
+           */
           HealingMechanism healing_mechanism;
 
           /**
            * The start of the strain interval (plastic or total strain)
            * within which cohesion and angle of friction should be weakened.
+           * This variable is read from the parameter file through a parameter called 'Start plasticity strain weakening intervals'.
            */
           std::vector<double> start_plastic_strain_weakening_intervals;
 
           /**
            * The end of the strain interval (plastic or total strain)
            * within which cohesion and angle of friction should be weakened.
+           * This variable is read from the parameter file through a parameter called 'End plasticity strain weakening intervals'.
            */
           std::vector<double> end_plastic_strain_weakening_intervals;
 
           /**
            * The factor specifying the amount of weakening of the
            * cohesion over the prescribed strain interval (plastic or total strain).
+           * This variable is read from the parameter file through a parameter called 'Cohesion strain weakening factors'.
            */
           std::vector<double> cohesion_strain_weakening_factors;
 
@@ -228,34 +262,67 @@ namespace aspect
            * The factor specifying the amount of weakening of the
            * internal friction angles over the prescribed strain interval
            * (plastic or total strain).
+           * This variable is read from the parameter file through a parameter called 'Friction strain weakening factors'.
            */
           std::vector<double> friction_strain_weakening_factors;
 
           /**
            * The start of the strain interval (viscous or total strain)
            * within which cohesion and angle of friction should be weakened.
+           * This variable is read from the parameter file through a parameter called 'Start prefactor strain weakening intervals'.
            */
           std::vector<double> start_viscous_strain_weakening_intervals;
 
           /**
            * The end of the strain interval (viscous or total strain)
            * within which cohesion and angle of friction should be weakened.
+           * This variable is read from the parameter file through a parameter called 'End prefactor strain weakening intervals'.
            */
           std::vector<double> end_viscous_strain_weakening_intervals;
 
           /**
            * The factor specifying the amount of weakening over
            * the prescribed strain interval (viscous or total strain).
+           * This variable is read from the parameter file through a parameter called 'Prefactor strain weakening factors'.
            */
           std::vector<double> viscous_strain_weakening_factors;
 
           /**
+           * The four temperatures that parameterize the temperature-activated strain softening.
+           * These can be different for each compositional field.
+           * ------            -------- 1
+           *       \          /
+           *        \        /
+           *         \______/ _ _ _ _ _ viscous_weakening_factor[2]
+           *
+           * ----------------------------> T
+           *     T0  T1   T2  T3
+           * This variable is read from the parameter file through a parameter called 'Lower temperature for onset of strain weakening'.
+           */
+          std::vector<double> viscous_strain_weakening_T0;
+          /**
+           *  This variable is read from the parameter file through a parameter called 'Lower temperature for maximum strain weakening'.
+           */
+          std::vector<double> viscous_strain_weakening_T1;
+          /**
+           *  This variable is read from the parameter file through a parameter called 'Upper temperature for maximum strain weakening'.
+           */
+          std::vector<double> viscous_strain_weakening_T2;
+          /**
+           *  This variable is read from the parameter file through a parameter called 'Upper temperature for onset of strain weakening'.
+           */
+          std::vector<double> viscous_strain_weakening_T3;
+
+          /**
            * The healing rate used in the temperature dependent strain healing model.
+           * This variable is read from the parameter file through a parameter called 'Strain healing temperature dependent recovery rate'.
            */
           double strain_healing_temperature_dependent_recovery_rate;
 
           /**
            * A prefactor of viscosity used in the strain healing calculation.
+           *
+           * This variable is read from the parameter file through a parameter called 'Strain healing temperature dependent prefactor'.
            */
           double strain_healing_temperature_dependent_prefactor;
 

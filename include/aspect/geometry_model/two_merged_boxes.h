@@ -29,8 +29,6 @@ namespace aspect
 {
   namespace GeometryModel
   {
-    using namespace dealii;
-
     /**
      * A class that describes a box geometry of certain width, height, and
      * depth (in 3d) and adds two (four in 3D) additional boundary indicators
@@ -42,6 +40,13 @@ namespace aspect
       public:
 
         /**
+         * Initialization function. This function is called once at the
+         * beginning of the program after parse_parameters is run and after
+         * the SimulatorAccess (if applicable) is initialized.
+         */
+        void initialize () override;
+
+        /**
          * Generate a coarse mesh for the geometry described by this class.
          */
         void create_coarse_mesh (parallel::distributed::Triangulation<dim> &coarse_grid) const override;
@@ -51,6 +56,14 @@ namespace aspect
          * of the domain.
          */
         Point<dim> get_extents () const;
+
+        /**
+         * Return an integer array that denotes the number of repetitions of
+         * the lower box's coarse mesh. The horizontal repetitions are the
+         * same in the lower and upper boxes.
+         */
+        const std::array<unsigned int, dim> &
+        get_repetitions () const;
 
         /**
          * Return a point that denotes the lower left corner of the box
@@ -195,18 +208,40 @@ namespace aspect
         void
         parse_parameters (ParameterHandler &prm) override;
 
+        /**
+         * Return the topography at a given point
+         */
+        double
+        get_topography_at_point (const Point<dim> &position ) const;
+
       private:
+        /**
+         * Add initial topography to the mesh.
+         */
+        void add_topography_to_mesh (typename parallel::distributed::Triangulation<dim> &grid) const;
+
+        /**
+         * Relocate the vertical coordinate of the given point based on
+         * the topography at the surface specified by the initial topography
+         * model.
+         */
+        Point<dim> add_topography_to_point (const Point<dim> &x_y_z) const;
+
         /**
          * Whether to make the grid by gluing together two boxes, or just
          * use one chunk to make the grid. Using two grids glued together
          * is a safer option, since it forces the boundary conditions
          * to be always applied to the same depth, but one unified grid allows
          * for a more flexible usage of the adaptive refinement.
+         *
+         * This variable is read from the parameter file through a parameter called 'Use merged grids'.
          */
         bool use_merged_grids;
 
         /**
          * Extent of the whole model domain in x-, y-, and z-direction (in 3d).
+         * This variable is read from the parameter file through parameters called
+         * 'X extent', 'Y extent', and 'Z extent'.
          */
         Point<dim> extents;
 
@@ -217,6 +252,8 @@ namespace aspect
 
         /**
          * Origin of the lower box in x, y, and z (in 3d) coordinates.
+         * This variable is read from the parameter file through parameters called
+         * 'Box origin X coordinate', 'Box origin Y coordinate', and 'Box origin Z coordinate'.
          */
         Point<dim> lower_box_origin;
 
@@ -233,16 +270,24 @@ namespace aspect
         /**
          * Flag whether the whole domain is periodic in the x-, y-, and z-directions,
          * the x- and y- (in 3d) direction in the lithosphere.
+         * This variable is read from the parameter file through parameters called
+         * 'X periodic', 'X periodic lithosphere', 'Y periodic',
+         * 'Y periodic lithosphere', and 'Z periodic'.
          */
         bool periodic[dim+dim-1];
 
         /**
          * The number of cells in each coordinate direction for the lower box.
+         * This variable is read from the parameter file through parameters called
+         * 'X repetitions', 'Y repetitions', and 'Z repetitions'.
          */
         std::array<unsigned int, dim> lower_repetitions;
 
         /**
          * The number of cells in each coordinate direction for the upper box.
+         *
+         * This variable is read from the parameter file through parameters called
+         * 'Y repetitions lithosphere' and 'Z repetitions lithosphere'.
          */
         std::array<unsigned int, dim> upper_repetitions;
 

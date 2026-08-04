@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -17,6 +17,8 @@
   along with ASPECT; see the file LICENSE.  If not see
   <http://www.gnu.org/licenses/>.
 */
+
+#include <algorithm>
 #include <aspect/simulator.h>
 #include <deal.II/grid/tria.h>
 #include <aspect/material_model/interface.h>
@@ -31,8 +33,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     /**
      * A material model based on a simple power law rheology and
      * implementing the derivatives needed for the Newton method.
@@ -72,7 +72,7 @@ namespace aspect
 
       private:
         /**
-         * For calculating density by thermal expansivity. Units: $\\si{\\kelvin}$
+         * For calculating density by thermal expansivity. Units: $$\\text{K}$$
          */
         double reference_temperature;
 
@@ -110,8 +110,6 @@ namespace aspect
 
 
 
-using namespace dealii;
-
 namespace aspect
 {
 
@@ -124,7 +122,8 @@ namespace aspect
              MaterialModel::MaterialModelOutputs<dim> &out) const
     {
       //set up additional output for the derivatives
-      MaterialModelDerivatives<dim> *derivatives = out.template get_additional_output<MaterialModelDerivatives<dim>>();
+      const std::shared_ptr<MaterialModelDerivatives<dim>> derivatives
+        = out.template get_additional_output_object<MaterialModelDerivatives<dim>>();
 
       for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
         {
@@ -178,14 +177,14 @@ namespace aspect
                   // to prevent a division-by-zero, and a floating point exception.
                   // Otherwise, calculate the square-root of the norm of the second invariant of the deviatoric-
                   // strain rate (often simplified as epsilondot_ii)
-                  const SymmetricTensor<2,dim> edot = use_deviator_of_strain_rate ? deviator(in.strain_rate[i]) : in.strain_rate[i];
-                  const double edot_ii_strict = std::sqrt(0.5*edot*edot);
-                  const double edot_ii = 2.0 * std::max(edot_ii_strict, min_strain_rate[c]);
+                  const SymmetricTensor<2,dim> edot = use_deviator_of_strain_rate ? Utilities::Tensors::consistent_deviator(in.strain_rate[i]) : in.strain_rate[i];
+                  const double edot_ii_strict = std::sqrt(use_deviator_of_strain_rate ? std::abs(Utilities::Tensors::consistent_second_invariant_of_deviatoric_tensor(edot)) : 0.5*edot*edot);
+                  const double edot_ii = std::max(edot_ii_strict, min_strain_rate[c]);
 
                   const double stress_exponent_inv = 1/stress_exponent[c];
-                  composition_viscosities[c] = std::max(std::min(std::pow(viscosity_prefactor[c],-stress_exponent_inv) * std::pow(edot_ii,stress_exponent_inv-1), max_viscosity[c]), min_viscosity[c]);
+                  composition_viscosities[c] = std::clamp(std::pow(viscosity_prefactor[c],-stress_exponent_inv) * std::pow(edot_ii,stress_exponent_inv-1), min_viscosity[c], max_viscosity[c]);
                   Assert(dealii::numbers::is_finite(composition_viscosities[c]), ExcMessage ("Error: Viscosity is not finite."));
-                  if (derivatives != NULL)
+                  if (derivatives != nullptr)
                     {
                       if (edot_ii_strict > min_strain_rate[c] && composition_viscosities[c] < max_viscosity[c] && composition_viscosities[c] > min_viscosity[c])
                         {
@@ -204,7 +203,7 @@ namespace aspect
               out.viscosities[i] = Utilities::weighted_p_norm_average(volume_fractions, composition_viscosities, viscosity_averaging_p);
               Assert(dealii::numbers::is_finite(out.viscosities[i]), ExcMessage ("Error: Averaged viscosity is not finite."));
 
-              if (derivatives != NULL)
+              if (derivatives != nullptr)
                 {
                   derivatives->viscosity_derivative_wrt_strain_rate[i] = Utilities::derivative_of_weighted_p_norm_average(out.viscosities[i],volume_fractions, composition_viscosities, composition_viscosities_derivatives, viscosity_averaging_p);
 
@@ -265,13 +264,13 @@ namespace aspect
         {
           // Reference and minimum/maximum values
           prm.declare_entry ("Reference temperature", "293.", Patterns::Double(0.),
-                             "For calculating density by thermal expansivity. Units: \\si{\\kelvin}");
+                             "For calculating density by thermal expansivity. Units: $\\text{K}$");
           prm.declare_entry ("Minimum strain rate", "1.96e-40", Patterns::List(Patterns::Double(0.)),
                              "Stabilizes strain dependent viscosity. Units: \\si{\\per\\second}");
           prm.declare_entry ("Minimum viscosity", "1e10", Patterns::List(Patterns::Double(0.)),
-                             "Lower cutoff for effective viscosity. Units: \\si{\\pascal\\second}");
+                             "Lower cutoff for effective viscosity. Units: $\\text{Pa}\\text{s}$");
           prm.declare_entry ("Maximum viscosity", "1e28", Patterns::List(Patterns::Double(0.)),
-                             "Upper cutoff for effective viscosity. Units: \\si{\\pascal\\second}");
+                             "Upper cutoff for effective viscosity. Units: $\\text{Pa}\\text{s}$");
           prm.declare_entry ("Effective viscosity coefficient", "1.0", Patterns::List(Patterns::Double(0.)),
                              "Scaling coefficient for effective viscosity.");
 
@@ -279,18 +278,18 @@ namespace aspect
           prm.declare_entry ("Thermal diffusivity", "0.8e-6", Patterns::List(Patterns::Double(0.)),
                              "Units: \\si{\\meter\\squared\\per\\second}");
           prm.declare_entry ("Heat capacity", "1.25e3", Patterns::List(Patterns::Double(0.)),
-                             "Units: \\si{\\joule\\per\\kelvin\\per\\kilogram}");
+                             "Units: $\\frac{\\text{J}}{\\text{K}\\text{kg}}$");
           prm.declare_entry ("Densities", "3300.",
                              Patterns::List(Patterns::Double(0.)),
                              "List of densities, $\\rho$, for background mantle and compositional fields, "
                              "for a total of N+1 values, where N is the number of compositional fields. "
                              "If only one value is given, then all use the same value. "
-                             "Units: \\si{\\kilogram\\per\\meter\\cubed}");
+                             "Units: $\\frac{\\text{kg}}{\\text{m}^3}$");
           prm.declare_entry ("Thermal expansivities", "3.5e-5",
                              Patterns::List(Patterns::Double(0.)),
                              "List of thermal expansivities for background mantle and compositional fields, "
                              "for a total of N+1 values, where N is the number of compositional fields. "
-                             "If only one value is given, then all use the same value.  Units: \\si{\\per\\kelvin}");
+                             "If only one value is given, then all use the same value.  Units: $\\frac{1}{\\text{K}}$");
 
 
           // SimpleNonlinear creep parameters
@@ -311,7 +310,7 @@ namespace aspect
                              Patterns::Double(),
                              "This is the p value in the generalized weighed average equation: "
                              " $\\text{mean} = \\frac{1}{k}(\\sum_{i=1}^k \\big(c_i \\eta_{\\text{eff}_i}^p)\\big)^{\\frac{1}{p}}$. "
-                             " Units: \\si{\\pascal\\second}");
+                             " Units: $\\text{Pa}\\text{s}$");
 
           // strain-rate deviator parameter
           prm.declare_entry ("Use deviator of strain-rate", "true",

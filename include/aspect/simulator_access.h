@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -42,8 +42,6 @@ namespace WorldBuilder
 
 namespace aspect
 {
-  using namespace dealii;
-
   // forward declarations:
   template <int dim> class Simulator;
   template <int dim> struct SimulatorSignals;
@@ -56,6 +54,11 @@ namespace aspect
   }
 
   namespace HeatingModel
+  {
+    template <int dim> class Manager;
+  }
+
+  namespace PrescribedDilation
   {
     template <int dim> class Manager;
   }
@@ -79,6 +82,12 @@ namespace aspect
 
   namespace BoundaryHeatFlux
   {
+    template <int dim> class Interface;
+  }
+
+  namespace BoundaryConvectiveHeating
+  {
+    template <int dim> class Manager;
     template <int dim> class Interface;
   }
 
@@ -140,12 +149,17 @@ namespace aspect
 
   namespace Particle
   {
-    template <int dim> class World;
+    template <int dim> class Manager;
   }
 
   namespace TimeStepping
   {
     template <int dim> class Manager;
+  }
+
+  namespace PrescribedSolution
+  {
+    template <int dim> class  Manager;
   }
 
   /**
@@ -155,17 +169,45 @@ namespace aspect
    * the current time, time step sizes, material models, or the triangulations
    * and DoFHandlers that correspond to solutions.
    *
-   * This class is the interface between plugins and the main simulator class.
-   * Using this insulation layer, the plugins need not know anything about the
-   * internal details of the simulation class.
+   * The primary motivation of this class is that many plugins need access
+   * about the state and set-up of the current simulation. For example, an
+   * assembler might need to know about what kind of boundary a boundary indicator
+   * corresponds to; or a postprocessor computing the stress from the strain
+   * needs to know about the material model to determine the stress-strain
+   * relationship. All of this information is stored in the Simulator class
+   * that describes the entire simulation. Typical design choices to provide
+   * the kind of information mentioned above to plugins could include one
+   * of the following two options:
+   * - The Simulator class makes the variables that store this information
+   *   `public`.
+   * - The Simulator class provides "getter" functions for each of these
+   *   variables.
+   * In both cases, whenever a plugin function is called, one would also pass
+   * in a reference to the Simulator object. Both of these strategies have
+   * downsides:
+   * - Making members `public` is rarely a good idea given that it makes
+   *   changing how we store data very difficult without incurring backward
+   *   incompatibilities.
+   * - The Simulator class might have to gain *many* getter functions, likely
+   *   dozens, that then obscure the *real* interface of the class and
+   *   distracting from its purpose: namely, *running* a simulation.
+   * - One would have to pass around a reference to the Simulator object
+   *   almost literally everywhere.
+   *
+   * The design chosen in ASPECT is therefore to provide a
+   * [view](https://en.wikipedia.org/wiki/Model%E2%80%93view%E2%80%93controller)
+   * of the Simulator object in the form of the current class. In other words,
+   * the SimulatorAccess is a class that is a "friend" of the Simulator and
+   * provides the getter functions -- and that's all it does. In essence,
+   * SimulatorAccess is a place where all of the getters are located. Second,
+   * rather than passing around a reference to a Simulator or SimulatorAccess
+   * object, plugins that require access to simulator data *inherit* from
+   * SimulatorAccess and the Simulator class ensures that these derived
+   * classes are initialized in a way so that they can use the getter functions
+   * provided through their SimulatorAccess base class.
    *
    * Every Postprocessor is required to derive from SimulatorAccess. It is
    * optional for other plugins like MaterialModel, GravityModel, etc..
-   *
-   * Since the functions providing access to details of the simulator class
-   * are meant to be used only by derived classes of this class (rather than
-   * becoming part of the public interface of these classes), the functions of
-   * this class are made @p protected.
    *
    * @ingroup Simulator
    */
@@ -191,7 +233,7 @@ namespace aspect
        * Destructor. Does nothing but is virtual so that derived classes
        * destructors are also virtual.
        */
-      virtual ~SimulatorAccess () = default;
+      virtual ~SimulatorAccess ();
 
       /**
        * Initialize this class for a given simulator. This function is marked
@@ -327,6 +369,15 @@ namespace aspect
        */
       std::string
       get_output_directory () const;
+
+      /**
+       * Return the ID of the checkpoint that ASPECT is currently writing or was last
+       * written, depending on where this function gets called. Can be used in plugins
+       * to override the save() function and synchronize the checkpointing of plugins
+       * with the main ASPECT checkpoint.
+       */
+      unsigned int
+      get_checkpoint_id () const;
 
       /**
        * Return whether we use the adiabatic heating term.
@@ -539,33 +590,41 @@ namespace aspect
       /** @{ */
 
       /**
-       * Return a pointer to the material model to access functions like
+       * Return a reference to the material model to access functions like
        * density().
        */
       const MaterialModel::Interface<dim> &
       get_material_model () const;
 
       /**
-       * Return a pointer to the gravity model description.
+       * Return a reference to the gravity model description.
        */
       const GravityModel::Interface<dim> &
       get_gravity_model () const;
 
       /**
-       * Return a pointer to the initial topography model.
+       * Return a reference to the initial topography model.
        */
       const InitialTopographyModel::Interface<dim> &
       get_initial_topography_model () const;
 
       /**
-       * Return a pointer to the geometry model.
+       * Return a shared pointer to the initial topography model.
+       * This function is useful if the calling function needs to
+       * store a pointer to the initial topography model.
+       */
+      const std::shared_ptr<const InitialTopographyModel::Interface<dim>>
+      get_initial_topography_model_pointer () const;
+
+      /**
+       * Return a reference to the geometry model.
        */
       const GeometryModel::Interface<dim> &
       get_geometry_model () const;
 
 
       /**
-       * Return a pointer to the object that describes the adiabatic
+       * Return a reference to the object that describes the adiabatic
        * conditions.
        */
       const AdiabaticConditions::Interface<dim> &
@@ -582,13 +641,22 @@ namespace aspect
       bool has_boundary_temperature () const;
 
       /**
-       * Return an reference to the manager of the boundary temperature models.
-       * This can then, for example, be used to get the names of the initial temperature
-       * models used in a computation, or to compute the initial temperature
+       * Return a reference to the manager of the boundary temperature models.
+       * This can then, for example, be used to get the names of the boundary temperature
+       * models used in a computation, or to compute the boundary temperature
        * for a given position.
        */
       const BoundaryTemperature::Manager<dim> &
       get_boundary_temperature_manager () const;
+
+      /**
+       * Return a reference to the manager of the boundary convective heating models.
+       * This can then, for example, be used to get the names of the boundary convective
+       * heating models used in a computation, or to compute the boundary conditions
+       * for a given position.
+       */
+      const BoundaryConvectiveHeating::Manager<dim> &
+      get_boundary_convective_heating_manager () const;
 
       /**
        * Return a reference to the object that describes heat flux
@@ -616,11 +684,11 @@ namespace aspect
       get_boundary_composition_manager () const;
 
       /**
-      * Return an reference to the manager of the boundary traction models.
-      * This can then, for example, be used to get the names of the boundary traction
-      * models used in a computation, or to compute the boundary traction
-      * for a given position.
-      */
+       * Return an reference to the manager of the boundary traction models.
+       * This can then, for example, be used to get the names of the boundary traction
+       * models used in a computation, or to compute the boundary traction
+       * for a given position.
+       */
       const BoundaryTraction::Manager<dim> &
       get_boundary_traction_manager () const;
 
@@ -731,6 +799,13 @@ namespace aspect
 
       /**
        * Return a set of boundary indicators that describes which of the
+       * boundaries have a convective heating, i.e. Robin boundary condition.
+       */
+      const std::set<types::boundary_id> &
+      get_fixed_convective_heating_boundary_indicators () const;
+
+      /**
+       * Return a set of boundary indicators that describes which of the
        * boundaries have a fixed composition.
        */
       const std::set<types::boundary_id> &
@@ -761,6 +836,14 @@ namespace aspect
        */
       const HeatingModel::Manager<dim> &
       get_heating_model_manager () const;
+
+      /**
+       * Return a pointer to the manager of the prescribed dilation.
+       * This can then, for example, be used to get the names of the dilation models
+       * used in a computation.
+       */
+      const PrescribedDilation::Manager<dim> &
+      get_prescribed_dilation_manager () const;
 
       /**
        * Return a reference to the manager of the mesh refinement strategies.
@@ -931,20 +1014,26 @@ namespace aspect
       get_postprocess_manager () const;
 
       /**
-       * Returns a const reference to the particle world, in case anyone
-       * wants to query something about particles.
+       * Returns the number of active particle managers.
        */
-      const Particle::World<dim> &
-      get_particle_world() const;
+      unsigned int
+      n_particle_managers() const;
 
       /**
-       * Returns a reference to the particle world, in case anyone wants to
-       * change something within the particle world. Use with care, usually
-       * you want to only let the functions within the particle subsystem
-       * change member variables of the particle world.
+       * Returns a const reference to a single particle manager given the
+       * index.
        */
-      Particle::World<dim> &
-      get_particle_world();
+      const Particle::Manager<dim> &
+      get_particle_manager(const unsigned int particle_manager_index) const;
+
+      /**
+       * Returns a reference to a single particle manager, in case anyone wants to
+       * change something within the particle manager. Use with care, usually
+       * you want to only let the functions within the particle subsystem
+       * change member variables of the particle manager.
+       */
+      Particle::Manager<dim> &
+      get_particle_manager(const unsigned int particle_manager_index);
 
       /**
        * Return true if using the block GMG Stokes solver.
@@ -957,6 +1046,13 @@ namespace aspect
        */
       const StokesMatrixFreeHandler<dim> &
       get_stokes_matrix_free () const;
+
+      /**
+       * Return a reference to the PrescribedSolution::Manager that manages the
+       * Prescribed solution plugins.
+       */
+      const PrescribedSolution::Manager<dim> &
+      get_prescribed_solution () const;
 
       /**
        * Compute the angular momentum and other rotation properties
@@ -974,13 +1070,52 @@ namespace aspect
                                    const LinearAlgebra::BlockVector &solution,
                                    const bool limit_to_top_faces = false) const;
 
+      /**
+      * Eliminate the nullspace of the velocity in the given vector. Both
+      * vectors are expected to contain the current solution.
+      *
+      * @param solution The locally relevant vector for the whole
+      * finite element, this vector will be filled at the end.
+      * @param distributed_stokes_solution only contains velocity and pressure and
+      * only locally owned elements.
+      */
+      void remove_nullspace(LinearAlgebra::BlockVector &solution,
+                            LinearAlgebra::BlockVector &distributed_stokes_solution) const;
+
+      /**
+       * Adjust the pressure variable (which is only determined up to
+       * a constant by the equations) by adding a constant to it in
+       * such a way that the pressure on the surface or within the
+       * entire volume has a known average value. See the documentation
+       * of the normalize_pressure() function in the Simulator class
+       * for more information.
+       *
+       * @return This function returns the pressure adjustment by value.
+       * This is so that its negative can later be used again in
+       * denormalize_pressure().
+       */
+      double normalize_pressure(LinearAlgebra::BlockVector &vector) const;
+
+      /**
+       * Invert the action of the normalize_pressure() function above. This
+       * means that we move from a pressure that satisfies the pressure
+       * normalization (e.g., has a zero average pressure, or a zero average
+       * surface pressure) to one that does not actually satisfy this
+       * normalization. See the function denormalize_pressure() in the
+       * Simulator class for more information.
+       *
+       * This function modifies @p vector in-place.
+       */
+      void denormalize_pressure(const double                      pressure_adjustment,
+                                LinearAlgebra::BlockVector       &vector) const;
+
       /** @} */
 
     private:
       /**
        * A pointer to the simulator object to which we want to get access.
        */
-      const Simulator<dim> *simulator;
+      ObserverPointer<const Simulator<dim>, SimulatorAccess<dim>> simulator;
   };
 }
 

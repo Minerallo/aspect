@@ -55,7 +55,7 @@ namespace aspect
       output_interval (0),
       // initialize this to a nonsensical value; set it to the actual time
       // the first time around we get to check it
-      last_output_time (std::numeric_limits<double>::quiet_NaN()),
+      last_output_time (std::numeric_limits<double>::lowest()),
       n_depth_zones (numbers::invalid_unsigned_int)
     {}
 
@@ -68,7 +68,7 @@ namespace aspect
       // if this is the first time we get here, set the next output time
       // to the current time. this makes sure we always produce data during
       // the first time step
-      if (std::isnan(last_output_time))
+      if (last_output_time < this->get_parameters().start_time - output_interval)
         last_output_time = this->get_time() - output_interval;
 
       // see if output is requested at this time
@@ -174,7 +174,7 @@ namespace aspect
               else
                 {
                   const std::string filename (this->get_output_directory() + "depth_average.txt");
-                  std::ofstream f(filename, std::ofstream::out);
+                  std::ofstream f(filename);
 
                   // Write the header
                   f << "#       time" << "        depth";
@@ -226,9 +226,9 @@ namespace aspect
                              "The time interval between each generation of "
                              "graphical output files. A value of zero indicates "
                              "that output should be generated in each time step. "
-                             "Units: years if the "
-                             "'Use years in output instead of seconds' parameter is set; "
-                             "seconds otherwise.");
+                             "Units: \\si{\\year} if the "
+                             "'Use years instead of seconds' parameter is set; "
+                             "\\si{\\second} otherwise.");
           prm.declare_entry ("Number of zones", "10",
                              Patterns::Integer (1),
                              "The number of zones in depth direction within which we "
@@ -386,7 +386,7 @@ namespace aspect
               this->get_material_model().create_additional_named_outputs(out);
 
               const bool material_model_provides_seismic_output =
-                (out.template get_additional_output<MaterialModel::SeismicAdditionalOutputs<dim>>() != nullptr);
+                (out.template has_additional_output_object<MaterialModel::SeismicAdditionalOutputs<dim>>());
 
               const bool output_vs = std::find( output_variables.begin(), output_variables.end(), "Vs") != output_variables.end();
               const bool output_vp = std::find( output_variables.begin(), output_variables.end(), "Vp") != output_variables.end();
@@ -449,9 +449,15 @@ namespace aspect
     void
     DepthAverage<dim>::save (std::map<std::string, std::string> &status_strings) const
     {
+      // Serialize into a stringstream. Put the following into a code
+      // block of its own to ensure the destruction of the 'oa'
+      // archive triggers a flush() on the stringstream so we can
+      // query the completed string below.
       std::ostringstream os;
-      aspect::oarchive oa (os);
-      oa << (*this);
+      {
+        aspect::oarchive oa (os);
+        oa << (*this);
+      }
 
       status_strings["DepthAverage"] = os.str();
     }
@@ -511,7 +517,7 @@ namespace aspect
                                   "In the output files, the $x$-value of each data point corresponds "
                                   "to the depth, whereas the $y$-value corresponds to the "
                                   "simulation time. The time is provided in seconds or, if the "
-                                  "global ``Use years in output instead of seconds'' parameter is "
+                                  "global ``Use years instead of seconds'' parameter is "
                                   "set, in years.")
   }
 }

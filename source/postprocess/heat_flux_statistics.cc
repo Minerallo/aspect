@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -33,6 +33,15 @@ namespace aspect
 {
   namespace Postprocess
   {
+    template <int dim>
+    void
+    HeatFluxStatistics<dim>::initialize ()
+    {
+      CitationInfo::add("cbfheatflux");
+    }
+
+
+
     template <int dim>
     std::pair<std::string,std::string>
     HeatFluxStatistics<dim>::execute (TableHandler &statistics)

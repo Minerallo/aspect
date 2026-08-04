@@ -1,3 +1,10 @@
+```{tags}
+category:cookbook
+feature:3d
+feature:spherical
+```
+
+(sec:cookbooks:shell-3d-postprocess)=
 # Postprocessing spherical 3D convection
 
 *This section was contributed by Jacqueline Austermann, Ian Rose, and Shangxin

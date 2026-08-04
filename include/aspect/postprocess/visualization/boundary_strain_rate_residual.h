@@ -35,7 +35,6 @@ namespace aspect
   {
     namespace VisualizationPostprocessors
     {
-      using namespace dealii;
       /**
        * A class derived from DataPostprocessor that takes an output vector
        * and computes a variable that represents the residual between
@@ -64,7 +63,7 @@ namespace aspect
            * Evaluate the strain rate residual for each component at the top face of the current cell
            * if it lies at the surface boundary.
            *
-           * @copydoc DataPostprocessorTensor<dim>::evaluate_vector_field()
+           * @copydoc dealii::DataPostprocessor<dim>::evaluate_vector_field()
            */
           void
           evaluate_vector_field(const DataPostprocessorInputs::Vector<dim> &input_data,

@@ -8,7 +8,7 @@
 set Dimension = 2
 set Start time                             = 0
 set End time                               = 1e15
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set Adiabatic surface temperature          = 1000
 
 subsection Geometry model
@@ -34,7 +34,6 @@ subsection Initial composition model
 
   subsection Function
     set Variable names      = x,z
-    set Function constants  =
     set Function expression = 8e-5
   end
 end

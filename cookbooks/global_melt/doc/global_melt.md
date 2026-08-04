@@ -1,3 +1,14 @@
+```{tags}
+category:cookbook
+feature:2d
+feature:cartesian
+feature:nonlinear-solver
+feature:compositional-fields
+feature:two-phase-flow
+feature:melt
+feature:compressibility
+```
+
 (sec:cookbooks:global-melt)=
 # Melt migration in a 2D mantle convection model
 
@@ -17,7 +28,7 @@ input file has to be modified in order to add melt transport. A movie that
 compares the evolution of the temperature field and the amount of melt present
 in both models in higher resolution can be found [online](https://www.youtube.com/watch?v=Kwyp4Jvx6MU).
 
-The model setup is a 2D box with dimensions of $2900 \times 8700$&#8198;km,
+The model setup is a 2D box with dimensions of $2900 \times 8700$ km,
 and it is heated from the bottom and cooled from the top. A full description
 can be found in Section&nbsp;4.7 "Influence of melt migration on a
 global-scale convection model" in {cite:t}`dannberg:heister:2016`. In the

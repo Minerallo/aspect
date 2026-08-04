@@ -4,52 +4,48 @@ Number of degrees of freedom: 2,804 (2,210+297+297)
 
 *** Timestep 0:  t=0 seconds, dt=0 seconds
    Skipping temperature solve because RHS is zero.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 0+13 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 1: 1
+   Solving Stokes system (GMG)... 0+12 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 1: 0.999798
 
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 0+17 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 2: 0.125061
+   Solving Stokes system (GMG)... 0+17 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 2: 0.124379
 
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 0+11 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 3: 0.0157017
+   Solving Stokes system (GMG)... 0+21 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 3: 0.0179977
 
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 0+10 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 4: 0.0129128
+   Solving Stokes system (GMG)... 0+25 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 4: 0.0178316
 
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 0+9 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 5: 0.0130007
+   Solving Stokes system (GMG)... 0+21 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 5: 0.0140682
 
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 0+10 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 6: 0.0166528
+   Solving Stokes system (GMG)... 0+25 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 6: 0.0246256
 
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 0+9 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 7: 0.0127347
+   Solving Stokes system (GMG)... 0+29 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 7: 0.0169877
 
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 0+10 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 8: 0.0110529
+   Solving Stokes system (GMG)... 0+46 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 8: 0.0207087
 
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 0+10 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 9: 0.0101752
+   Solving Stokes system (GMG)... 0+65 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 9: 0.0284425
 
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 0+10 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 10: 0.00937045
+   Solving Stokes system (GMG)... 0+58 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 10: 0.0252056
 
+
+   WARNING: The nonlinear solver in the current timestep failed to converge.
+   Acting according to the parameter 'Nonlinear solver failure strategy':
+   Continuing to the next timestep even though solution is not fully converged.
 
    Postprocessing:
-     RMS, max velocity:                  1.96e-11 m/s, 2.33e-11 m/s
+     RMS, max velocity:                  1.96e-11 m/s, 2.49e-11 m/s
      Mass fluxes through boundary parts: 0.00054 kg/s, 0.00054 kg/s, 0 kg/s, -0.00108 kg/s
 
 Termination requested by criterion: end time
 
 
 
+
+WARNING: During this computation 1 nonlinear solver failures occurred!

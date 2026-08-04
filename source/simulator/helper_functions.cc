@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -20,12 +20,14 @@
 
 
 #include <aspect/simulator.h>
+#include <aspect/advection_field.h>
 #include <aspect/melt.h>
 #include <aspect/volume_of_fluid/handler.h>
 #include <aspect/newton.h>
 #include <aspect/global.h>
 
 #include <aspect/geometry_model/interface.h>
+#include <aspect/geometry_model/ellipsoidal_chunk.h>
 #include <aspect/heating_model/interface.h>
 #include <aspect/heating_model/adiabatic_heating.h>
 #include <aspect/material_model/interface.h>
@@ -35,6 +37,8 @@
 #include <aspect/particle/interpolator/interface.h>
 #include <aspect/particle/property/interface.h>
 #include <aspect/postprocess/visualization.h>
+#include <aspect/prescribed_solution/interface.h>
+#include <aspect/prescribed_stokes_solution/interface.h>
 
 #include <deal.II/base/index_set.h>
 #include <deal.II/base/conditional_ostream.h>
@@ -52,144 +56,15 @@
 #include <deal.II/fe/fe_dgp.h>
 #include <deal.II/fe/fe_values.h>
 
+#include <deal.II/sundials/arkode.h>
+
 #include <fstream>
 #include <iostream>
-#include <iomanip>
-#include <locale>
 #include <string>
 
 
 namespace aspect
 {
-
-  template <int dim>
-  Simulator<dim>::AdvectionField::
-  AdvectionField (const FieldType field_type,
-                  const unsigned int compositional_variable)
-    :
-    field_type (field_type),
-    compositional_variable (compositional_variable)
-  {
-    if (field_type == temperature_field)
-      Assert (compositional_variable == numbers::invalid_unsigned_int,
-              ExcMessage ("You can't specify a compositional variable if you "
-                          "have in fact selected the temperature."));
-  }
-
-
-
-  template <int dim>
-  typename Simulator<dim>::AdvectionField
-  Simulator<dim>::AdvectionField::temperature ()
-  {
-    return AdvectionField(temperature_field);
-  }
-
-
-
-  template <int dim>
-  typename Simulator<dim>::AdvectionField
-  Simulator<dim>::AdvectionField::composition (const unsigned int compositional_variable)
-  {
-    return AdvectionField(compositional_field,
-                          compositional_variable);
-  }
-
-
-  template <int dim>
-  bool
-  Simulator<dim>::AdvectionField::is_temperature() const
-  {
-    return (field_type == temperature_field);
-  }
-
-  template <int dim>
-  bool
-  Simulator<dim>::AdvectionField::is_discontinuous(const Introspection<dim> &introspection) const
-  {
-    if (field_type == temperature_field)
-      return introspection.use_discontinuous_temperature_discretization;
-    else if (field_type == compositional_field)
-      return introspection.use_discontinuous_composition_discretization;
-
-    Assert (false, ExcInternalError());
-    return false;
-  }
-
-  template <int dim>
-  typename Parameters<dim>::AdvectionFieldMethod::Kind
-  Simulator<dim>::AdvectionField::advection_method(const Introspection<dim> &introspection) const
-  {
-    if (field_type == temperature_field)
-      return introspection.temperature_method;
-    else if (field_type == compositional_field)
-      return introspection.compositional_field_methods[compositional_variable];
-
-    Assert (false, ExcInternalError());
-    return Parameters<dim>::AdvectionFieldMethod::fem_field;
-  }
-
-  template <int dim>
-  unsigned int
-  Simulator<dim>::AdvectionField::block_index(const Introspection<dim> &introspection) const
-  {
-    if (this->is_temperature())
-      return introspection.block_indices.temperature;
-    else
-      return introspection.block_indices.compositional_fields[compositional_variable];
-  }
-
-  template <int dim>
-  unsigned int
-  Simulator<dim>::AdvectionField::component_index(const Introspection<dim> &introspection) const
-  {
-    if (this->is_temperature())
-      return introspection.component_indices.temperature;
-    else
-      return introspection.component_indices.compositional_fields[compositional_variable];
-  }
-
-  template <int dim>
-  unsigned int
-  Simulator<dim>::AdvectionField::field_index() const
-  {
-    if (this->is_temperature())
-      return 0;
-    else
-      return compositional_variable + 1;
-  }
-
-  template <int dim>
-  unsigned int
-  Simulator<dim>::AdvectionField::base_element(const Introspection<dim> &introspection) const
-  {
-    if (this->is_temperature())
-      return introspection.base_elements.temperature;
-    else
-      return introspection.base_elements.compositional_fields;
-  }
-
-  template <int dim>
-  FEValuesExtractors::Scalar
-  Simulator<dim>::AdvectionField::scalar_extractor(const Introspection<dim> &introspection) const
-  {
-    if (this->is_temperature())
-      return introspection.extractors.temperature;
-    else
-      return introspection.extractors.compositional_fields[compositional_variable];
-  }
-
-  template <int dim>
-  unsigned int
-  Simulator<dim>::AdvectionField::polynomial_degree(const Introspection<dim> &introspection) const
-  {
-    if (this->is_temperature())
-      return introspection.polynomial_degree.temperature;
-    else
-      return introspection.polynomial_degree.compositional_fields;
-  }
-
-
   template <int dim>
   void Simulator<dim>::write_plugin_graph (std::ostream &out) const
   {
@@ -234,6 +109,7 @@ namespace aspect
     GeometryModel::write_plugin_graph<dim>(out);
     GravityModel::write_plugin_graph<dim>(out);
     HeatingModel::Manager<dim>::write_plugin_graph(out);
+    PrescribedDilation::Manager<dim>::write_plugin_graph(out);
     InitialComposition::Manager<dim>::write_plugin_graph(out);
     InitialTemperature::Manager<dim>::write_plugin_graph(out);
     MaterialModel::write_plugin_graph<dim>(out);
@@ -244,6 +120,7 @@ namespace aspect
     Particle::Property::Manager<dim>::write_plugin_graph(out);
     Postprocess::Manager<dim>::write_plugin_graph(out);
     Postprocess::Visualization<dim>::write_plugin_graph(out);
+    PrescribedSolution::Manager<dim>::write_plugin_graph(out);
     PrescribedStokesSolution::write_plugin_graph<dim>(out);
     TerminationCriteria::Manager<dim>::write_plugin_graph(out);
 
@@ -389,7 +266,7 @@ namespace aspect
     // of the viscosity. The order of magnitude is the logarithm of
     // the viscosity, so
     //
-    //   \eta_{ref} = exp ( 1/N * (log(eta_1) + log(eta_2) + ... + log(eta_N))
+    //   \eta_{ref} = exp( 1/N * (log(eta_1) + log(eta_2) + ... + log(eta_N))
     //
     // where the \eta_i are typical viscosities on the cells of the mesh.
     // For this, we just take the viscosity at the cell center.
@@ -463,8 +340,14 @@ namespace aspect
     Utilities::MPI::sum(values, mpi_communicator, values);
 
     const double reference_viscosity = std::exp(values[0]/values[1]);
+    const double length_scale = geometry_model->length_scale();
 
-    return reference_viscosity / geometry_model->length_scale();
+    // Allow the user to inspect and/or overwrite our result:
+    const double result = reference_viscosity / length_scale;
+    if (boost::optional<double> value = signals.modify_pressure_scaling(result, reference_viscosity, length_scale))
+      return *value;
+    else
+      return result;
   }
 
 
@@ -517,7 +400,7 @@ namespace aspect
           {
             computing_timer.print_summary ();
             pcout << "-- Total wallclock time elapsed including restarts: "
-                  << round(wall_timer.wall_time()+total_walltime_until_last_snapshot)
+                  << std::round(wall_timer.wall_time()+total_walltime_until_last_snapshot)
                   << 's' << std::endl;
           }
 
@@ -632,7 +515,7 @@ namespace aspect
       {
         computing_timer.print_summary ();
         pcout << "-- Total wallclock time elapsed including restarts: "
-              << round(wall_timer.wall_time()+total_walltime_until_last_snapshot)
+              << std::round(wall_timer.wall_time()+total_walltime_until_last_snapshot)
               << 's' << std::endl;
       }
   }
@@ -640,37 +523,37 @@ namespace aspect
 
 
   template <int dim>
-  bool Simulator<dim>::maybe_write_checkpoint (const time_t last_checkpoint_time,
-                                               const bool force_writing_checkpoint)
+  bool Simulator<dim>::maybe_write_checkpoint (const std::time_t last_checkpoint_time,
+                                               const bool        force_writing_checkpoint)
   {
     // Do a checkpoint if this is the end of simulation,
     // and the termination criteria say to checkpoint at the end.
-    bool write_checkpoint = force_writing_checkpoint;
+    bool write_regular_checkpoint = force_writing_checkpoint;
 
     // If we base checkpoint frequency on timing, measure the time at process 0
     // This prevents race conditions where some processes will checkpoint and others won't
-    if (!write_checkpoint && parameters.checkpoint_time_secs > 0)
+    if (!write_regular_checkpoint && parameters.checkpoint_time_secs > 0)
       {
-        int global_do_checkpoint = ((std::time(nullptr)-last_checkpoint_time) >=
-                                    parameters.checkpoint_time_secs);
-        const int ierr = MPI_Bcast(&global_do_checkpoint, 1, MPI_INT, 0, mpi_communicator);
-        AssertThrowMPI(ierr);
-
-        if (global_do_checkpoint == 1)
-          write_checkpoint = true;
+        const bool global_do_checkpoint = Utilities::MPI::broadcast(mpi_communicator,
+                                                                    (std::time(nullptr)-last_checkpoint_time) >=
+                                                                    parameters.checkpoint_time_secs,
+                                                                    /* root= */0);
+        if (global_do_checkpoint)
+          write_regular_checkpoint = true;
       }
 
     // If we base checkpoint frequency on steps, see if it's time for another checkpoint
-    if (!write_checkpoint &&
+    if (!write_regular_checkpoint &&
         (parameters.checkpoint_time_secs == 0) &&
         (parameters.checkpoint_steps > 0) &&
         (timestep_number % parameters.checkpoint_steps == 0))
-      write_checkpoint = true;
+      write_regular_checkpoint = true;
 
     // Do a checkpoint if indicated by checkpoint parameters
-    if (write_checkpoint)
+    if (write_regular_checkpoint)
       {
-        create_snapshot();
+        create_snapshot(/*is_additional_checkpoint = */ false);
+
         // matrices will be regenerated after a resume, so do that here too
         // to be consistent. otherwise we would get different results
         // for a restarted computation than for one that ran straight
@@ -678,7 +561,33 @@ namespace aspect
         rebuild_stokes_matrix =
           rebuild_stokes_preconditioner = true;
       }
-    return write_checkpoint;
+
+    // See if an additional checkpoint needs to be created. Time has already been advanced
+    // to the next timestep, so we need a checkpoint if the next additional checkpoint time
+    // is less than the current time.
+
+    // TODO if through the other criteria we already determined that a checkpoint needs to be created,
+    // we could copy the checkpoint.
+    if ((parameters.additional_checkpoint_times.size() > 0)
+        &&
+        (parameters.additional_checkpoint_times.front () < time))
+      {
+        create_snapshot(/*is_additional_checkpoint = */ true);
+
+        // Remove all additional checkpoint times that are in the past
+        // (including, but not necessarily limited to the one that
+        // made us do a checkpoint):
+        while ((parameters.additional_checkpoint_times.size() > 0)
+               &&
+               (parameters.additional_checkpoint_times.front () < time))
+          parameters.additional_checkpoint_times
+          .erase (parameters.additional_checkpoint_times.begin());
+
+        rebuild_stokes_matrix =
+          rebuild_stokes_preconditioner = true;
+      }
+
+    return write_regular_checkpoint;
   }
 
 
@@ -789,7 +698,7 @@ namespace aspect
 
   template <int dim>
   void Simulator<dim>::interpolate_onto_velocity_system(const TensorFunction<1,dim> &func,
-                                                        LinearAlgebra::Vector &vec)
+                                                        LinearAlgebra::Vector &vec) const
   {
     Assert(introspection.block_indices.velocities == 0, ExcNotImplemented());
 
@@ -816,7 +725,13 @@ namespace aspect
 
     vec.compress(VectorOperation::insert);
 
+#if DEAL_II_VERSION_GTE(9,7,0)
+    AffineConstraints<double> hanging_node_constraints(introspection.index_sets.system_relevant_set,
+                                                       introspection.index_sets.system_relevant_set);
+#else
     AffineConstraints<double> hanging_node_constraints(introspection.index_sets.system_relevant_set);
+#endif
+
     DoFTools::make_hanging_node_constraints(dof_handler, hanging_node_constraints);
     hanging_node_constraints.close();
 
@@ -830,7 +745,6 @@ namespace aspect
     // overall vector, so that they form a contiguous range starting
     // at zero. The assertion checks this, but this could easily be
     // generalized if the Stokes block were not starting at zero.
-#if DEAL_II_VERSION_GTE(9,6,0)
     Assert (introspection.block_indices.velocities == 0,
             ExcNotImplemented());
     if (parameters.use_direct_stokes_solver == false)
@@ -841,9 +755,6 @@ namespace aspect
     stokes_dofs.add_range (0, vec.size());
     const AffineConstraints<double> stokes_hanging_node_constraints
       = hanging_node_constraints.get_view (stokes_dofs);
-#else
-    const AffineConstraints<double> &stokes_hanging_node_constraints = hanging_node_constraints;
-#endif
 
     stokes_hanging_node_constraints.distribute(vec);
   }
@@ -1045,8 +956,7 @@ namespace aspect
   void
   Simulator<dim>::
   denormalize_pressure (const double                      pressure_adjustment,
-                        LinearAlgebra::BlockVector       &vector,
-                        const LinearAlgebra::BlockVector &relevant_vector) const
+                        LinearAlgebra::BlockVector       &vector) const
   {
     if (parameters.pressure_normalization == "no")
       return;
@@ -1066,6 +976,17 @@ namespace aspect
                                                         finite_element.base_element(introspection.variable("fluid pressure").base_index).dofs_per_cell
                                                         : finite_element.base_element(introspection.base_elements.pressure).dofs_per_cell);
 
+            // We may touch the same DoF multiple times, so we need to copy the
+            // vector before modifying it to have access to the original value.
+            LinearAlgebra::BlockVector vector_backup;
+            vector_backup.reinit(vector, /* omit_zeroing_entries = */ true);
+            const unsigned int pressure_block_index =
+              parameters.include_melt_transport ?
+              introspection.variable("fluid pressure").block_index
+              :
+              introspection.block_indices.pressure;
+            vector_backup.block(pressure_block_index) = vector.block(pressure_block_index);
+
             std::vector<types::global_dof_index> local_dof_indices (finite_element.dofs_per_cell);
             for (const auto &cell : dof_handler.active_cell_iterators())
               if (cell->is_locally_owned())
@@ -1077,11 +998,15 @@ namespace aspect
                         = finite_element.component_to_system_index(pressure_component,
                                                                    /*dof index within component=*/ j);
 
-                      // then adjust its value. Note that because we end up touching
+                      // Then adjust its value. vector could be a vector with ghost elements
+                      // or a fully distributed vector. In the latter case only access dofs that are
+                      // locally owned. Note that because we end up touching
                       // entries more than once, we are not simply incrementing
-                      // distributed_vector but copy from the unchanged vector.
-                      vector(local_dof_indices[local_dof_index])
-                        = relevant_vector(local_dof_indices[local_dof_index]) - pressure_adjustment;
+                      // vector but copy from the vector_backup copy.
+                      if (vector.has_ghost_elements() ||
+                          dof_handler.locally_owned_dofs().is_element(local_dof_indices[local_dof_index]))
+                        vector(local_dof_indices[local_dof_index])
+                          = vector_backup(local_dof_indices[local_dof_index]) - pressure_adjustment;
                     }
                 }
             vector.compress(VectorOperation::insert);
@@ -1104,7 +1029,20 @@ namespace aspect
                 ExcInternalError());
         Assert(!parameters.include_melt_transport, ExcNotImplemented());
         const unsigned int pressure_component = introspection.component_indices.pressure;
+
+        // We may touch the same DoF multiple times, so we need to copy the
+        // vector before modifying it to have access to the original value.
+        LinearAlgebra::BlockVector vector_backup;
+        vector_backup.reinit(vector, /* omit_zeroing_entries = */ true);
+        const unsigned int pressure_block_index =
+          parameters.include_melt_transport ?
+          introspection.variable("fluid pressure").block_index
+          :
+          introspection.block_indices.pressure;
+        vector_backup.block(pressure_block_index) = vector.block(pressure_block_index);
+
         std::vector<types::global_dof_index> local_dof_indices (finite_element.dofs_per_cell);
+
         for (const auto &cell : dof_handler.active_cell_iterators())
           if (cell->is_locally_owned())
             {
@@ -1114,12 +1052,11 @@ namespace aspect
                 = finite_element.component_to_system_index (pressure_component, 0);
 
               // make sure that this DoF is really owned by the current processor
-              // and that it is in fact a pressure dof
               Assert (dof_handler.locally_owned_dofs().is_element(local_dof_indices[first_pressure_dof]),
                       ExcInternalError());
 
               // then adjust its value
-              vector (local_dof_indices[first_pressure_dof]) = relevant_vector(local_dof_indices[first_pressure_dof])
+              vector (local_dof_indices[first_pressure_dof]) = vector_backup(local_dof_indices[first_pressure_dof])
                                                                - pressure_adjustment;
             }
 
@@ -1276,7 +1213,7 @@ namespace aspect
   {
     LinearAlgebra::BlockVector linearized_stokes_variables (introspection.index_sets.stokes_partitioning, mpi_communicator);
     LinearAlgebra::BlockVector residual (introspection.index_sets.stokes_partitioning, mpi_communicator);
-    const unsigned int block_p =
+    const unsigned int pressure_block_index =
       parameters.include_melt_transport ?
       introspection.variable("fluid pressure").block_index
       :
@@ -1284,7 +1221,7 @@ namespace aspect
 
     // if velocity and pressure are in the same block, we have to copy the
     // pressure to the solution and RHS vector with a zero velocity
-    if (block_p == introspection.block_indices.velocities)
+    if (pressure_block_index == introspection.block_indices.velocities)
       {
         const IndexSet &idxset = (parameters.include_melt_transport) ?
                                  introspection.index_sets.locally_owned_fluid_pressure_dofs
@@ -1296,27 +1233,19 @@ namespace aspect
             types::global_dof_index idx = idxset.nth_index_in_set(i);
             linearized_stokes_variables(idx)        = current_linearization_point(idx);
           }
-        linearized_stokes_variables.block(block_p).compress(VectorOperation::insert);
+        linearized_stokes_variables.block(pressure_block_index).compress(VectorOperation::insert);
       }
     else
-      linearized_stokes_variables.block (block_p) = current_linearization_point.block (block_p);
+      linearized_stokes_variables.block (pressure_block_index) = current_linearization_point.block (pressure_block_index);
 
-    // TODO: we don't have .stokes_relevant_partitioning so I am creating a much
-    // bigger vector here, oh well.
-    LinearAlgebra::BlockVector ghosted (introspection.index_sets.system_partitioning,
-                                        introspection.index_sets.system_relevant_partitioning,
-                                        mpi_communicator);
-    // TODO for Timo: can we create the ghost vector inside of denormalize_pressure
-    // (only in cases where we need it)
-    ghosted.block(block_p) = linearized_stokes_variables.block(block_p);
-    denormalize_pressure (this->last_pressure_normalization_adjustment, linearized_stokes_variables, ghosted);
+    denormalize_pressure (this->last_pressure_normalization_adjustment, linearized_stokes_variables);
     current_constraints.set_zero (linearized_stokes_variables);
 
-    linearized_stokes_variables.block (block_p) /= pressure_scaling;
+    linearized_stokes_variables.block (pressure_block_index) /= pressure_scaling;
 
     // we calculate the velocity residual with a zero velocity,
     // computing only the part of the RHS not balanced by the static pressure
-    if (block_p == introspection.block_indices.velocities)
+    if (pressure_block_index == introspection.block_indices.velocities)
       {
         // we can use the whole block here because we set the velocity to zero above
         return system_matrix.block(0,0).residual (residual.block(0),
@@ -1328,7 +1257,7 @@ namespace aspect
         const double residual_u = system_matrix.block(0,1).residual (residual.block(0),
                                                                      linearized_stokes_variables.block(1),
                                                                      system_rhs.block(0));
-        const double residual_p = system_rhs.block(block_p).l2_norm();
+        const double residual_p = system_rhs.block(pressure_block_index).l2_norm();
         return std::sqrt(residual_u*residual_u+residual_p*residual_p);
       }
   }
@@ -1396,7 +1325,7 @@ namespace aspect
 
     const unsigned int n_q_points_1 = quadrature_formula_1.size();
     const unsigned int n_q_points_2 = quadrature_formula_2.size();
-    const unsigned int n_q_points   = dim * n_q_points_2 * static_cast<unsigned int>(std::pow(n_q_points_1, dim-1));
+    const unsigned int n_q_points   = dim * n_q_points_2 * Utilities::fixed_power<dim-1>(n_q_points_1);
 
     std::vector<Point <dim>> quadrature_points;
     quadrature_points.reserve(n_q_points);
@@ -1486,7 +1415,7 @@ namespace aspect
     const Quadrature<dim> &quadrature_formula_0
       = (advection_field.is_temperature() ?
          introspection.quadratures.temperature :
-         introspection.quadratures.compositional_fields);
+         introspection.quadratures.compositional_fields[advection_field.compositional_variable]);
     const unsigned int n_q_points_0 = quadrature_formula_0.size();
 
     // fe values for points evaluation
@@ -1638,7 +1567,59 @@ namespace aspect
     tmp.block(block_index) +=  distributed_reaction_vector.block(block_index);
     old_old_solution.block(block_index) = tmp.block(block_index);
 
+    // Same here for the current linearization point.
+    tmp.block(block_index) = current_linearization_point.block(block_index);
+    tmp.block(block_index) +=  distributed_reaction_vector.block(block_index);
+    current_linearization_point.block(block_index) = tmp.block(block_index);
+
     operator_split_reaction_vector.block(block_index) = distributed_reaction_vector.block(block_index);
+  }
+
+
+
+  template <int dim>
+  void Simulator<dim>::compute_unique_advection_support_points(const std::vector<AdvectionField> &advection_fields,
+                                                               std::vector<Point<dim>> &unique_support_points,
+                                                               std::vector<std::vector<unsigned int>> &support_point_index_by_field) const
+  {
+    const unsigned int n_fields = advection_fields.size();
+
+    unique_support_points.clear();
+    support_point_index_by_field.clear();
+    support_point_index_by_field.resize(n_fields);
+
+    // Reserve space to avoid most memory reallocations
+    if (n_fields > 0)
+      {
+        const unsigned int likely_number_of_support_points = dof_handler.get_fe().base_element(advection_fields[0].base_element(introspection)).get_unit_support_points().size();
+        unique_support_points.reserve(likely_number_of_support_points * n_fields);
+        for (unsigned int i=0; i<n_fields; ++i)
+          support_point_index_by_field[i].reserve(likely_number_of_support_points);
+      }
+
+    // Loop through all support points and fill the output data structures
+    for (unsigned int i=0; i<advection_fields.size(); ++i)
+      {
+        const std::vector<Point<dim>> &support_points = dof_handler.get_fe().base_element(advection_fields[i].base_element(introspection)).get_unit_support_points();
+
+        for (const auto &support_point: support_points)
+          {
+            // Naive n^2 algorithm to merge all points into the data structure, speed is likely irrelevant, because
+            // n is small and this function is rarely called.
+            const auto it = std::find(unique_support_points.begin(), unique_support_points.end(), support_point);
+            if (it != unique_support_points.end())
+              {
+                // We already have this support point, record its number:
+                support_point_index_by_field[i].push_back(std::distance(unique_support_points.begin(), it));
+              }
+            else
+              {
+                // This is a new point that needs to be added:
+                unique_support_points.push_back(support_point);
+                support_point_index_by_field[i].push_back(unique_support_points.size()-1);
+              }
+          }
+      }
   }
 
 
@@ -1650,7 +1631,7 @@ namespace aspect
     if (time_step == 0)
       return;
 
-    TimerOutput::Scope timer (computing_timer, "Solve composition reactions");
+    computing_timer.enter_subsection("Solve composition reactions");
 
     // we need some temporary vectors to store our updates to composition and temperature in
     // while we do the time stepping, before we copy them over to the solution vector in the end
@@ -1660,67 +1641,134 @@ namespace aspect
     LinearAlgebra::BlockVector distributed_reaction_vector (introspection.index_sets.system_partitioning,
                                                             mpi_communicator);
 
-    // we use a different (potentially smaller) time step than in the advection scheme,
-    // and we want all of our reaction time steps (within one advection step) to have the same size
+    // we use a different (potentially smaller) time step than in the advection scheme.
+    // and for the fixed step scheme, we want all of our reaction time steps (within one advection step) to have the same size
     const unsigned int number_of_reaction_steps = std::max(static_cast<unsigned int>(time_step / parameters.reaction_time_step),
                                                            std::max(parameters.reaction_steps_per_advection_step,1U));
 
     const double reaction_time_step_size = time_step / static_cast<double>(number_of_reaction_steps);
 
-    Assert (reaction_time_step_size > 0,
-            ExcMessage("Reaction time step must be greater than 0."));
+    if (parameters.reaction_solver_type == Parameters<dim>::ReactionSolverType::fixed_step)
+      Assert (reaction_time_step_size > 0,
+              ExcMessage("Reaction time step must be greater than 0."));
 
     pcout << "   Solving composition reactions... " << std::flush;
 
-    // make one fevalues for the composition, and one for the temperature (they might use different finite elements)
-    const Quadrature<dim> quadrature_C(dof_handler.get_fe().base_element(introspection.base_elements.compositional_fields).get_unit_support_points());
 
-    FEValues<dim> fe_values_C (*mapping,
-                               dof_handler.get_fe(),
-                               quadrature_C,
-                               update_quadrature_points | update_values | update_gradients);
+    // We want to compute reactions in each support point for all fields (compositional fields and temperature). The reaction
+    // rate for an individual field depends on the values of all other fields, so we have to step them forward in time together.
+    // The rates comes from the material and heating model, otherwise we have a simple ODE in each point on each cell to solve.
+    //
+    // So far so good. Except that fields can have different Finite Element discretizations (degree, continuous/discontinuous)
+    // and will have different support points. We solve this by computing the union of all support points and evaluating all fields
+    // in these points for every cell (if necessary by interpolation). Then we solve the ODEs on each cell together and
+    // write back all values that correspond to support points of that particular field. Field values we computed that are
+    // not actually support points, we just throw away.
 
+    // First compute all unique support points (temperature and compositions):
+    std::vector<Point<dim>> unique_support_points;
+    std::vector<std::vector<unsigned int>> support_point_index_by_field;
+    std::vector<AdvectionField> advection_fields;
+
+    // First add the temperature field
+    advection_fields.push_back(AdvectionField::temperature());
+    // Then add all compositional fields
+    for (unsigned int c=0; c<introspection.n_compositional_fields; ++c)
+      advection_fields.push_back(AdvectionField::composition(c));
+
+    const unsigned int n_fields = advection_fields.size();
+    compute_unique_advection_support_points(advection_fields, unique_support_points, support_point_index_by_field);
+
+    const Quadrature<dim> combined_support_points(unique_support_points);
+    FEValues<dim> fe_values (*mapping,
+                             dof_handler.get_fe(),
+                             combined_support_points,
+                             update_quadrature_points | update_values | update_gradients);
+
+    const unsigned int n_q_points = combined_support_points.size();
     std::vector<types::global_dof_index> local_dof_indices (dof_handler.get_fe().dofs_per_cell);
-    MaterialModel::MaterialModelInputs<dim> in_C(quadrature_C.size(), introspection.n_compositional_fields);
-    MaterialModel::MaterialModelOutputs<dim> out_C(quadrature_C.size(), introspection.n_compositional_fields);
-    HeatingModel::HeatingModelOutputs heating_model_outputs_C(quadrature_C.size(), introspection.n_compositional_fields);
-
-    const bool temperature_and_composition_use_same_fe =
-      (parameters.use_discontinuous_composition_discretization == parameters.use_discontinuous_temperature_discretization)
-      &&
-      (parameters.temperature_degree == parameters.composition_degree);
-
-    // temperature element
-    const Quadrature<dim> quadrature_T(dof_handler.get_fe().base_element(introspection.base_elements.temperature).get_unit_support_points());
-
-    FEValues<dim> fe_values_T (*mapping,
-                               dof_handler.get_fe(),
-                               quadrature_T,
-                               update_quadrature_points | update_values | update_gradients);
-
-    MaterialModel::MaterialModelInputs<dim> in_T(quadrature_T.size(), introspection.n_compositional_fields);
-    MaterialModel::MaterialModelOutputs<dim> out_T(quadrature_T.size(), introspection.n_compositional_fields);
-    HeatingModel::HeatingModelOutputs heating_model_outputs_T(quadrature_T.size(), introspection.n_compositional_fields);
-
+    MaterialModel::MaterialModelInputs<dim> in(n_q_points, introspection.n_compositional_fields);
+    MaterialModel::MaterialModelOutputs<dim> out(n_q_points, introspection.n_compositional_fields);
+    HeatingModel::HeatingModelOutputs heating_model_outputs(n_q_points, introspection.n_compositional_fields);
+    MeltHandler<dim>::create_material_model_outputs(out);
     // add reaction rate outputs
-    material_model->create_additional_named_outputs(out_C);
-    material_model->create_additional_named_outputs(out_T);
+    material_model->create_additional_named_outputs(out);
 
-    MaterialModel::ReactionRateOutputs<dim> *reaction_rate_outputs_C
-      = out_C.template get_additional_output<MaterialModel::ReactionRateOutputs<dim>>();
+    const std::shared_ptr<MaterialModel::ReactionRateOutputs<dim>> reaction_rate_outputs
+      = out.template get_additional_output_object<MaterialModel::ReactionRateOutputs<dim>>();
 
-    MaterialModel::ReactionRateOutputs<dim> *reaction_rate_outputs_T
-      = out_T.template get_additional_output<MaterialModel::ReactionRateOutputs<dim>>();
-
-    AssertThrow(reaction_rate_outputs_C != nullptr && reaction_rate_outputs_T != nullptr,
+    AssertThrow(reaction_rate_outputs != nullptr,
                 ExcMessage("You are trying to use the operator splitting solver scheme, "
                            "but the material model you use does not support operator splitting "
                            "(it does not create ReactionRateOutputs, which are required for this "
                            "solver scheme)."));
 
     // some heating models require the additional outputs
-    heating_model_manager.create_additional_material_model_inputs_and_outputs(in_C, out_C);
-    heating_model_manager.create_additional_material_model_inputs_and_outputs(in_T, out_T);
+    heating_model_manager.create_additional_material_model_inputs_and_outputs(in, out);
+
+    // We use SUNDIALs ARKode to compute the reactions. Set up the required parameters.
+    // TODO: Should we change some of these based on the Reaction time step input parameter?
+    using VectorType = Vector<double>;
+    SUNDIALS::ARKode<VectorType>::AdditionalData data;
+    data.initial_time = time;
+    data.final_time = time + time_step;
+    data.initial_step_size = 0.001 * time_step;
+    data.output_period = time_step;
+    data.minimum_step_size = 1.e-6 * time_step;
+
+    // Both tolerances are added, but the composition might become 0.
+    // We therefore set the absolute tolerance to a very small value.
+    data.relative_tolerance = 1e-6;
+    data.absolute_tolerance = 1e-10;
+
+    SUNDIALS::ARKode<VectorType> ode(data);
+
+    std::vector<std::vector<double>> initial_values_C (n_q_points, std::vector<double> (introspection.n_compositional_fields));
+    std::vector<double> initial_values_T (n_q_points);
+
+    // We have to store all values of the temperature and composition fields in one long vector.
+    // Create the vector and functions for transferring values between this vector and the material model inputs object.
+    VectorType fields (n_q_points * n_fields);
+
+    auto copy_fields_into_one_vector = [n_q_points,n_fields](const MaterialModel::MaterialModelInputs<dim> &in,
+                                                             VectorType &fields)
+    {
+      for (unsigned int j=0; j<n_q_points; ++j)
+        for (unsigned int f=0; f<n_fields; ++f)
+          if (f==0)
+            fields[j*n_fields+f] = in.temperature[j];
+          else
+            fields[j*n_fields+f] = in.composition[j][f-1];
+      return;
+    };
+
+    auto copy_fields_into_material_model_inputs = [n_q_points,n_fields](const VectorType &fields,
+                                                                        MaterialModel::MaterialModelInputs<dim> &in)
+    {
+      for (unsigned int j=0; j<n_q_points; ++j)
+        for (unsigned int f=0; f<n_fields; ++f)
+          if (f==0)
+            in.temperature[j]      = fields[j*n_fields+f];
+          else
+            in.composition[j][f-1] = fields[j*n_fields+f];
+      return;
+    };
+
+    auto copy_rates_into_one_vector = [n_q_points,n_fields](const MaterialModel::ReactionRateOutputs<dim> &reaction_out,
+                                                            const HeatingModel::HeatingModelOutputs &heating_out,
+                                                            VectorType &rates)
+    {
+      for (unsigned int j=0; j<n_q_points; ++j)
+        for (unsigned int f=0; f<n_fields; ++f)
+          if (f==0)
+            rates[j*n_fields+f] = heating_out.rates_of_temperature_change[j];
+          else
+            rates[j*n_fields+f] = reaction_out.reaction_rates[j][f-1];
+      return;
+    };
+
+    unsigned int total_iteration_count = 0;
+    unsigned int number_of_solves = 0;
 
     // Make a loop first over all cells, than over all reaction time steps, and then over
     // all degrees of freedom in each element to compute the reactions. This is possible
@@ -1732,120 +1780,143 @@ namespace aspect
     // interface between cells), as we loop over all cells, and then over all degrees of freedom
     // on each cell. Although this means we do some additional work, the results are still
     // correct, as we never read from distributed_vector inside the loop over all cells.
-    // We initialize the material model inputs objects in_T and in_C using the solution vector
+    // We initialize the material model inputs object in using the solution vector
     // on every cell, compute the update, and then on every cell put the result into the
     // distributed_vector vector. Only after the loop over all cells do we copy distributed_vector
     // back onto the solution vector.
     // So even though we touch some DoF more than once, we always start from the same value, compute the
     // same value, and then overwrite the same value in distributed_vector.
-    // TODO: make this more efficient.
+    // TODO: make this even more efficient.
     for (const auto &cell : dof_handler.active_cell_iterators())
       if (cell->is_locally_owned())
         {
-          fe_values_C.reinit (cell);
-          in_C.reinit(fe_values_C, cell, introspection, solution);
+          fe_values.reinit (cell);
+          in.reinit(fe_values, cell, introspection, solution);
 
-          if (temperature_and_composition_use_same_fe == false)
+          std::vector<std::vector<double>> accumulated_reactions_C (n_q_points, std::vector<double> (introspection.n_compositional_fields));
+          std::vector<double> accumulated_reactions_T (n_q_points);
+
+          copy_fields_into_one_vector (in, fields);
+
+          initial_values_C = in.composition;
+          initial_values_T = in.temperature;
+
+          if (parameters.reaction_solver_type == Parameters<dim>::ReactionSolverType::ARKode)
             {
-              fe_values_T.reinit (cell);
-              in_T.reinit(fe_values_T, cell, introspection, solution);
+
+              ode.explicit_function = [&] (const double /*time*/,
+                                           const VectorType &y,
+                                           VectorType &ydot)
+              {
+                copy_fields_into_material_model_inputs (y, in);
+                material_model->fill_additional_material_model_inputs(in, solution, fe_values, introspection);
+                material_model->evaluate(in, out);
+                heating_model_manager.evaluate(in, out, heating_model_outputs);
+                copy_rates_into_one_vector (*reaction_rate_outputs, heating_model_outputs, ydot);
+              };
+
+              // Make the reaction time steps: We have to update the values of compositional fields and the temperature.
+              // We can reuse the same material model inputs and outputs structure for each reaction time step.
+              // We store the computed updates to temperature and composition in a separate (accumulated_reactions) vector,
+              // so that we can later copy it over to the solution vector.
+              const unsigned int iteration_count = ode.solve_ode(fields);
+
+              total_iteration_count += iteration_count;
+              number_of_solves += 1;
+
+              for (unsigned int j=0; j<n_q_points; ++j)
+                for (unsigned int f=0; f<n_fields; ++f)
+                  {
+                    if (f==0)
+                      {
+                        in.temperature[j]          = fields[j*n_fields+f];
+                        accumulated_reactions_T[j] = in.temperature[j] - initial_values_T[j];
+                      }
+                    else
+                      {
+                        in.composition[j][f-1]          = fields[j*n_fields+f];
+                        accumulated_reactions_C[j][f-1] = in.composition[j][f-1] - initial_values_C[j][f-1];
+                      }
+                  }
             }
 
-          std::vector<std::vector<double>> accumulated_reactions_C (quadrature_C.size(),std::vector<double> (introspection.n_compositional_fields));
-          std::vector<double> accumulated_reactions_T (quadrature_T.size());
-
-          // Make the reaction time steps: We have to update the values of compositional fields and the temperature.
-          // Because temperature and composition might use different finite elements, we loop through their elements
-          // separately, and update the temperature and the compositions for both.
-          // We can reuse the same material model inputs and outputs structure for each reaction time step.
-          // We store the computed updates to temperature and composition in a separate (accumulated_reactions) vector,
-          // so that we can later copy it over to the solution vector.
-          for (unsigned int i=0; i<number_of_reaction_steps; ++i)
+          else if (parameters.reaction_solver_type == Parameters<dim>::ReactionSolverType::fixed_step)
             {
-              // Loop over composition element
-              material_model->fill_additional_material_model_inputs(in_C, solution, fe_values_C, introspection);
-
-              material_model->evaluate(in_C, out_C);
-              heating_model_manager.evaluate(in_C, out_C, heating_model_outputs_C);
-
-              for (unsigned int j=0; j<dof_handler.get_fe().base_element(introspection.base_elements.compositional_fields).dofs_per_cell; ++j)
+              for (unsigned int i=0; i<number_of_reaction_steps; ++i)
                 {
-                  for (unsigned int c=0; c<introspection.n_compositional_fields; ++c)
+                  // Loop over composition element
+                  material_model->fill_additional_material_model_inputs(in, solution, fe_values, introspection);
+
+                  material_model->evaluate(in, out);
+                  heating_model_manager.evaluate(in, out, heating_model_outputs);
+
+                  for (unsigned int j=0; j<n_q_points; ++j)
                     {
-                      // simple forward euler
-                      in_C.composition[j][c] = in_C.composition[j][c]
-                                               + reaction_time_step_size * reaction_rate_outputs_C->reaction_rates[j][c];
-                      accumulated_reactions_C[j][c] += reaction_time_step_size * reaction_rate_outputs_C->reaction_rates[j][c];
-                    }
-                  in_C.temperature[j] = in_C.temperature[j]
-                                        + reaction_time_step_size * heating_model_outputs_C.rates_of_temperature_change[j];
-
-                  if (temperature_and_composition_use_same_fe)
-                    accumulated_reactions_T[j] += reaction_time_step_size * heating_model_outputs_C.rates_of_temperature_change[j];
-                }
-
-              if (!temperature_and_composition_use_same_fe)
-                {
-                  // loop over temperature element
-                  material_model->fill_additional_material_model_inputs(in_T, solution, fe_values_T, introspection);
-
-                  material_model->evaluate(in_T, out_T);
-                  heating_model_manager.evaluate(in_T, out_T, heating_model_outputs_T);
-
-                  for (unsigned int j=0; j<dof_handler.get_fe().base_element(introspection.base_elements.temperature).dofs_per_cell; ++j)
-                    {
-                      // simple forward euler
-                      in_T.temperature[j] = in_T.temperature[j]
-                                            + reaction_time_step_size * heating_model_outputs_T.rates_of_temperature_change[j];
-                      accumulated_reactions_T[j] += reaction_time_step_size * heating_model_outputs_T.rates_of_temperature_change[j];
-
                       for (unsigned int c=0; c<introspection.n_compositional_fields; ++c)
-                        in_T.composition[j][c] = in_T.composition[j][c]
-                                                 + reaction_time_step_size * reaction_rate_outputs_T->reaction_rates[j][c];
+                        {
+                          // simple forward euler
+                          in.composition[j][c] = in.composition[j][c]
+                                                 + reaction_time_step_size * reaction_rate_outputs->reaction_rates[j][c];
+                          accumulated_reactions_C[j][c] += reaction_time_step_size * reaction_rate_outputs->reaction_rates[j][c];
+                        }
+                      in.temperature[j] = in.temperature[j]
+                                          + reaction_time_step_size * heating_model_outputs.rates_of_temperature_change[j];
+                      accumulated_reactions_T[j] += reaction_time_step_size * heating_model_outputs.rates_of_temperature_change[j];
                     }
                 }
             }
 
           cell->get_dof_indices (local_dof_indices);
+          const unsigned int component_idx_T = introspection.component_indices.temperature;
 
-          // copy reaction rates and new values for the compositional fields
-          for (unsigned int j=0; j<dof_handler.get_fe().base_element(introspection.base_elements.compositional_fields).dofs_per_cell; ++j)
-            for (unsigned int c=0; c<introspection.n_compositional_fields; ++c)
-              {
-                const unsigned int composition_idx
-                  = dof_handler.get_fe().component_to_system_index(introspection.component_indices.compositional_fields[c],
-                                                                   /*dof index within component=*/ j);
-
-                // skip entries that are not locally owned:
-                if (dof_handler.locally_owned_dofs().is_element(local_dof_indices[composition_idx]))
-                  {
-                    distributed_vector(local_dof_indices[composition_idx]) = in_C.composition[j][c];
-                    distributed_reaction_vector(local_dof_indices[composition_idx]) = accumulated_reactions_C[j][c];
-                  }
-              }
-
-          // copy reaction rates and new values for the temperature field
-          for (unsigned int j=0; j<dof_handler.get_fe().base_element(introspection.base_elements.temperature).dofs_per_cell; ++j)
+          for (unsigned int dof_idx = 0; dof_idx < local_dof_indices.size(); ++dof_idx)
             {
-              const unsigned int temperature_idx
-                = dof_handler.get_fe().component_to_system_index(introspection.component_indices.temperature,
-                                                                 /*dof index within component=*/ j);
-
-              // skip entries that are not locally owned:
-              if (dof_handler.locally_owned_dofs().is_element(local_dof_indices[temperature_idx]))
+              const auto comp_pair = dof_handler.get_fe().system_to_component_index(dof_idx);
+              const unsigned int component_idx = comp_pair.first;
+              if (component_idx>=component_idx_T) // ignore velocity, pressure, etc.
                 {
-                  if (temperature_and_composition_use_same_fe)
-                    distributed_vector(local_dof_indices[temperature_idx]) = in_C.temperature[j];
-                  else
-                    distributed_vector(local_dof_indices[temperature_idx]) = in_T.temperature[j];
+                  // We found a DoF that belongs to component component_idx, which is a temperature or compositional
+                  // field. That means we want to find where this DoF in the computed reactions above to copy it
+                  // back into the global solution vector.
 
-                  distributed_reaction_vector(local_dof_indices[temperature_idx]) = accumulated_reactions_T[j];
+                  // These two variables tell us the how-manyth shape function of which field (and therefore
+                  // field) this DoF is:
+                  const unsigned int index_within = comp_pair.second;
+                  const unsigned int field_index = component_idx-component_idx_T;
+                  // Now we can look up in the support_point_index_by_field data structure where this support
+                  // point is in the list of unique_support_points (and in the Quadrature):
+                  const unsigned int point_idx = support_point_index_by_field[field_index][index_within];
+
+                  // The final step is grabbing the value from the reaction computation and write it into
+                  // the global vector (if we own it and if it is not a constrained degree of freedom).:
+                  if (dof_handler.locally_owned_dofs().is_element(local_dof_indices[dof_idx]) &&
+                      !current_constraints.is_constrained(local_dof_indices[dof_idx]))
+                    {
+                      // temperatures and compositions are stored differently:
+                      if (component_idx == component_idx_T)
+                        {
+                          distributed_vector(local_dof_indices[dof_idx]) = in.temperature[point_idx];
+                          distributed_reaction_vector(local_dof_indices[dof_idx]) = accumulated_reactions_T[point_idx];
+                        }
+                      else
+                        {
+                          const unsigned int composition = field_index-1; // 0 is temperature...
+                          distributed_vector(local_dof_indices[dof_idx]) = in.composition[point_idx][composition];
+                          distributed_reaction_vector(local_dof_indices[dof_idx]) = accumulated_reactions_C[point_idx][composition];
+                        }
+                    }
                 }
             }
         }
 
     distributed_vector.compress(VectorOperation::insert);
     distributed_reaction_vector.compress(VectorOperation::insert);
+
+    // Now apply constraints (boundary conditions and others) to the new solution vector.
+    current_constraints.distribute (distributed_vector);
+
+    // Apply hanging node constraints but not Dirichet bcs, while preserving periodic bcs
+    constraints.distribute(distributed_reaction_vector);
 
     // put the final values into the solution vector
     for (unsigned int c=0; c<introspection.n_compositional_fields; ++c)
@@ -1857,12 +1928,21 @@ namespace aspect
                                                   distributed_vector,
                                                   distributed_reaction_vector);
 
-    initialize_current_linearization_point();
+    double average_iteration_count = number_of_reaction_steps;
+    if (parameters.reaction_solver_type == Parameters<dim>::ReactionSolverType::ARKode)
+      {
+        if (number_of_solves > 0)
+          average_iteration_count = total_iteration_count / number_of_solves;
+        else
+          average_iteration_count = total_iteration_count;
+      }
 
     pcout << "in "
-          << number_of_reaction_steps
+          << average_iteration_count
           << " substep(s)."
           << std::endl;
+
+    computing_timer.leave_subsection("Solve composition reactions");
   }
 
 
@@ -1893,29 +1973,49 @@ namespace aspect
 
 
   template <int dim>
-  void Simulator<dim>::interpolate_material_output_into_advection_field (const AdvectionField &adv_field)
+  void Simulator<dim>::interpolate_material_output_into_advection_field (const std::vector<AdvectionField> &adv_fields)
   {
-    // we need some temporary vectors to store our updates to composition in
+    // we need a temporary vector to store our updates to the advection fields in
     // before we copy them over to the solution vector in the end
     LinearAlgebra::BlockVector distributed_vector (introspection.index_sets.system_partitioning,
                                                    mpi_communicator);
 
-    if (adv_field.is_temperature())
-      pcout << "   Copying properties into prescribed temperature field... "
-            << std::flush;
+    if (adv_fields.size() == 0)
+      return;
+    else if (adv_fields.size() == 1)
+      {
+        const AdvectionField &adv_field = adv_fields[0];
+        if (adv_field.is_temperature())
+          pcout << "   Copying properties into prescribed temperature field... "
+                << std::flush;
+        else
+          {
+            const std::string name_of_field = introspection.name_for_compositional_index(adv_field.compositional_variable);
+
+            pcout << "   Copying properties into prescribed compositional field " + name_of_field + "... "
+                  << std::flush;
+          }
+      }
     else
       {
-        const std::string name_of_field = introspection.name_for_compositional_index(adv_field.compositional_variable);
-
-        pcout << "   Copying properties into prescribed compositional field " + name_of_field + "... "
+        pcout << "   Copying properties into prescribed compositional fields... "
               << std::flush;
       }
 
+    // Advection fields can have different Finite Element discretizations (degree, continuous/discontinuous)
+    // and will have different support points. We solve this by computing the union of all support points and evaluating
+    // the material output for all these support points for every cell.
+
+    /// First compute all unique support points (temperature and compositions):
+    const unsigned int n_fields = adv_fields.size();
+    std::vector<Point<dim>> unique_support_points;
+    std::vector<std::vector<unsigned int>> support_point_index_by_field;
+    compute_unique_advection_support_points(adv_fields, unique_support_points, support_point_index_by_field);
+
     // Create an FEValues object that allows us to interpolate onto the solution
     // vector. To make this happen, we need to have a quadrature formula that
-    // consists of the support points of the advection field finite element
-    const Quadrature<dim> quadrature(dof_handler.get_fe().base_element(adv_field.base_element(introspection))
-                                     .get_unit_support_points());
+    // consists of the support points of all advection field finite elements
+    const Quadrature<dim> quadrature(unique_support_points);
 
     FEValues<dim> fe_values (*mapping,
                              dof_handler.get_fe(),
@@ -1929,94 +2029,93 @@ namespace aspect
     // add the prescribed field outputs that will be used for interpolating
     material_model->create_additional_named_outputs(out);
 
-    MaterialModel::PrescribedFieldOutputs<dim> *prescribed_field_out
-      = out.template get_additional_output<MaterialModel::PrescribedFieldOutputs<dim>>();
-    MaterialModel::PrescribedTemperatureOutputs<dim> *prescribed_temperature_out
-      = out.template get_additional_output<MaterialModel::PrescribedTemperatureOutputs<dim>>();
-
-    // check if the material model computes the correct prescribed field outputs
-    if (adv_field.is_temperature())
-      {
-        AssertThrow(prescribed_temperature_out != nullptr,
-                    ExcMessage("You are trying to use a prescribed temperature field, "
-                               "but the material model you use does not support interpolating properties "
-                               "(it does not create PrescribedTemperatureOutputs, which is required for this "
-                               "temperature field type)."));
-      }
-    else
-      {
-        AssertThrow(prescribed_field_out != nullptr,
-                    ExcMessage("You are trying to use a prescribed advection field, "
-                               "but the material model you use does not support interpolating properties "
-                               "(it does not create PrescribedFieldOutputs, which is required for this "
-                               "advection field type)."));
-      }
+    const std::shared_ptr<MaterialModel::PrescribedFieldOutputs<dim>> prescribed_field_out
+      = out.template get_additional_output_object<MaterialModel::PrescribedFieldOutputs<dim>>();
+    const std::shared_ptr<MaterialModel::PrescribedTemperatureOutputs<dim>> prescribed_temperature_out
+      = out.template get_additional_output_object<MaterialModel::PrescribedTemperatureOutputs<dim>>();
 
     // Make a loop first over all cells, and then over all degrees of freedom in each element
     // to interpolate material properties onto a solution vector.
-
-    // Note that the values for some degrees of freedom are set more than once in the loop
-    // below where we assign the new values to distributed_vector (if they are located on the
-    // interface between cells), as we loop over all cells, and then over all degrees of freedom
-    // on each cell. But even though we touch some DoF more than once, we always compute the same value,
-    // and then overwrite the same value in distributed_vector.
     for (const auto &cell : dof_handler.active_cell_iterators())
       if (cell->is_locally_owned())
         {
           fe_values.reinit (cell);
           cell->get_dof_indices (local_dof_indices);
           in.reinit(fe_values, cell, introspection, solution);
-
           material_model->evaluate(in, out);
 
-          // Interpolate material properties onto the advection fields
-          const unsigned int advection_dofs_per_cell =
-            dof_handler.get_fe().base_element(adv_field.base_element(introspection)).dofs_per_cell;
-
-          for (unsigned int j=0; j<advection_dofs_per_cell; ++j)
+          for (unsigned int i=0; i<n_fields; ++i)
             {
-              const unsigned int dof_idx
-                = dof_handler.get_fe().component_to_system_index(adv_field.component_index(introspection),
-                                                                 /*dof index within component=*/ j);
+              const AdvectionField &adv_field = adv_fields[i];
 
-              // Skip degrees of freedom that are not locally owned. These
-              // will eventually be handled by one of the other processors.
-              if (dof_handler.locally_owned_dofs().is_element(local_dof_indices[dof_idx]))
+              // Interpolate material properties onto the advection fields
+              const unsigned int advection_dofs_per_cell =
+                dof_handler.get_fe().base_element(adv_field.base_element(introspection)).dofs_per_cell;
+
+              // Make sure data structures have the expected size
+              Assert(advection_dofs_per_cell == support_point_index_by_field[i].size(), ExcInternalError());
+
+              for (unsigned int j=0; j<advection_dofs_per_cell; ++j)
                 {
-                  if (adv_field.is_temperature())
-                    {
-                      Assert(numbers::is_finite(prescribed_temperature_out->prescribed_temperature_outputs[j]),
-                             ExcMessage("You are trying to use a prescribed advection field, "
-                                        "but the material model you use does not fill the PrescribedFieldOutputs "
-                                        "for your prescribed field, which is required for this method."));
+                  const unsigned int dof_idx
+                    = dof_handler.get_fe().component_to_system_index(adv_field.component_index(introspection),
+                                                                     /*dof index within component=*/ j);
 
-                      distributed_vector(local_dof_indices[dof_idx])
-                        = prescribed_temperature_out->prescribed_temperature_outputs[j];
-                    }
-                  else
+                  // Skip degrees of freedom that are not locally owned. These
+                  // will eventually be handled by one of the other processors.
+                  if (dof_handler.locally_owned_dofs().is_element(local_dof_indices[dof_idx]))
                     {
-                      Assert(numbers::is_finite(prescribed_field_out->prescribed_field_outputs[j][adv_field.compositional_variable]),
-                             ExcMessage("You are trying to use a prescribed advection field, "
-                                        "but the material model you use does not fill the PrescribedFieldOutputs "
-                                        "for your prescribed field, which is required for this method."));
+                      if (adv_field.is_temperature())
+                        {
+                          Assert(prescribed_temperature_out != nullptr,
+                                 ExcMessage("You are trying to use a prescribed temperature field, "
+                                            "but the material model you use does not support interpolating properties "
+                                            "(it does not create PrescribedTemperatureOutputs, which is required for this "
+                                            "temperature field type)."));
+                          Assert(numbers::is_finite(prescribed_temperature_out->prescribed_temperature_outputs[j]),
+                                 ExcMessage("You are trying to use a prescribed advection field, "
+                                            "but the material model you use does not fill the PrescribedFieldOutputs "
+                                            "for your prescribed field, which is required for this method."));
 
-                      distributed_vector(local_dof_indices[dof_idx])
-                        = prescribed_field_out->prescribed_field_outputs[j][adv_field.compositional_variable];
+                          distributed_vector(local_dof_indices[dof_idx])
+                            = prescribed_temperature_out->prescribed_temperature_outputs[support_point_index_by_field[i][j]];
+                        }
+                      else
+                        {
+                          Assert(prescribed_field_out != nullptr,
+                                 ExcMessage("You are trying to use a prescribed advection field, "
+                                            "but the material model you use does not support interpolating properties "
+                                            "(it does not create PrescribedFieldOutputs, which is required for this "
+                                            "advection field type)."));
+                          Assert(numbers::is_finite(prescribed_field_out->prescribed_field_outputs[j][adv_field.compositional_variable]),
+                                 ExcMessage("You are trying to use a prescribed advection field, "
+                                            "but the material model you use does not fill the PrescribedFieldOutputs "
+                                            "for your prescribed field, which is required for this method."));
+
+                          distributed_vector(local_dof_indices[dof_idx])
+                            = prescribed_field_out->prescribed_field_outputs[support_point_index_by_field[i][j]][adv_field.compositional_variable];
+                        }
                     }
                 }
             }
         }
 
-    // Put the final values into the solution vector, also
-    // updating the ghost elements of the 'solution' vector.
-    const unsigned int advection_block = adv_field.block_index(introspection);
-    distributed_vector.block(advection_block).compress(VectorOperation::insert);
+    for (const auto &adv_field: adv_fields)
+      {
+        // Put the final values into the solution vector, also
+        // updating the ghost elements of the solution vector.
+        const unsigned int advection_block = adv_field.block_index(introspection);
+        distributed_vector.block(advection_block).compress(VectorOperation::insert);
 
-    if (adv_field.is_temperature() ||
-        adv_field.compositional_variable != introspection.find_composition_type(CompositionalFieldDescription::density))
-      current_constraints.distribute (distributed_vector);
+        // Apply boundary conditions and other constraints to all prescribed fields,
+        // except for the density field (if it exists). See this PR for a justification:
+        // https://github.com/geodynamics/aspect/pull/4450.
+        if (adv_field.is_temperature() ||
+            adv_field.compositional_variable != introspection.find_composition_type(CompositionalFieldDescription::density))
+          current_constraints.distribute (distributed_vector);
 
-    solution.block(advection_block) = distributed_vector.block(advection_block);
+        solution.block(advection_block) = distributed_vector.block(advection_block);
+      }
 
     pcout << "done." << std::endl;
   }
@@ -2104,7 +2203,7 @@ namespace aspect
                                "Please check the consistency of your input file."));
 
         const bool use_simplified_adiabatic_heating =
-          heating_model_manager.template get_matching_heating_model<HeatingModel::AdiabaticHeating<dim>>()
+          heating_model_manager.template get_matching_active_plugin<HeatingModel::AdiabaticHeating<dim>>()
           .use_simplified_adiabatic_heating();
 
         AssertThrow(use_simplified_adiabatic_heating == true,
@@ -2117,19 +2216,66 @@ namespace aspect
   }
 
 
+
   template <int dim>
   void
-  Simulator<dim>::replace_outflow_boundary_ids(const unsigned int offset)
+  Simulator<dim>::replace_outflow_boundary_ids(const unsigned int offset,
+                                               const bool is_composition,
+                                               const unsigned int composition_index)
   {
     const Quadrature<dim-1> &quadrature_formula = introspection.face_quadratures.temperature;
+
+    bool consider_darcy_velocity = false;
+    bool consider_fluid_velocity = false;
+    unsigned int porosity_idx = numbers::invalid_unsigned_int;
+
+    // Check to see if we are attempting to replace the boundary conditions for the temperature, or for the
+    // composition. If we are attempting to replace the composition boundary conditions, check to see if the current
+    // compositional field is advected with the darcy velocity (via the darcy field advection method) or with the
+    // fluid velocity (via the melt field advection method, or via a compositional field named porosity when melt
+    // transport is included).
+    if (is_composition)
+      {
+        if (introspection.compositional_field_methods[composition_index] == Parameters<dim>::AdvectionFieldMethod::fem_darcy_field)
+          {
+            consider_darcy_velocity = true;
+            porosity_idx = introspection.find_composition_type(CompositionalFieldDescription::porosity);
+          }
+        if (introspection.compositional_field_methods[composition_index] == Parameters<dim>::AdvectionFieldMethod::fem_melt_field ||
+            (parameters.include_melt_transport && introspection.get_indices_for_fields_of_type(CompositionalFieldDescription::porosity)[0] == composition_index) )
+          consider_fluid_velocity = true;
+      }
+
+    // If the compositional field uses the darcy velocity, we need to update the gradients, otherwise we do not
+    const UpdateFlags update_flags
+      = UpdateFlags(
+          consider_darcy_velocity
+          ?
+          update_values |
+          update_gradients |
+          update_normal_vectors |
+          update_quadrature_points |
+          update_JxW_values
+          :
+          update_values |
+          update_normal_vectors |
+          update_quadrature_points |
+          update_JxW_values);
 
     FEFaceValues<dim> fe_face_values (*mapping,
                                       finite_element,
                                       quadrature_formula,
-                                      update_values   | update_normal_vectors |
-                                      update_quadrature_points | update_JxW_values);
+                                      update_flags);
 
     std::vector<Tensor<1,dim>> face_current_velocity_values (fe_face_values.n_quadrature_points);
+    std::vector<Tensor<1,dim>> face_current_mesh_velocity_values (fe_face_values.n_quadrature_points);
+    std::vector<Tensor<1,dim>> face_current_fluid_velocity_values (fe_face_values.n_quadrature_points);
+
+    MaterialModel::MaterialModelInputs<dim> in(fe_face_values.n_quadrature_points, introspection.n_compositional_fields);
+    MaterialModel::MaterialModelOutputs<dim> out(fe_face_values.n_quadrature_points, introspection.n_compositional_fields);
+    MeltHandler<dim>::create_material_model_outputs(out);
+    std::shared_ptr<const MaterialModel::MeltOutputs<dim>> fluid_out
+      = out.template get_additional_output_object<MaterialModel::MeltOutputs<dim>>();
 
     const auto &tangential_velocity_boundaries =
       boundary_velocity_manager.get_tangential_boundary_velocity_indicators();
@@ -2138,7 +2284,7 @@ namespace aspect
       boundary_velocity_manager.get_zero_boundary_velocity_indicators();
 
     const auto &prescribed_velocity_boundaries =
-      boundary_velocity_manager.get_active_boundary_velocity_conditions();
+      boundary_velocity_manager.get_prescribed_boundary_velocity_indicators();
 
     // Loop over all of the boundary faces, ...
     for (const auto &cell : dof_handler.active_cell_iterators())
@@ -2159,9 +2305,27 @@ namespace aspect
                 fe_face_values.reinit (cell, face_number);
                 fe_face_values[introspection.extractors.velocities].get_function_values(current_linearization_point,
                                                                                         face_current_velocity_values);
+                // get the mesh velocity, as we need to subtract it off of the advection systems
+                if (parameters.mesh_deformation_enabled)
+                  fe_face_values[introspection.extractors.velocities].get_function_values(mesh_deformation->mesh_velocity,
+                                                                                          face_current_mesh_velocity_values);
+
+                if (consider_darcy_velocity)
+                  {
+                    in.reinit(fe_face_values, cell, introspection, solution);
+                    material_model->evaluate(in, out);
+                    fluid_out = out.template get_additional_output_object<MaterialModel::MeltOutputs<dim>>();
+                  }
+
+                if (consider_fluid_velocity)
+                  {
+                    fe_face_values[introspection.variable("fluid velocity").extractor_vector()].get_function_values(current_linearization_point,
+                        face_current_fluid_velocity_values);
+                  }
 
                 // ... check if the face is an outflow boundary by integrating the normal velocities
                 // (flux through the boundary) as: int u*n ds = Sum_q u(x_q)*n(x_q) JxW(x_q)...
+                // do this for the solid velocity, the darcy velocity, or the fluid velocity.
                 double integrated_flow = 0;
 
                 for (unsigned int q=0; q<fe_face_values.n_quadrature_points; ++q)
@@ -2173,8 +2337,33 @@ namespace aspect
                       boundary_velocity = boundary_velocity_manager.boundary_velocity(face->boundary_id(),
                                                                                       fe_face_values.quadrature_point(q));
 
-                    integrated_flow += (boundary_velocity * fe_face_values.normal_vector(q)) *
-                                       fe_face_values.JxW(q);
+                    if (parameters.mesh_deformation_enabled)
+                      boundary_velocity -= face_current_mesh_velocity_values[q];
+
+                    if (consider_darcy_velocity)
+                      {
+                        const Tensor<1,dim> gravity = gravity_model->gravity_vector(in.position[q]);
+                        Tensor<1,dim> boundary_darcy_velocity =
+                          aspect::Utilities::calculate_approximate_darcy_velocity(in,
+                                                                                  out,
+                                                                                  fluid_out, boundary_velocity,
+                                                                                  gravity, porosity_idx, q,
+                                                                                  parameters.use_pressure_gradient_for_darcy_field);
+                        integrated_flow += (boundary_darcy_velocity * fe_face_values.normal_vector(q)) *
+                                           fe_face_values.JxW(q);
+                      }
+
+                    else if (consider_fluid_velocity)
+                      {
+                        integrated_flow += (face_current_fluid_velocity_values[q] * fe_face_values.normal_vector(q)) *
+                                           fe_face_values.JxW(q);
+                      }
+
+                    else
+                      {
+                        integrated_flow += (boundary_velocity * fe_face_values.normal_vector(q)) *
+                                           fe_face_values.JxW(q);
+                      }
                   }
 
                 // ... and change the boundary id of any outflow boundary faces.
@@ -2228,104 +2417,54 @@ namespace aspect
   void
   Simulator<dim>::check_consistency_of_boundary_conditions() const
   {
-    // make sure velocity and traction boundary indicators don't appear in multiple lists
-    std::set<types::boundary_id> boundary_indicator_lists[6]
-      = { boundary_velocity_manager.get_zero_boundary_velocity_indicators(),
-          boundary_velocity_manager.get_tangential_boundary_velocity_indicators(),
-          std::set<types::boundary_id>()   // to be prescribed velocity and traction boundary indicators
-        };
+    // a container for the indicators of all boundary conditions
+    std::vector<std::set<types::boundary_id>> boundary_indicator_lists;
+    boundary_indicator_lists.emplace_back(boundary_velocity_manager.get_zero_boundary_velocity_indicators());
+    boundary_indicator_lists.emplace_back(boundary_velocity_manager.get_tangential_boundary_velocity_indicators());
+    boundary_indicator_lists.emplace_back(boundary_velocity_manager.get_prescribed_boundary_velocity_indicators());
+    boundary_indicator_lists.emplace_back(boundary_traction_manager.get_prescribed_boundary_traction_indicators());
 
-    // sets of the boundary indicators only (no selectors and values)
-    std::set<types::boundary_id> velocity_bi;
-    std::set<types::boundary_id> traction_bi;
-
-    for (const auto &p : boundary_velocity_manager.get_active_boundary_velocity_names())
-      velocity_bi.insert(p.first);
-
-    for (const auto &r : parameters.prescribed_traction_boundary_indicators)
-      traction_bi.insert(r.first);
-
-    // are there any indicators that occur in both the prescribed velocity and traction list?
-    std::set<types::boundary_id> intersection;
-    std::set_intersection (velocity_bi.begin(),
-                           velocity_bi.end(),
-                           traction_bi.begin(),
-                           traction_bi.end(),
-                           std::inserter(intersection, intersection.end()));
-
-    // if so, do they have different selectors?
-    if (!intersection.empty())
+    // Make sure that each combination of boundary velocity and boundary traction condition
+    // either refers to different boundary indicators or to different components
+    for (const auto velocity_boundary_id: boundary_indicator_lists[2])
       {
-        for (const auto it : intersection)
+        bool found_compatible_duplicate_boundary_id = false;
+        for (const auto traction_boundary_id: boundary_indicator_lists[3])
           {
-            const std::map<types::boundary_id, std::pair<std::string,std::vector<std::string>>>::const_iterator
-            boundary_velocity_names = boundary_velocity_manager.get_active_boundary_velocity_names().find(it);
-            Assert(boundary_velocity_names != boundary_velocity_manager.get_active_boundary_velocity_names().end(),
-                   ExcInternalError());
+            if (velocity_boundary_id == traction_boundary_id)
+              {
+                // if boundary ids are identical, make sure that the components are different
+                AssertThrow((boundary_velocity_manager.get_component_mask(velocity_boundary_id) &
+                             boundary_traction_manager.get_component_mask(traction_boundary_id)) ==
+                            ComponentMask(introspection.n_components, false),
+                            ExcMessage("Boundary indicator <"
+                                       +
+                                       Utilities::int_to_string(velocity_boundary_id)
+                                       +
+                                       "> with symbolic name <"
+                                       +
+                                       geometry_model->translate_id_to_symbol_name (velocity_boundary_id)
+                                       +
+                                       "> is listed as having both "
+                                       "velocity and traction boundary conditions in the input file."));
 
-            std::set<char> velocity_selector;
-            std::set<char> traction_selector;
-
-            for (const auto it_selector : boundary_velocity_names->second.first)
-              velocity_selector.insert(it_selector);
-
-            for (std::string::const_iterator
-                 it_selector  = parameters.prescribed_traction_boundary_indicators.find(it)->second.first.begin();
-                 it_selector != parameters.prescribed_traction_boundary_indicators.find(it)->second.first.end();
-                 ++it_selector)
-              traction_selector.insert(*it_selector);
-
-            // if there are no selectors specified, throw exception
-            AssertThrow(!velocity_selector.empty() || !traction_selector.empty(),
-                        ExcMessage ("Boundary indicator <"
-                                    +
-                                    Utilities::int_to_string(it)
-                                    +
-                                    "> with symbolic name <"
-                                    +
-                                    geometry_model->translate_id_to_symbol_name (it)
-                                    +
-                                    "> is listed as having both "
-                                    "velocity and traction boundary conditions in the input file."));
-
-            std::set<char> intersection_selector;
-            std::set_intersection (velocity_selector.begin(),
-                                   velocity_selector.end(),
-                                   traction_selector.begin(),
-                                   traction_selector.end(),
-                                   std::inserter(intersection_selector, intersection_selector.end()));
-
-            // if the same selectors are specified, throw exception
-            AssertThrow(intersection_selector.empty(),
-                        ExcMessage ("Selectors of boundary indicator <"
-                                    +
-                                    Utilities::int_to_string(it)
-                                    +
-                                    "> with symbolic name <"
-                                    +
-                                    geometry_model->translate_id_to_symbol_name (it)
-                                    +
-                                    "> are listed as having both "
-                                    "velocity and traction boundary conditions in the input file."));
+                found_compatible_duplicate_boundary_id = true;
+              }
           }
+        // we have ensured the prescribed velocity and prescribed traction boundary conditions
+        // for the current boundary id are compatible. In order to check them against the other
+        // boundary conditions, we need to remove the boundary indicator from one of the lists
+        // to make sure it only appears in one of them. We choose to remove the boundary
+        // indicator from the traction list. We cannot do that in the loop above, because it
+        // invalidates the range of the loop.
+        if (found_compatible_duplicate_boundary_id)
+          boundary_indicator_lists[3].erase(velocity_boundary_id);
       }
 
-    // remove correct boundary indicators that occur in both the velocity and the traction set
-    // but have different selectors
-    std::set<types::boundary_id> union_set;
-    std::set_union (velocity_bi.begin(),
-                    velocity_bi.end(),
-                    traction_bi.begin(),
-                    traction_bi.end(),
-                    std::inserter(union_set, union_set.end()));
-
-    // assign the prescribed boundary indicator list to the boundary_indicator_lists
-    boundary_indicator_lists[3] = union_set;
-
-    // for each combination of boundary indicator lists, make sure that the
+    // for each combination of velocity boundary indicator lists, make sure that the
     // intersection is empty
-    for (unsigned int i=0; i<sizeof(boundary_indicator_lists)/sizeof(boundary_indicator_lists[0]); ++i)
-      for (unsigned int j=i+1; j<sizeof(boundary_indicator_lists)/sizeof(boundary_indicator_lists[0]); ++j)
+    for (unsigned int i=0; i<boundary_indicator_lists.size(); ++i)
+      for (unsigned int j=i+1; j<boundary_indicator_lists.size(); ++j)
         {
           std::set<types::boundary_id> intersection;
           std::set_intersection (boundary_indicator_lists[i].begin(),
@@ -2350,20 +2489,70 @@ namespace aspect
 
     // make sure temperature and heat flux boundary indicators don't appear in multiple lists
     // this is easier than for the velocity/traction, as there are no selectors
-    std::set<types::boundary_id> temperature_bi = boundary_temperature_manager.get_fixed_temperature_boundary_indicators();
-    std::set<types::boundary_id> heat_flux_bi = parameters.fixed_heat_flux_boundary_indicators;
+    boundary_indicator_lists.emplace_back(boundary_temperature_manager.get_fixed_temperature_boundary_indicators());
+    boundary_indicator_lists.emplace_back(parameters.fixed_heat_flux_boundary_indicators);
 
     // are there any indicators that occur in both the prescribed temperature and heat flux list?
     std::set<types::boundary_id> T_intersection;
-    std::set_intersection (temperature_bi.begin(),
-                           temperature_bi.end(),
-                           heat_flux_bi.begin(),
-                           heat_flux_bi.end(),
+    std::set_intersection (boundary_temperature_manager.get_fixed_temperature_boundary_indicators().begin(),
+                           boundary_temperature_manager.get_fixed_temperature_boundary_indicators().end(),
+                           parameters.fixed_heat_flux_boundary_indicators.begin(),
+                           parameters.fixed_heat_flux_boundary_indicators.end(),
                            std::inserter(T_intersection, T_intersection.end()));
 
-    AssertThrow(T_intersection.empty(),
-                ExcMessage ("There is a boundary indicator listed as having both "
-                            "temperature and heat flux boundary conditions in the input file."));
+    AssertThrow (T_intersection.empty(),
+                 ExcMessage ("Boundary indicator <"
+                             +
+                             Utilities::int_to_string(*T_intersection.begin())
+                             +
+                             "> with symbolic name <"
+                             +
+                             geometry_model->translate_id_to_symbol_name (*T_intersection.begin())
+                             +
+                             "> is listed as having more "
+                             "than one type of temperature or heat flux boundary condition in the input file."));
+
+    // are there any indicators that occur in both the prescribed temperature and convective heating list?
+    std::set<types::boundary_id> Tc_intersection;
+    std::set_intersection (boundary_temperature_manager.get_fixed_temperature_boundary_indicators().begin(),
+                           boundary_temperature_manager.get_fixed_temperature_boundary_indicators().end(),
+                           boundary_convective_heating_manager.get_fixed_convective_heating_boundary_indicators().begin(),
+                           boundary_convective_heating_manager.get_fixed_convective_heating_boundary_indicators().end(),
+                           std::inserter(Tc_intersection, Tc_intersection.end()));
+
+    AssertThrow (Tc_intersection.empty(),
+                 ExcMessage ("Boundary indicator <"
+                             +
+                             Utilities::int_to_string(*Tc_intersection.begin())
+                             +
+                             "> with symbolic name <"
+                             +
+                             geometry_model->translate_id_to_symbol_name (*Tc_intersection.begin())
+                             +
+                             "> is listed as having more "
+                             "than one type of temperature or convective heating boundary condition in the input file."));
+
+    // are there any indicators that occur in both the prescribed heat flux and convective heating list?
+    std::set<types::boundary_id> Tflux_intersection;
+    std::set_intersection (parameters.fixed_heat_flux_boundary_indicators.begin(),
+                           parameters.fixed_heat_flux_boundary_indicators.end(),
+                           boundary_convective_heating_manager.get_fixed_convective_heating_boundary_indicators().begin(),
+                           boundary_convective_heating_manager.get_fixed_convective_heating_boundary_indicators().end(),
+                           std::inserter(Tflux_intersection, Tflux_intersection.end()));
+
+    AssertThrow (Tflux_intersection.empty(),
+                 ExcMessage ("Boundary indicator <"
+                             +
+                             Utilities::int_to_string(*Tflux_intersection.begin())
+                             +
+                             "> with symbolic name <"
+                             +
+                             geometry_model->translate_id_to_symbol_name (*Tflux_intersection.begin())
+                             +
+                             "> is listed as having more "
+                             "than one type of heat flux or convective heating boundary condition in the input file."));
+
+    boundary_indicator_lists.emplace_back(boundary_composition_manager.get_fixed_composition_boundary_indicators());
 
     // Check that the periodic boundaries do not have other boundary conditions set
     using periodic_boundary_set
@@ -2372,97 +2561,194 @@ namespace aspect
     periodic_boundary_set pbs = geometry_model->get_periodic_boundary_pairs();
 
     for (const auto &pb : pbs)
-      {
-        // Throw error if we are trying to use the same boundary for more than one boundary condition
-        AssertThrow( is_element( pb.first.first, boundary_temperature_manager.get_fixed_temperature_boundary_indicators() ) == false &&
-                     is_element( pb.first.second, boundary_temperature_manager.get_fixed_temperature_boundary_indicators() ) == false &&
-                     is_element( pb.first.first, boundary_composition_manager.get_fixed_composition_boundary_indicators() ) == false &&
-                     is_element( pb.first.second, boundary_composition_manager.get_fixed_composition_boundary_indicators() ) == false &&
-                     is_element( pb.first.first, boundary_indicator_lists[0] ) == false && // zero velocity
-                     is_element( pb.first.second, boundary_indicator_lists[0] ) == false && // zero velocity
-                     is_element( pb.first.first, boundary_indicator_lists[1] ) == false && // tangential velocity
-                     is_element( pb.first.second, boundary_indicator_lists[1] ) == false && // tangential velocity
-                     is_element( pb.first.first, boundary_indicator_lists[3] ) == false && // prescribed traction or velocity
-                     is_element( pb.first.second, boundary_indicator_lists[3] ) == false,  // prescribed traction or velocity
-                     ExcMessage("Periodic boundaries must not have boundary conditions set."));
-      }
+      for (const auto &boundary_indicators: boundary_indicator_lists)
+        {
+          AssertThrow(is_element(pb.first.first, boundary_indicators) == false,
+                      ExcMessage ("Boundary indicator <"
+                                  +
+                                  Utilities::int_to_string(pb.first.first)
+                                  +
+                                  "> with symbolic name <"
+                                  +
+                                  geometry_model->translate_id_to_symbol_name (pb.first.first)
+                                  +
+                                  "> is listed as having a periodic boundary condition "
+                                  "in the input file, but also has another type of boundary condition. "
+                                  "Periodic boundaries cannot have other boundary conditions."));
+
+          AssertThrow(is_element(pb.first.second, boundary_indicators) == false,
+                      ExcMessage ("Boundary indicator <"
+                                  +
+                                  Utilities::int_to_string(pb.first.second)
+                                  +
+                                  "> with symbolic name <"
+                                  +
+                                  geometry_model->translate_id_to_symbol_name (pb.first.second)
+                                  +
+                                  "> is listed as having a periodic boundary condition "
+                                  "in the input file, but also has another type of boundary condition. "
+                                  "Periodic boundaries cannot have other boundary conditions."));
+        }
 
     const std::set<types::boundary_id> all_boundary_indicators
       = geometry_model->get_used_boundary_indicators();
-    if (parameters.nonlinear_solver != NonlinearSolver::single_Advection_no_Stokes)
-      {
-        // next make sure that all listed indicators are actually used by
-        // this geometry
-        for (const auto &list : boundary_indicator_lists)
-          for (const auto &p : list)
-            AssertThrow (all_boundary_indicators.find (p)
-                         != all_boundary_indicators.end(),
-                         ExcMessage ("One of the boundary indicators listed in the input file "
-                                     "is not used by the geometry model."));
-      }
-    else
-      {
-        // next make sure that there are no listed indicators
-        for (const auto &list : boundary_indicator_lists)
-          AssertThrow (list.empty(),
-                       ExcMessage ("With the solver scheme `single Advection, no Stokes', "
-                                   "one cannot set boundary conditions for velocity."));
-      }
 
+    // next make sure that all listed indicators are actually used by
+    // this geometry
+    for (const auto &list : boundary_indicator_lists)
+      for (const auto &p : list)
+        AssertThrow (all_boundary_indicators.find (p)
+                     != all_boundary_indicators.end(),
+                     ExcMessage ("Boundary indicator <"
+                                 +
+                                 Utilities::int_to_string(p)
+                                 +
+                                 "> is listed for a boundary condition, but is not used by the geometry model."));
 
-    // now do the same for the fixed temperature indicators and the
-    // compositional indicators
-    for (const auto p : boundary_temperature_manager.get_fixed_temperature_boundary_indicators())
-      AssertThrow (all_boundary_indicators.find (p)
-                   != all_boundary_indicators.end(),
-                   ExcMessage ("One of the fixed boundary temperature indicators listed in the input file "
-                               "is not used by the geometry model."));
-    for (const auto p : boundary_composition_manager.get_fixed_composition_boundary_indicators())
-      AssertThrow (all_boundary_indicators.find (p)
-                   != all_boundary_indicators.end(),
-                   ExcMessage ("One of the fixed boundary composition indicators listed in the input file "
-                               "is not used by the geometry model."));
+    if (parameters.nonlinear_solver == NonlinearSolver::single_Advection_no_Stokes ||
+        parameters.nonlinear_solver == NonlinearSolver::iterated_Advection_no_Stokes)
+      {
+        // make sure that there are no listed velocity boundary conditions
+        for (unsigned int i=0; i<4; ++i)
+          AssertThrow (boundary_indicator_lists[i].empty(),
+                       ExcMessage ("With the solver schemes `single Advection, no Stokes' or "
+                                   "'iterated Advection, no Stokes' one cannot set boundary conditions "
+                                   "for velocity or traction, but a boundary condition has been set."));
+      }
   }
 
 
 
   template <int dim>
   double
-  Simulator<dim>::compute_initial_newton_residual(const LinearAlgebra::BlockVector &linearized_stokes_initial_guess)
+  Simulator<dim>::compute_initial_newton_residual()
   {
-    // Store the values of the current_linearization_point and linearized_stokes_initial_guess so we can reset them again.
-    LinearAlgebra::BlockVector temp_linearization_point = current_linearization_point;
-    LinearAlgebra::BlockVector temp_linearized_stokes_initial_guess = linearized_stokes_initial_guess;
-    const unsigned int block_vel = introspection.block_indices.velocities;
+    // Store the values of current_linearization_point to be able to restore it later.
+    // We will want to set the velocity component of the current_linearization_points
+    // to a zero vector until the end of the function,
+    // which is most efficiently done by creating the
+    // temp_linearization_point as a zero vector, swapping contents, and at the end
+    // of the function, swapping things back:
+    LinearAlgebra::Vector temp_velocity_linearization_point
+    (introspection.index_sets.system_partitioning[introspection.block_indices.velocities],
+     introspection.index_sets.system_relevant_partitioning[introspection.block_indices.velocities],
+     mpi_communicator);
+    temp_velocity_linearization_point
+    .swap(current_linearization_point.block(introspection.block_indices.velocities));
 
-    // Set the velocity initial guess to zero, but we use the initial guess for the pressure.
-    current_linearization_point.block(introspection.block_indices.velocities) = 0;
-    temp_linearized_stokes_initial_guess.block (block_vel) = 0;
-
-    denormalize_pressure (last_pressure_normalization_adjustment,
-                          temp_linearized_stokes_initial_guess,
-                          current_linearization_point);
-
-    // rebuild the whole system to compute the rhs.
+    // Rebuild the whole system to compute the rhs.
     assemble_newton_stokes_system = true;
     rebuild_stokes_preconditioner = false;
-    rebuild_stokes_matrix = boundary_velocity_manager.get_active_boundary_velocity_conditions().size()!=0;
-    assemble_newton_stokes_matrix = boundary_velocity_manager.get_active_boundary_velocity_conditions().size()!=0;
+
+    // Technically we only need the rhs, but we have asserts in place that check if
+    // the system is assembled correctly when boundary conditions are prescribed, so we assemble the whole system.
+    // TODO: This is a waste of time in the first nonlinear iteration. Check if we can modify the asserts in the
+    // assemble_stokes_system() function to only assemble the RHS.
+    rebuild_stokes_matrix = boundary_velocity_manager.get_prescribed_boundary_velocity_indicators().size()!=0;
+    assemble_newton_stokes_matrix = boundary_velocity_manager.get_prescribed_boundary_velocity_indicators().size()!=0;
 
     compute_current_constraints ();
 
     assemble_stokes_system();
 
-    last_pressure_normalization_adjustment = normalize_pressure(current_linearization_point);
-
     const double initial_newton_residual_vel = system_rhs.block(introspection.block_indices.velocities).l2_norm();
     const double initial_newton_residual_p = system_rhs.block(introspection.block_indices.pressure).l2_norm();
     const double initial_newton_residual = std::sqrt(initial_newton_residual_vel * initial_newton_residual_vel + initial_newton_residual_p * initial_newton_residual_p);
 
-    current_linearization_point = temp_linearization_point;
+    // Swap old content back in:
+    current_linearization_point.block(introspection.block_indices.velocities)
+    .swap(temp_velocity_linearization_point);
 
     pcout << "   Initial Newton Stokes residual = " << initial_newton_residual << ", v = " << initial_newton_residual_vel << ", p = " << initial_newton_residual_p << std::endl << std::endl;
     return initial_newton_residual;
+  }
+
+
+
+  template <int dim>
+  double Simulator<dim>::perform_line_search(const DefectCorrectionResiduals &dcr,
+                                             const bool use_picard,
+                                             const LinearAlgebra::BlockVector &search_direction)
+  {
+    // Many parts of the solver depend on the block layout (velocity = 0,
+    // pressure = 1). For example the linearized_stokes_initial_guess vector or the StokesBlock matrix
+    // wrapper. Let us make sure that this holds (and shorten their names):
+    const unsigned int pressure_block_index = (parameters.include_melt_transport) ?
+                                              introspection.variable("fluid pressure").block_index
+                                              : introspection.block_indices.pressure;
+    const unsigned int velocity_block_index = introspection.block_indices.velocities;
+    Assert(velocity_block_index == 0, ExcNotImplemented());
+    Assert(pressure_block_index == 1, ExcNotImplemented());
+
+    // Create an immutable copy of the original iterate for restoration.
+    // This will be a vector that has ghost entries.
+    const LinearAlgebra::BlockVector original_iterate(current_linearization_point);
+
+    // Then also create a fully distributed copy of the current_linearization_point:
+    LinearAlgebra::BlockVector current_iterate(introspection.index_sets.system_partitioning,
+                                               mpi_communicator);
+    current_iterate = current_linearization_point;
+
+    double step_length_factor = 1.0;
+    unsigned int line_search_iteration = 0;
+
+    // Do the loop for the line search at least once with the full step length.
+    // If line search is disabled we will exit the loop in the first iteration.
+    do
+      {
+        // Compute a candidate solution based on the current search direction and step length
+        // times search direction, and store it in a fully distributed vector.
+        current_iterate.block(velocity_block_index) = original_iterate.block(velocity_block_index);
+        current_iterate.block(pressure_block_index) = original_iterate.block(pressure_block_index);
+
+        current_iterate.block(velocity_block_index).sadd(1.0, step_length_factor, search_direction.block(velocity_block_index));
+        current_iterate.block(pressure_block_index).sadd(1.0, step_length_factor, search_direction.block(pressure_block_index));
+
+        // Update the ghosted vector current_linearization_point with the new candidate solution.
+        // This is the vector the following function calls then all work on.
+        current_linearization_point.block(velocity_block_index) = current_iterate.block(velocity_block_index);
+        current_linearization_point.block(pressure_block_index) = current_iterate.block(pressure_block_index);
+
+        // Rebuild the rhs to determine the new residual.
+        assemble_newton_stokes_matrix = rebuild_stokes_preconditioner = false;
+        rebuild_stokes_matrix = !boundary_velocity_manager.get_prescribed_boundary_velocity_indicators().empty();
+
+        assemble_stokes_system();
+
+        const double test_velocity_residual = system_rhs.block(velocity_block_index).l2_norm();
+        const double test_pressure_residual = system_rhs.block(pressure_block_index).l2_norm();
+        const double test_residual = std::sqrt(test_velocity_residual * test_velocity_residual
+                                               + test_pressure_residual * test_pressure_residual);
+
+        // Determine if the residual has decreased sufficiently.
+        const double alpha = 1e-4;
+        if (test_residual < (1.0 - alpha * step_length_factor) * dcr.residual
+            ||
+            line_search_iteration >= newton_handler->parameters.max_newton_line_search_iterations
+            ||
+            use_picard)
+          {
+            pcout << "      Newton system information: Norm of the rhs: " << test_residual
+                  << ", Derivative scaling factor: " << newton_handler->parameters.newton_derivative_scaling_factor << std::endl;
+            return test_residual;
+          }
+        else
+          {
+            pcout << "   Line search iteration " << line_search_iteration << ", with norm of the rhs "
+                  << test_residual << " and going to " << (1.0 - alpha * step_length_factor) * dcr.residual
+                  << ", relative residual: " << test_residual/dcr.initial_residual << std::endl;
+
+            // The current search direction has not decreased the residual
+            // enough, so we take a smaller step and try again.
+            // TODO: make a parameter out of this.
+            step_length_factor *= 2.0/3.0;
+          }
+
+        ++line_search_iteration;
+        Assert(line_search_iteration <= newton_handler->parameters.max_newton_line_search_iterations,
+               ExcInternalError());
+      }
+    while (true);
   }
 
 
@@ -2519,21 +2805,77 @@ namespace aspect
       }
     return new_linear_stokes_solver_tolerance;
   }
+
+
+
+  template <int dim>
+  void
+  Simulator<dim>::select_default_solver_and_averaging()
+  {
+    if (parameters.stokes_solver_type == Parameters<dim>::StokesSolverType::default_solver)
+      {
+        // Catch all situations that are not supported by the GMG solver:
+        //   - Melt transport
+        //   - Ellipsoidal geometry
+        //   - Locally conservative discretization
+        //   - Implicit reference density profile
+        //   - Periodic boundaries
+        //   - Stokes velocity degree not 2 or 3
+        //   - Material averaging explicitly disabled
+        //   - Robin boundary conditions
+        if (parameters.include_melt_transport == true ||
+            dynamic_cast<const GeometryModel::EllipsoidalChunk<dim>*>(geometry_model.get()) != nullptr ||
+            parameters.use_locally_conservative_discretization == true ||
+            (material_model->is_compressible() == true && parameters.formulation_mass_conservation ==
+             Parameters<dim>::Formulation::MassConservation::implicit_reference_density_profile) ||
+            (geometry_model->get_periodic_boundary_pairs().size()) > 0 ||
+            (parameters.stokes_velocity_degree < 2 || parameters.stokes_velocity_degree > 3) ||
+            parameters.material_averaging == MaterialModel::MaterialAveraging::none ||
+            boundary_convective_heating_manager.get_fixed_convective_heating_boundary_indicators().size() != 0)
+          {
+            // GMG is not supported (yet), by default fall back to AMG.
+            parameters.stokes_solver_type = Parameters<dim>::StokesSolverType::block_amg;
+          }
+        else
+          {
+            // GMG is supported for all other cases
+            parameters.stokes_solver_type = Parameters<dim>::StokesSolverType::block_gmg;
+          }
+      }
+
+    // Now pick an appropriate material averaging for the chosen solver
+    if (parameters.material_averaging == MaterialModel::MaterialAveraging::default_averaging)
+      {
+        if (parameters.stokes_solver_type == Parameters<dim>::StokesSolverType::block_gmg)
+          {
+            // project to Q1 is more accurate, but not supported if:
+            //   - elasticity is enabled
+            //   - the Newton solver is enabled
+            if (parameters.enable_elasticity == true ||
+                parameters.nonlinear_solver == NonlinearSolver::iterated_Advection_and_Newton_Stokes ||
+                parameters.nonlinear_solver == NonlinearSolver::single_Advection_iterated_Newton_Stokes)
+              parameters.material_averaging = MaterialModel::MaterialAveraging::harmonic_average_only_viscosity;
+            else
+              parameters.material_averaging = MaterialModel::MaterialAveraging::project_to_Q1_only_viscosity;
+          }
+        else
+          parameters.material_averaging = MaterialModel::MaterialAveraging::none;
+      }
+  }
 }
+
 // explicit instantiation of the functions we implement in this file
 namespace aspect
 {
 #define INSTANTIATE(dim) \
-  template struct Simulator<dim>::AdvectionField; \
   template double Simulator<dim>::normalize_pressure(LinearAlgebra::BlockVector &vector) const; \
   template void Simulator<dim>::denormalize_pressure(const double pressure_adjustment, \
-                                                     LinearAlgebra::BlockVector &vector, \
-                                                     const LinearAlgebra::BlockVector &relevant_vector) const; \
+                                                     LinearAlgebra::BlockVector &vector) const; \
   template double Simulator<dim>::compute_pressure_scaling_factor () const; \
   template double Simulator<dim>::get_maximal_velocity (const LinearAlgebra::BlockVector &solution) const; \
   template std::pair<double,double> Simulator<dim>::get_extrapolated_advection_field_range (const AdvectionField &advection_field) const; \
   template void Simulator<dim>::maybe_write_timing_output () const; \
-  template bool Simulator<dim>::maybe_write_checkpoint (const time_t, const bool); \
+  template bool Simulator<dim>::maybe_write_checkpoint (const std::time_t, const bool); \
   template bool Simulator<dim>::maybe_do_initial_refinement (const unsigned int max_refinement_level); \
   template void Simulator<dim>::exchange_refinement_flags (); \
   template void Simulator<dim>::maybe_refine_mesh (const double new_time_step, unsigned int &max_refinement_level); \
@@ -2544,22 +2886,32 @@ namespace aspect
   template double Simulator<dim>::compute_initial_stokes_residual(); \
   template bool Simulator<dim>::stokes_matrix_depends_on_solution() const; \
   template bool Simulator<dim>::stokes_A_block_is_symmetric() const; \
-  template void Simulator<dim>::interpolate_onto_velocity_system(const TensorFunction<1,dim> &func, LinearAlgebra::Vector &vec);\
+  template void Simulator<dim>::interpolate_onto_velocity_system(const TensorFunction<1,dim> &func, LinearAlgebra::Vector &vec) const;\
   template void Simulator<dim>::apply_limiter_to_dg_solutions(const AdvectionField &advection_field); \
+  template void Simulator<dim>::compute_unique_advection_support_points(const std::vector<AdvectionField> &advection_fields, \
+                                                                        std::vector<Point<dim>> &support_points, \
+                                                                        std::vector<std::vector<unsigned int>> &support_point_index_by_field) const; \
   template void Simulator<dim>::compute_reactions(); \
   template void Simulator<dim>::initialize_current_linearization_point (); \
-  template void Simulator<dim>::interpolate_material_output_into_advection_field(const AdvectionField &adv_field); \
+  template void Simulator<dim>::interpolate_material_output_into_advection_field(const std::vector<AdvectionField> &adv_field); \
   template void Simulator<dim>::check_consistency_of_formulation(); \
-  template void Simulator<dim>::replace_outflow_boundary_ids(const unsigned int boundary_id_offset); \
+  template void Simulator<dim>::replace_outflow_boundary_ids(const unsigned int boundary_id_offset, \
+                                                             const bool is_composition, \
+                                                             const unsigned int composition_index); \
   template void Simulator<dim>::restore_outflow_boundary_ids(const unsigned int boundary_id_offset); \
   template void Simulator<dim>::check_consistency_of_boundary_conditions() const; \
-  template double Simulator<dim>::compute_initial_newton_residual(const LinearAlgebra::BlockVector &linearized_stokes_initial_guess); \
+  template double Simulator<dim>::compute_initial_newton_residual(); \
+  template double Simulator<dim>::perform_line_search(const DefectCorrectionResiduals &dcr, \
+                                                      const bool use_picard, \
+                                                      const LinearAlgebra::BlockVector &search_direction); \
   template double Simulator<dim>::compute_Eisenstat_Walker_linear_tolerance(const bool EisenstatWalkerChoiceOne, \
                                                                             const double maximum_linear_stokes_solver_tolerance, \
                                                                             const double linear_stokes_solver_tolerance, \
                                                                             const double stokes_residual, \
                                                                             const double newton_residual, \
-                                                                            const double newton_residual_old);
+                                                                            const double newton_residual_old); \
+  template void Simulator<dim>::select_default_solver_and_averaging();
+
 
   ASPECT_INSTANTIATE(INSTANTIATE)
 

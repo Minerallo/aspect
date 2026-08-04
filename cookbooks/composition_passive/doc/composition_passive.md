@@ -1,3 +1,11 @@
+```{tags}
+category:cookbook
+feature:2d
+feature:cartesian
+feature:compositional-fields
+```
+
+(sec:cookbooks:composition-passive)=
 # The passive case.
 
 We will consider the exact same situation as in the previous section but we

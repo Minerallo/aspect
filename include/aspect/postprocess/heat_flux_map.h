@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -40,6 +40,13 @@ namespace aspect
        * Gresho, P. M., Lee, R. L., Sani, R. L., Maslanik, M. K., & Eaton, B. E. (1987).
        * The consistent Galerkin FEM for computing derived boundary quantities in thermal and or fluids
        * problems. International Journal for Numerical Methods in Fluids, 7(4), 371-394.
+       *
+       * The implementation of the method is benchmarked in
+       *
+       * Juliane Dannberg, Rene Gassmöller, Daniele Thallner, Frederick LaCombe, Courtney Sprain (2024).
+       * Changes in core–mantle boundary heat flux patterns throughout the supercontinent cycle,
+       * Geophysical Journal International, Volume 237, Issue 3, June 2024, Pages 1251–1274,
+       * https://doi.org/10.1093/gji/ggae075.
        *
        * In summary, the method solves the temperature equation again on the boundary faces, with known
        * temperatures and solving for the boundary fluxes that satisfy the equation. Since the
@@ -83,6 +90,12 @@ namespace aspect
     class HeatFluxMap : public Interface<dim>, public ::aspect::SimulatorAccess<dim>
     {
       public:
+        /**
+         * Initialize the postprocessor.
+         */
+        void
+        initialize() override;
+
         /**
          * Evaluate the solution for the heat flux.
          */

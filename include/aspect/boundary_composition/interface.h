@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2013 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2013 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -44,45 +44,15 @@ namespace aspect
    */
   namespace BoundaryComposition
   {
-    using namespace dealii;
-
     /**
      * Base class for classes that describe composition boundary values.
      *
      * @ingroup BoundaryCompositions
      */
     template <int dim>
-    class Interface
+    class Interface : public Plugins::InterfaceBase
     {
       public:
-        /**
-         * Destructor. Made virtual to enforce that derived classes also have
-         * virtual destructors.
-         */
-        virtual ~Interface() = default;
-
-        /**
-         * Initialization function. This function is called once at the
-         * beginning of the program after parse_parameters is run and after
-         * the SimulatorAccess (if applicable) is initialized.
-         */
-        virtual void initialize ();
-
-        /**
-         * A function that is called at the beginning of each time step. The
-         * default implementation of the function does nothing, but derived
-         * classes that need more elaborate setups for a given time step may
-         * overload the function.
-         *
-         * The point of this function is to allow complex boundary composition
-         * models to do an initialization step once at the beginning of each
-         * time step. An example would be a model that needs to call an
-         * external program to compute composition changes at sides.
-         */
-        virtual
-        void
-        update ();
-
         /**
          * Return the composition that is to hold at a particular position on
          * the boundary of the domain.
@@ -102,26 +72,6 @@ namespace aspect
         boundary_composition (const types::boundary_id boundary_indicator,
                               const Point<dim> &position,
                               const unsigned int compositional_field) const = 0;
-
-        /**
-         * Declare the parameters this class takes through input files. The
-         * default implementation of this function does not describe any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
-         */
-        static
-        void
-        declare_parameters (ParameterHandler &prm);
-
-        /**
-         * Read the parameters this class declares from the parameter file.
-         * The default implementation of this function does not read any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
-         */
-        virtual
-        void
-        parse_parameters (ParameterHandler &prm);
     };
 
     /**
@@ -130,28 +80,9 @@ namespace aspect
      * @ingroup BoundaryCompositions
      */
     template <int dim>
-    class Manager : public ::aspect::SimulatorAccess<dim>
+    class Manager : public Plugins::ManagerBase<Interface<dim>>, public SimulatorAccess<dim>
     {
       public:
-        /**
-         * Destructor. Made virtual since this class has virtual member
-         * functions.
-         */
-        ~Manager () override;
-
-        /**
-         * A function that is called at the beginning of each time step and
-         * calls the corresponding functions of all created plugins.
-         *
-         * The point of this function is to allow complex boundary composition
-         * models to do an initialization step once at the beginning of each
-         * time step. An example would be a model that needs to call an
-         * external program to compute the composition change at a boundary.
-         */
-        virtual
-        void
-        update ();
-
         /**
          * Declare the parameters of all known boundary composition plugins, as
          * well as the ones this class has itself.
@@ -166,7 +97,7 @@ namespace aspect
          * then let these objects read their parameters as well.
          */
         void
-        parse_parameters (ParameterHandler &prm);
+        parse_parameters (ParameterHandler &prm) override;
 
         /**
          * A function that calls the boundary_composition functions of all the
@@ -206,15 +137,23 @@ namespace aspect
         /**
          * Return a list of names of all boundary composition models currently
          * used in the computation, as specified in the input file.
+         *
+         * @deprecated Use Plugins::ManagerBase::get_active_plugin_names()
+         *   instead.
          */
+        DEAL_II_DEPRECATED
         const std::vector<std::string> &
         get_active_boundary_composition_names () const;
 
         /**
          * Return a list of pointers to all boundary composition models
          * currently used in the computation, as specified in the input file.
+         *
+         * @deprecated Use Plugins::ManagerBase::get_active_plugins()
+         *   instead.
          */
-        const std::vector<std::unique_ptr<Interface<dim>>> &
+        DEAL_II_DEPRECATED
+        const std::list<std::unique_ptr<Interface<dim>>> &
         get_active_boundary_composition_conditions () const;
 
         /**
@@ -225,9 +164,15 @@ namespace aspect
          *
          * This function can only be called if the given template type (the first template
          * argument) is a class derived from the Interface class in this namespace.
+         *
+         * @deprecated Instead of this function, use the
+         *   Plugins::ManagerBase::has_matching_active_plugin() and
+         *   Plugins::ManagerBase::get_matching_active_plugin() functions of the base
+         *   class of the current class.
          */
         template <typename BoundaryCompositionType,
                   typename = typename std::enable_if_t<std::is_base_of<Interface<dim>,BoundaryCompositionType>::value>>
+        DEAL_II_DEPRECATED
         bool
         has_matching_boundary_composition_model () const;
 
@@ -235,15 +180,21 @@ namespace aspect
          * Go through the list of all boundary composition models that have been selected
          * in the input file (and are consequently currently active) and see
          * if one of them has the type specified by the template
-         * argument or can be casted to that type. If so, return a reference
+         * argument or can be cast to that type. If so, return a reference
          * to it. If no boundary composition model is active that matches the given type,
          * throw an exception.
          *
          * This function can only be called if the given template type (the first template
          * argument) is a class derived from the Interface class in this namespace.
+         *
+         * @deprecated Instead of this function, use the
+         *   Plugins::ManagerBase::has_matching_active_plugin() and
+         *   Plugins::ManagerBase::get_matching_active_plugin() functions of the base
+         *   class of the current class.
          */
         template <typename BoundaryCompositionType,
                   typename = typename std::enable_if_t<std::is_base_of<Interface<dim>,BoundaryCompositionType>::value>>
+        DEAL_II_DEPRECATED
         const BoundaryCompositionType &
         get_matching_boundary_composition_model () const;
 
@@ -285,18 +236,6 @@ namespace aspect
                         << "> among the names of registered boundary composition objects.");
       private:
         /**
-         * A list of boundary composition objects that have been requested in the
-         * parameter file.
-         */
-        std::vector<std::unique_ptr<Interface<dim>>> boundary_composition_objects;
-
-        /**
-         * A list of names of boundary composition objects that have been requested
-         * in the parameter file.
-         */
-        std::vector<std::string> model_names;
-
-        /**
          * A list of enums of boundary composition operators that have been
          * requested in the parameter file. Each name is associated
          * with a model_name, and is used to modify the composition
@@ -325,11 +264,7 @@ namespace aspect
     bool
     Manager<dim>::has_matching_boundary_composition_model () const
     {
-      for (const auto &p : boundary_composition_objects)
-        if (Plugins::plugin_type_matches<BoundaryCompositionType>(*p))
-          return true;
-
-      return false;
+      return this->template has_matching_active_plugin<BoundaryCompositionType>();
     }
 
 
@@ -340,23 +275,8 @@ namespace aspect
     const BoundaryCompositionType &
     Manager<dim>::get_matching_boundary_composition_model () const
     {
-      AssertThrow(has_matching_boundary_composition_model<BoundaryCompositionType> (),
-                  ExcMessage("You asked BoundaryComposition::Manager::get_boundary_composition_model() for a "
-                             "boundary composition model of type <" + boost::core::demangle(typeid(BoundaryCompositionType).name()) + "> "
-                             "that could not be found in the current model. Activate this "
-                             "boundary composition model in the input file."));
-
-      typename std::vector<std::unique_ptr<Interface<dim>>>::const_iterator boundary_composition_model;
-      for (typename std::vector<std::unique_ptr<Interface<dim>>>::const_iterator
-           p = boundary_composition_objects.begin();
-           p != boundary_composition_objects.end(); ++p)
-        if (Plugins::plugin_type_matches<BoundaryCompositionType>(*(*p)))
-          return Plugins::get_plugin_as_type<BoundaryCompositionType>(*(*p));
-
-      // We will never get here, because we had the Assert above. Just to avoid warnings.
-      return Plugins::get_plugin_as_type<BoundaryCompositionType>(*(*boundary_composition_model));
+      return this->template get_matching_active_plugin<BoundaryCompositionType>();
     }
-
 
 
 

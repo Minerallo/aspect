@@ -7,7 +7,7 @@
 set Dimension                              = 3
 set Start time                             = 0
 set End time                               = 0
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set Output directory                       = output-stokes
 
 ############### Parameters describing the model
@@ -113,6 +113,10 @@ subsection Postprocess
   set List of postprocessors = visualization, velocity statistics
 
   subsection Visualization
-    set List of output variables = density, viscosity
+    set List of output variables = material properties
+
+    subsection Material properties
+      set List of material properties = density, viscosity
+    end
   end
 end

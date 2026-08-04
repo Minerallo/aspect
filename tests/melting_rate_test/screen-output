@@ -1,0 +1,37 @@
+
+Number of active cells: 1,024 (on 6 levels)
+Number of degrees of freedom: 39,050 (8,450+4,161+8,450+1,089+4,225+4,225+4,225+4,225)
+
+*** Timestep 0:  t=0 years, dt=0 years
+   Rebuilding Stokes preconditioner...
+   Solving Stokes system (AMG)... 36+0 iterations.
+   Solving fluid velocity system... 13 iterations.
+
+   Postprocessing:
+     RMS, max velocity:                  7.94e-24 m/year, 4.09e-23 m/year
+     Temperature min/avg/max:            3400 K, 4200 K, 5000 K
+     Heat fluxes through boundary parts: 0 W, 0 W, 0 W, 0 W
+     Writing graphical output:           output-melting_rate_test/solution/solution-00000
+
+*** Timestep 1:  t=1e+06 years, dt=1e+06 years
+   Solving composition reactions... in 10 substep(s).
+
+   Postprocessing:
+     RMS, max velocity:                  7.94e-24 m/year, 4.09e-23 m/year
+     Temperature min/avg/max:            3400 K, 4200 K, 5000 K
+     Heat fluxes through boundary parts: 0 W, 0 W, 0 W, 0 W
+     Writing graphical output:           output-melting_rate_test/solution/solution-00001
+
+*** Timestep 2:  t=2e+06 years, dt=1e+06 years
+   Solving composition reactions... in 10 substep(s).
+
+   Postprocessing:
+     RMS, max velocity:                  7.94e-24 m/year, 4.09e-23 m/year
+     Temperature min/avg/max:            3400 K, 4200 K, 5000 K
+     Heat fluxes through boundary parts: 0 W, 0 W, 0 W, 0 W
+     Writing graphical output:           output-melting_rate_test/solution/solution-00002
+
+Termination requested by criterion: end time
+
+
+

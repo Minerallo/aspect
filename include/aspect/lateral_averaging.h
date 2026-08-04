@@ -28,8 +28,6 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
   namespace internal
   {
     /**
@@ -111,15 +109,6 @@ namespace aspect
   {
     public:
       /**
-       * @deprecated: This function is deprecated and only maintained for backward compatibility.
-       * Use the function compute_lateral_averages() with the same arguments instead.
-       */
-      DEAL_II_DEPRECATED
-      std::vector<std::vector<double>>
-      get_averages(const unsigned int n_slices,
-                   const std::vector<std::string> &property_names) const;
-
-      /**
        * Return a depth profile of lateral averages of the selected
        * @p property_names. This function is a convenience interface for
        * the other functions of the same name and is more efficient for
@@ -198,6 +187,18 @@ namespace aspect
       std::vector<std::vector<double>>
       compute_lateral_averages(const std::vector<double> &depth_bounds,
                                std::vector<std::unique_ptr<internal::FunctorBase<dim>>> &functors) const;
+
+      /**
+       * Fill the argument with a set of lateral averages of the current
+       * adiabatic density field. The function fills a vector that contains average
+       * field values over slices of the domain of same depth.
+       *
+       * @param values The output vector of laterally averaged values. The
+       * function takes the pre-existing size of this vector as the number of
+       * depth slices.
+       */
+      void
+      get_density_averages(std::vector<double> &values) const;
 
       /**
        * Fill the argument with a set of lateral averages of the current

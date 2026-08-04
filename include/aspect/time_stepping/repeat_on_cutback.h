@@ -28,8 +28,6 @@ namespace aspect
 {
   namespace TimeStepping
   {
-    using namespace dealii;
-
     /**
      * A class that implements a time stepping plugin to repeat a time step if the
      * next time step is significantly smaller than the last step.
@@ -68,6 +66,9 @@ namespace aspect
         /**
          * Parameter to determine how much smaller the time step should be
          * repeated as.
+         *
+         * This variable is read from the parameter file through a parameter
+         * called 'Cut back amount'.
          */
         double cut_back_amount;
 
@@ -75,6 +76,9 @@ namespace aspect
          * Parameter that controls when to repeat a time step. If the newly
          * computed step size is smaller than the last step size multiplied by
          * this factor, the step is repeated.
+         *
+         * This variable is read from the parameter file through a parameter
+         * called 'Relative repeat threshold'.
          */
         double repeat_threshold;
     };

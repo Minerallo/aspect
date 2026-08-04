@@ -1,5 +1,5 @@
 (cha:answers)=
-# Finding answers to more questions
+# Finding answers to questions
 
 If you have questions that go beyond this manual, there are a number of
 resources:
@@ -16,8 +16,8 @@ resources:
     library (the dependency on Trilinos and p4est is primarily through
     deal.II, and not directly visible in the
     ASPECT source code). If you have particular
-    questions about deal.II, contact the mailing lists described at
-    <https://www.dealii.org/mail.html>.
+    questions about deal.II, use the official mailing list
+    linked at <https://dealii.org/getting_help/contact/>.
 
 -   In case of more general questions about mantle convection, you can ask on
     the CIG mantle convection forum at

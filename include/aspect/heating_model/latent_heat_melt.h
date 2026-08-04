@@ -29,8 +29,6 @@ namespace aspect
 {
   namespace HeatingModel
   {
-    using namespace dealii;
-
     /**
      * A class that implements a standard formulation of latent heat
      * of melting. This assumes that there is a compositional field
@@ -53,6 +51,13 @@ namespace aspect
         evaluate (const MaterialModel::MaterialModelInputs<dim> &material_model_inputs,
                   const MaterialModel::MaterialModelOutputs<dim> &material_model_outputs,
                   HeatingModel::HeatingModelOutputs &heating_model_outputs) const override;
+
+        /**
+         * Specify which material model outputs the heating model requires
+         * for computing the heating terms.
+         */
+        MaterialModel::MaterialProperties::Property
+        get_required_properties () const override;
 
         /**
          * @name Functions used in dealing with run-time parameters
@@ -80,8 +85,16 @@ namespace aspect
         create_additional_material_model_outputs(MaterialModel::MaterialModelOutputs<dim> &outputs) const override;
 
       private:
-        // entropy change upon melting
+        /**
+         * Entropy change upon melting.
+         *
+         * This variable is read from the parameter file through a parameter called 'Melting entropy change'.
+         */
         double melting_entropy_change;
+
+        /**
+         * This variable is read from the parameter file through a parameter called 'Retrieve entropy change from material model'.
+         */
         bool   retrieve_entropy_change_from_material_model;
     };
   }

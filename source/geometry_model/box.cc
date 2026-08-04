@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,7 +18,7 @@
   <http://www.gnu.org/licenses/>.
 */
 
-
+#include <algorithm>
 #include <aspect/geometry_model/box.h>
 #include <aspect/geometry_model/initial_topography_model/zero_topography.h>
 #include <aspect/mesh_deformation/interface.h>
@@ -39,35 +39,32 @@ namespace aspect
     void
     Box<dim>::initialize ()
     {
-      // Get pointer to initial topography model
-      topo_model = const_cast<InitialTopographyModel::Interface<dim>*>(&this->get_initial_topography_model());
-
       // Check that initial topography is required.
       // If so, connect the initial topography function
       // to the right signals: It should be applied after
       // the final initial adaptive refinement and after a restart.
-      if (Plugins::plugin_type_matches<InitialTopographyModel::ZeroTopography<dim>>(*topo_model) == false)
+      if (Plugins::plugin_type_matches<InitialTopographyModel::ZeroTopography<dim>>(this->get_initial_topography_model()) == false)
         {
           this->get_signals().pre_set_initial_state.connect(
             [&](typename parallel::distributed::Triangulation<dim> &tria)
           {
-            this->topography(tria);
+            this->add_topography_to_mesh(tria);
           }
           );
           this->get_signals().post_resume_load_user_data.connect(
             [&](typename parallel::distributed::Triangulation<dim> &tria)
           {
-            this->topography(tria);
+            this->add_topography_to_mesh(tria);
           }
           );
         }
     }
 
 
+
     template <int dim>
     void
-    Box<dim>::
-    create_coarse_mesh (parallel::distributed::Triangulation<dim> &coarse_grid) const
+    Box<dim>::create_coarse_mesh (parallel::distributed::Triangulation<dim> &coarse_grid) const
     {
       const std::vector<unsigned int> rep_vec(repetitions.begin(), repetitions.end());
       GridGenerator::subdivided_hyper_rectangle (coarse_grid,
@@ -89,17 +86,18 @@ namespace aspect
         coarse_grid.add_periodicity (periodicity_vector);
     }
 
+
+
     template <int dim>
     void
-    Box<dim>::
-    topography (typename parallel::distributed::Triangulation<dim> &grid) const
+    Box<dim>::add_topography_to_mesh (typename parallel::distributed::Triangulation<dim> &grid) const
     {
       // Here we provide GridTools with the function to displace vertices
       // in the vertical direction by an amount specified by the initial topography model
       GridTools::transform(
         [&](const Point<dim> &p) -> Point<dim>
       {
-        return this->add_topography(p);
+        return this->add_topography_to_point(p);
       },
       grid);
 
@@ -107,10 +105,10 @@ namespace aspect
     }
 
 
+
     template <int dim>
     Point<dim>
-    Box<dim>::
-    add_topography (const Point<dim> &x_y_z) const
+    Box<dim>::add_topography_to_point (const Point<dim> &x_y_z) const
     {
       // Get the surface x (,y) point
       Point<dim-1> surface_point;
@@ -118,7 +116,7 @@ namespace aspect
         surface_point[d] = x_y_z[d];
 
       // Get the surface topography at this point
-      const double topo = topo_model->value(surface_point);
+      const double topo = this->get_initial_topography_model().value(surface_point);
 
       // Compute the displacement of the z coordinate
       const double ztopo = (x_y_z[dim-1] - box_origin[dim-1]) / extents[dim-1] * topo;
@@ -131,10 +129,10 @@ namespace aspect
     }
 
 
+
     template <int dim>
     std::set<types::boundary_id>
-    Box<dim>::
-    get_used_boundary_indicators () const
+    Box<dim>::get_used_boundary_indicators () const
     {
       // boundary indicators are zero through 2*dim-1
       std::set<types::boundary_id> s;
@@ -144,10 +142,10 @@ namespace aspect
     }
 
 
+
     template <int dim>
     std::map<std::string,types::boundary_id>
-    Box<dim>::
-    get_symbolic_boundary_names_map () const
+    Box<dim>::get_symbolic_boundary_names_map () const
     {
       switch (dim)
         {
@@ -182,10 +180,10 @@ namespace aspect
     }
 
 
+
     template <int dim>
     std::set<std::pair<std::pair<types::boundary_id, types::boundary_id>, unsigned int>>
-    Box<dim>::
-    get_periodic_boundary_pairs () const
+    Box<dim>::get_periodic_boundary_pairs () const
     {
       std::set<std::pair<std::pair<types::boundary_id, types::boundary_id>, unsigned int>> periodic_boundaries;
       for ( unsigned int i=0; i<dim; ++i)
@@ -229,12 +227,16 @@ namespace aspect
       return extents;
     }
 
+
+
     template <int dim>
     const std::array<unsigned int, dim> &
     Box<dim>::get_repetitions () const
     {
       return repetitions;
     }
+
+
 
     template <int dim>
     Point<dim>
@@ -243,13 +245,15 @@ namespace aspect
       return box_origin;
     }
 
+
+
     template <int dim>
     double
-    Box<dim>::
-    length_scale () const
+    Box<dim>::length_scale () const
     {
       return 0.01*extents[0];
     }
+
 
 
     template <int dim>
@@ -262,11 +266,12 @@ namespace aspect
         surface_point[d] = position[d];
 
       // Get the surface topography at this point
-      const double topo = topo_model->value(surface_point);
+      const double topo = this->get_initial_topography_model().value(surface_point);
 
       const double d = extents[dim-1] + topo - (position(dim-1)-box_origin[dim-1]);
-      return std::min (std::max (d, 0.), maximal_depth());
+      return std::clamp(d, 0., maximal_depth());
     }
+
 
 
     template <int dim>
@@ -275,6 +280,7 @@ namespace aspect
     {
       return (position(dim-1)-box_origin[dim-1]) - extents[dim-1];
     }
+
 
 
     template <int dim>
@@ -294,19 +300,22 @@ namespace aspect
       for (unsigned int d=0; d<dim-1; ++d)
         surface_point[d] = p[d];
 
-      const double topo = topo_model->value(surface_point);
+      const double topo = this->get_initial_topography_model().value(surface_point);
       p[dim-1] = extents[dim-1]+box_origin[dim-1]-depth+topo;
 
       return p;
     }
 
 
+
     template <int dim>
     double
     Box<dim>::maximal_depth() const
     {
-      return extents[dim-1] + topo_model->max_topography();
+      return extents[dim-1] + this->get_initial_topography_model().max_topography();
     }
+
+
 
     template <int dim>
     bool
@@ -314,6 +323,8 @@ namespace aspect
     {
       return false;
     }
+
+
 
     template <int dim>
     bool
@@ -354,7 +365,7 @@ namespace aspect
                 surface_point[d] = point[d];
 
               // Get the surface topography at this point
-              const double topo = topo_model->value(surface_point);
+              const double topo = this->get_initial_topography_model().value(surface_point);
               max_point[dim-1] += topo;
             }
 
@@ -368,6 +379,8 @@ namespace aspect
         }
     }
 
+
+
     template <int dim>
     std::array<double,dim>
     Box<dim>::cartesian_to_natural_coordinates(const Point<dim> &position_point) const
@@ -380,12 +393,14 @@ namespace aspect
     }
 
 
+
     template <int dim>
     aspect::Utilities::Coordinates::CoordinateSystem
     Box<dim>::natural_coordinate_system() const
     {
       return aspect::Utilities::Coordinates::CoordinateSystem::cartesian;
     }
+
 
 
     template <int dim>
@@ -400,10 +415,10 @@ namespace aspect
     }
 
 
+
     template <int dim>
     void
-    Box<dim>::
-    declare_parameters (ParameterHandler &prm)
+    Box<dim>::declare_parameters (ParameterHandler &prm)
     {
       prm.enter_subsection("Geometry model");
       {
@@ -450,7 +465,6 @@ namespace aspect
           prm.declare_entry ("Z periodic", "false",
                              Patterns::Bool (),
                              "Whether the box should be periodic in Z direction");
-
         }
         prm.leave_subsection();
       }
@@ -515,9 +529,7 @@ namespace aspect
                                    "``ReferenceCell''). You can also use symbolic names ``left'', ``right'', "
                                    "etc., to refer to these boundaries in input files. "
                                    "It is also possible to add initial topography to the box model. Note however that "
-                                   "this is done after the last initial adaptive refinement cycle. "
-                                   "Also, initial topography is supposed to be small, as it is not taken into account "
-                                   "when depth or a representative point is computed. ")
+                                   "this is done after the last initial adaptive refinement cycle. ")
 
 
   }

@@ -1,7 +1,14 @@
+```{tags}
+category:cookbook
+feature:2d
+feature:spherical
+feature:compositional-fields
+```
+
 (sec:cookbooks:artificial-viscosity-smoothing)=
 # Artificial viscosity smoothing
 
-*This section was contributed by Ryan Grove*
+*This section was contributed by Ryan Grove.*
 
 Standard finite element discretizations of advection-diffusion equations
 introduce unphysical oscillations around steep gradients. Therefore,

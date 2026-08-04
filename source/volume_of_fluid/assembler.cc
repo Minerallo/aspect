@@ -97,6 +97,8 @@ namespace aspect
 
       for (unsigned int q = 0; q< n_q_points; ++q)
         {
+          const double JxW = scratch.finite_element_values.JxW(q);
+
           // Init FE field vals
           for (unsigned int k=0; k<volume_of_fluid_dofs_per_cell; ++k)
             scratch.phi_field[k] = scratch.finite_element_values[solution_field].value(main_fe.component_to_system_index(solution_component, k), q);
@@ -104,13 +106,13 @@ namespace aspect
           for (unsigned int i = 0; i<volume_of_fluid_dofs_per_cell; ++i)
             {
               data.local_rhs[i] += scratch.old_field_values[q] *
-                                   scratch.finite_element_values.JxW(q);
+                                   JxW;
               for (unsigned int j=0; j<volume_of_fluid_dofs_per_cell; ++j)
                 data.local_matrix (i, j) += scratch.phi_field[i] *
                                             scratch.phi_field[j] *
-                                            scratch.finite_element_values.JxW(q);
+                                            JxW;
             }
-          scratch.volume += scratch.finite_element_values.JxW(q);
+          scratch.volume += JxW;
         }
 
       for (const unsigned int face_no : cell->face_indices())
@@ -492,7 +494,7 @@ namespace aspect
               // that correspond to the solution_field we are interested in
               neighbor->get_dof_indices (neighbor_dof_indices);
 
-              const unsigned int f_rhs_ind = Assemblers::nth_interface_matrix(cell->reference_cell(), face_no);
+              const unsigned int f_rhs_ind = Assemblers::nth_interface_matrix<dim>(cell->reference_cell(), face_no);
 
               for (unsigned int i=0; i<volume_of_fluid_dofs_per_cell; ++i)
                 data.neighbor_dof_indices[f_rhs_ind][i]
@@ -588,7 +590,7 @@ namespace aspect
               std::vector<types::global_dof_index> neighbor_dof_indices (scratch.subface_finite_element_values.get_fe().dofs_per_cell);
               neighbor_child->get_dof_indices (neighbor_dof_indices);
 
-              const unsigned int f_rhs_ind = Assemblers::nth_interface_matrix(cell->reference_cell(), face_no, subface_no);
+              const unsigned int f_rhs_ind = Assemblers::nth_interface_matrix<dim>(cell->reference_cell(), face_no, subface_no);
 
               for (unsigned int i=0; i<volume_of_fluid_dofs_per_cell; ++i)
                 data.neighbor_dof_indices[f_rhs_ind][i]

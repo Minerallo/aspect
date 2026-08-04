@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2015 - 2023 by the authors of the ASPECT code.
+ Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -29,8 +29,6 @@
 
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/fe/fe_values.h>
-
-#include <aspect/citation_info.h>
 
 
 namespace aspect
@@ -149,9 +147,10 @@ namespace aspect
 
                         const double density = out.densities[q];
                         const double r_q = in.position[q].norm();
+                        const double JxW = fe_values.JxW(q);
 
-                        integrated_density_cos_component += density * (1./r_q) * std::pow(r_q/outer_radius,ideg+1) * cos_component * fe_values.JxW(q);
-                        integrated_density_sin_component += density * (1./r_q) * std::pow(r_q/outer_radius,ideg+1) * sin_component * fe_values.JxW(q);
+                        integrated_density_cos_component += density * (1./r_q) * Utilities::pow(r_q/outer_radius,ideg+1) * cos_component * JxW;
+                        integrated_density_sin_component += density * (1./r_q) * Utilities::pow(r_q/outer_radius,ideg+1) * sin_component * JxW;
                       }
                   }
               SH_density_coecos.push_back(integrated_density_cos_component);
@@ -182,7 +181,7 @@ namespace aspect
     {
       // Get a pointer to the boundary densities postprocessor.
       const Postprocess::BoundaryDensities<3> &boundary_densities =
-        this->get_postprocess_manager().template get_matching_postprocessor<Postprocess::BoundaryDensities<3>>();
+        this->get_postprocess_manager().template get_matching_active_plugin<Postprocess::BoundaryDensities<3>>();
 
       const double top_layer_average_density = boundary_densities.density_at_top();
       const double bottom_layer_average_density = boundary_densities.density_at_bottom();
@@ -270,7 +269,7 @@ namespace aspect
                       {
                         // Get a reference to the dynamic topography postprocessor.
                         const Postprocess::DynamicTopography<3> &dynamic_topography =
-                          this->get_postprocess_manager().template get_matching_postprocessor<Postprocess::DynamicTopography<3>>();
+                          this->get_postprocess_manager().template get_matching_active_plugin<Postprocess::DynamicTopography<3>>();
 
                         // Get the already-computed dynamic topography solution.
                         const LinearAlgebra::BlockVector &topo_vector = dynamic_topography.topography_vector();
@@ -317,7 +316,7 @@ namespace aspect
                       {
                         // Get a reference to the dynamic topography postprocessor.
                         const Postprocess::DynamicTopography<3> &dynamic_topography =
-                          this->get_postprocess_manager().template get_matching_postprocessor<Postprocess::DynamicTopography<3>>();
+                          this->get_postprocess_manager().template get_matching_active_plugin<Postprocess::DynamicTopography<3>>();
 
                         // Get the already-computed dynamic topography solution.
                         const LinearAlgebra::BlockVector &topo_vector = dynamic_topography.topography_vector();
@@ -398,6 +397,10 @@ namespace aspect
                    dim == 3,
                    ExcMessage("The geoid postprocessor is currently only implemented for the 3d spherical shell geometry model."));
 
+      Utilities::create_directory (this->get_output_directory() + "geoid/",
+                                   this->get_mpi_communicator(),
+                                   /* silent=*/true);
+
       const GeometryModel::SphericalShell<dim> &geometry_model =
         Plugins::get_plugin_as_type<const GeometryModel::SphericalShell<dim>> (this->get_geometry_model());
 
@@ -467,9 +470,9 @@ namespace aspect
                   surface_topo_contribution_coesin.push_back(coesin_surface_topo);
 
                   const double coecos_CMB_topo = (4 * numbers::PI * G / (surface_gravity * (2 * ideg + 1)))
-                                                 * CMB_delta_rho*SH_CMB_topo_coes.second.first.at(ind)*inner_radius*std::pow(inner_radius/outer_radius,ideg+1);
+                                                 * CMB_delta_rho*SH_CMB_topo_coes.second.first.at(ind)*inner_radius*Utilities::pow(inner_radius/outer_radius,ideg+1);
                   const double coesin_CMB_topo = (4 * numbers::PI * G / (surface_gravity * (2 * ideg + 1)))
-                                                 * CMB_delta_rho*SH_CMB_topo_coes.second.second.at(ind)*inner_radius*std::pow(inner_radius/outer_radius,ideg+1);
+                                                 * CMB_delta_rho*SH_CMB_topo_coes.second.second.at(ind)*inner_radius*Utilities::pow(inner_radius/outer_radius,ideg+1);
                   CMB_topo_contribution_coecos.push_back(coecos_CMB_topo);
                   CMB_topo_contribution_coesin.push_back(coesin_CMB_topo);
 
@@ -585,7 +588,7 @@ namespace aspect
             }
 
           const std::string density_anomaly_contribution_SH_coes_filename = this->get_output_directory() +
-                                                                            "density_anomaly_contribution_SH_coefficients." +
+                                                                            "geoid/density_anomaly_contribution_SH_coefficients." +
                                                                             dealii::Utilities::int_to_string(this->get_timestep_number(), 5);
 
           // Because each processor already held all the SH coefficients from density anomaly contribution, we only need to stop by the processor 0 to get the data.
@@ -628,7 +631,7 @@ namespace aspect
             }
 
           const std::string surface_topo_contribution_SH_coes_filename = this->get_output_directory() +
-                                                                         "surface_topography_contribution_SH_coefficients." +
+                                                                         "geoid/surface_topography_contribution_SH_coefficients." +
                                                                          dealii::Utilities::int_to_string(this->get_timestep_number(), 5);
 
           // Because each processor already held all the SH coefficients from surface topography contribution,
@@ -676,7 +679,7 @@ namespace aspect
             }
 
           const std::string CMB_topo_contribution_SH_coes_filename = this->get_output_directory() +
-                                                                     "CMB_topography_contribution_SH_coefficients." +
+                                                                     "geoid/CMB_topography_contribution_SH_coefficients." +
                                                                      dealii::Utilities::int_to_string(this->get_timestep_number(), 5);
 
           // Because each processor already held all the SH coefficients from CMB topography contribution, we only need to stop by the processor 0
@@ -723,7 +726,7 @@ namespace aspect
             }
 
           const std::string geoid_anomaly_SH_coes_filename = this->get_output_directory() +
-                                                             "geoid_anomaly_SH_coefficients." +
+                                                             "geoid/geoid_anomaly_SH_coefficients." +
                                                              dealii::Utilities::int_to_string(this->get_timestep_number(), 5);
 
           // Because each processor already held all the geoid anomaly SH coefficients, we only need to stop by the processor 0 to get the data.
@@ -788,7 +791,7 @@ namespace aspect
         }
 
       const std::string filename = this->get_output_directory() +
-                                   "geoid_anomaly." +
+                                   "geoid/geoid_anomaly." +
                                    dealii::Utilities::int_to_string(this->get_timestep_number(), 5);
 
       Utilities::collect_and_write_file_content(filename, output.str(), this->get_mpi_communicator());
@@ -870,7 +873,7 @@ namespace aspect
             }
 
           const std::string filename = this->get_output_directory() +
-                                       "gravity_anomaly." +
+                                       "geoid/gravity_anomaly." +
                                        dealii::Utilities::int_to_string(this->get_timestep_number(), 5);
 
           Utilities::collect_and_write_file_content(filename, output_gravity_anomaly.str(), this->get_mpi_communicator());

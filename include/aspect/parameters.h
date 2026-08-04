@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -30,8 +30,6 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
   struct CompositionalFieldDescription;
 
   // forward declaration:
@@ -66,19 +64,20 @@ namespace aspect
     {
       enum Kind
       {
-        single_Advection_single_Stokes,
-        iterated_Advection_and_Stokes,
-        single_Advection_iterated_Stokes,
-        no_Advection_iterated_Stokes,
+        no_Advection_no_Stokes,
         no_Advection_single_Stokes,
+        no_Advection_single_Stokes_first_timestep_only,
+        no_Advection_iterated_Stokes,
         no_Advection_iterated_defect_correction_Stokes,
-        single_Advection_iterated_defect_correction_Stokes,
-        iterated_Advection_and_defect_correction_Stokes,
-        iterated_Advection_and_Newton_Stokes,
-        single_Advection_iterated_Newton_Stokes,
         single_Advection_no_Stokes,
-        first_timestep_only_single_Stokes,
-        no_Advection_no_Stokes
+        single_Advection_single_Stokes,
+        single_Advection_iterated_Stokes,
+        single_Advection_iterated_defect_correction_Stokes,
+        single_Advection_iterated_Newton_Stokes,
+        iterated_Advection_no_Stokes,
+        iterated_Advection_and_Stokes,
+        iterated_Advection_and_defect_correction_Stokes,
+        iterated_Advection_and_Newton_Stokes
       };
     };
 
@@ -96,6 +95,83 @@ namespace aspect
              :
              false;
     }
+
+    static
+    bool
+    solve_Stokes_iteratively(const typename NonlinearSolver::Kind &input)
+    {
+      return input == NonlinearSolver::no_Advection_iterated_Stokes ||
+             input == NonlinearSolver::no_Advection_iterated_defect_correction_Stokes ||
+             input == NonlinearSolver::single_Advection_iterated_Stokes ||
+             input == NonlinearSolver::single_Advection_iterated_defect_correction_Stokes ||
+             input == NonlinearSolver::single_Advection_iterated_Newton_Stokes ||
+             input == NonlinearSolver::iterated_Advection_and_Stokes ||
+             input == NonlinearSolver::iterated_Advection_and_defect_correction_Stokes ||
+             input == NonlinearSolver::iterated_Advection_and_Newton_Stokes
+             ?
+             true
+             :
+             false;
+    }
+
+    /**
+     * A struct that contains the enums to decide what to do when a nonlinear solver fails.
+     */
+    struct NonlinearSolverFailureStrategy
+    {
+      enum Kind
+      {
+        continue_with_next_timestep,
+        cut_timestep_size,
+        abort_program
+      };
+
+      /**
+       * Parse the enum value from a string.
+       */
+      static
+      Kind
+      parse(const std::string &input)
+      {
+        if (input == "continue with next timestep")
+          return continue_with_next_timestep;
+        else if (input == "cut timestep size")
+          return cut_timestep_size;
+        else if (input == "abort program")
+          return abort_program;
+        else
+          AssertThrow(false, ExcNotImplemented());
+
+        return Kind();
+      }
+    };
+
+    /**
+     * A struct that contains the enums to decide what to do when a linear solver fails.
+     */
+    struct LinearSolverFailureStrategy
+    {
+      enum Kind
+      {
+        continue_with_nonlinear_solver,
+        abort
+      };
+
+      /**
+       * Parse the enum value from a string.
+       */
+      static
+      Kind
+      parse(const std::string &input)
+      {
+        if (input == "continue with nonlinear solver")
+          return continue_with_nonlinear_solver;
+        else if (input == "abort")
+          return abort;
+        else
+          AssertThrow(false, ExcNotImplemented());
+      }
+    };
 
     /**
      * @brief The NullspaceRemoval struct
@@ -323,12 +399,13 @@ namespace aspect
       {
         block_amg,
         direct_solver,
-        block_gmg
+        block_gmg,
+        default_solver
       };
 
       static const std::string pattern()
       {
-        return "block AMG|direct solver|block GMG";
+        return "default solver|block AMG|direct solver|block GMG";
       }
 
       static Kind
@@ -340,6 +417,39 @@ namespace aspect
           return direct_solver;
         else if (input == "block GMG")
           return block_gmg;
+        else if (input == "default solver")
+          return default_solver;
+        else
+          AssertThrow(false, ExcNotImplemented());
+
+        return Kind();
+      }
+    };
+
+    /**
+     * This enum represents the different choices for the linear solver
+     * for the Stoke system. See @p stokes_solver_type.
+     */
+    struct StokesGMGType
+    {
+      enum Kind
+      {
+        local_smoothing,
+        global_coarsening
+      };
+
+      static const std::string pattern()
+      {
+        return "local smoothing|global coarsening";
+      }
+
+      static Kind
+      parse(const std::string &input)
+      {
+        if (input == "local smoothing")
+          return local_smoothing;
+        else if (input == "global coarsening")
+          return global_coarsening;
         else
           AssertThrow(false, ExcNotImplemented());
 
@@ -379,6 +489,37 @@ namespace aspect
     };
 
     /**
+     * This enum represents the different choices for the reaction solver.
+     * See @p reaction_solver_type.
+     */
+    struct ReactionSolverType
+    {
+      enum Kind
+      {
+        ARKode,
+        fixed_step
+      };
+
+      static const std::string pattern()
+      {
+        return "ARKode|fixed step";
+      }
+
+      static Kind
+      parse(const std::string &input)
+      {
+        if (input == "ARKode")
+          return ARKode;
+        else if (input == "fixed step")
+          return fixed_step;
+        else
+          AssertThrow(false, ExcNotImplemented());
+
+        return Kind();
+      }
+    };
+
+    /**
      * Use the struct aspect::CompositionalFieldDescription
      */
     using CompositionalFieldDescription DEAL_II_DEPRECATED = aspect::CompositionalFieldDescription;
@@ -404,9 +545,11 @@ namespace aspect
      *
      * @param prm The object in which the run-time parameters are to be
      * declared.
+     * @param mpi_rank The MPI rank of the current process. This is needed
+     * to only print deprecation warnings from rank 0.
      */
     static
-    void declare_parameters (ParameterHandler &prm);
+    void declare_parameters (ParameterHandler &prm, const unsigned int mpi_rank);
 
     /**
      * Read run-time parameters from an object that has previously parsed an
@@ -450,6 +593,8 @@ namespace aspect
      * @{
      */
     typename NonlinearSolver::Kind nonlinear_solver;
+    typename NonlinearSolverFailureStrategy::Kind nonlinear_solver_failure_strategy;
+    typename LinearSolverFailureStrategy::Kind linear_solver_failure_strategy;
 
     typename AdvectionStabilizationMethod::Kind advection_stabilization_method;
     double                         nonlinear_tolerance;
@@ -471,6 +616,7 @@ namespace aspect
     unsigned int                   max_nonlinear_iterations_in_prerefinement;
     bool                           use_operator_splitting;
     std::string                    world_builder_file;
+    unsigned int                   n_particle_managers;
 
     /**
      * @}
@@ -488,7 +634,9 @@ namespace aspect
 
     // subsection: Stokes solver parameters
     bool                           use_direct_stokes_solver;
+    bool                           use_bfbt;
     typename StokesSolverType::Kind stokes_solver_type;
+    typename StokesGMGType::Kind stokes_gmg_type;
     typename StokesKrylovType::Kind stokes_krylov_type;
     unsigned int                    idr_s_parameter;
 
@@ -508,6 +656,8 @@ namespace aspect
     bool                           AMG_output_details;
 
     // subsection: Operator splitting parameters
+    typename ReactionSolverType::Kind reaction_solver_type;
+    double                         ARKode_relative_tolerance;
     double                         reaction_time_step;
     unsigned int                   reaction_steps_per_advection_step;
 
@@ -567,14 +717,6 @@ namespace aspect
     bool                           enable_prescribed_dilation;
 
     /**
-     * Map from boundary id to a pair "components", "traction boundary type",
-     * where components is of the format "[x][y][z]" and the traction type is
-     * mapped to one of the plugins of traction boundary conditions (e.g.
-     * "function")
-     */
-    std::map<types::boundary_id, std::pair<std::string,std::string>> prescribed_traction_boundary_indicators;
-
-    /**
      * A set of boundary ids on which the boundary_heat_flux objects
      * will be applied.
      */
@@ -620,7 +762,7 @@ namespace aspect
     double                         stabilization_gamma;
     double                         discontinuous_penalty;
     bool                           use_limiter_for_discontinuous_temperature_solution;
-    bool                           use_limiter_for_discontinuous_composition_solution;
+    std::vector<bool>              use_limiter_for_discontinuous_composition_solution;
     double                         global_temperature_max_preset;
     double                         global_temperature_min_preset;
     std::vector<double>            global_composition_max_preset;
@@ -637,6 +779,11 @@ namespace aspect
      */
     int                            checkpoint_time_secs;
     int                            checkpoint_steps;
+    std::vector<double>            additional_checkpoint_times;
+    unsigned int                   n_checkpoints_to_keep;
+    unsigned int                   n_additional_checkpoints_to_keep;
+    unsigned int                   resume_checkpoint_id;
+    double                         resume_time;
     /**
      * @}
      */
@@ -649,9 +796,11 @@ namespace aspect
     bool                           use_locally_conservative_discretization;
     bool                           use_equal_order_interpolation_for_stokes;
     bool                           use_discontinuous_temperature_discretization;
-    bool                           use_discontinuous_composition_discretization;
+    std::vector<bool>              use_discontinuous_composition_discretization;
+    bool                           have_discontinuous_composition_discretization;
     unsigned int                   temperature_degree;
-    unsigned int                   composition_degree;
+    std::vector<unsigned int>      composition_degrees;
+    unsigned int                   max_composition_degree;
     std::string                    pressure_normalization;
     MaterialModel::MaterialAveraging::AveragingOperation material_averaging;
 
@@ -679,6 +828,8 @@ namespace aspect
     std::vector<aspect::CompositionalFieldDescription>  composition_descriptions;
     unsigned int                   n_chemical_compositions;
     std::vector<unsigned int>      chemical_composition_indices;
+    double                         minimum_composition_fraction;
+    bool                           use_pressure_gradient_for_darcy_field;
 
     /**
      * A vector that contains the advection field method for every compositional

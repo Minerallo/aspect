@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -55,7 +55,7 @@ namespace aspect
           /**
            * Evaluate the dynamic topography for the current cell.
            *
-           * @copydoc DataPostprocessorScalar<dim>::evaluate_vector_field()
+           * @copydoc dealii::DataPostprocessor<dim>::evaluate_vector_field()
            */
           void
           evaluate_vector_field(const DataPostprocessorInputs::Vector<dim> &input_data,

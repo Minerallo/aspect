@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -25,8 +25,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     template <int dim>
     class Compressibility : public MaterialModel::Simple<dim>
     {

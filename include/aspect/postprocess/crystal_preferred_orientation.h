@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2023 by the authors of the ASPECT code.
+ Copyright (C) 2023 - 2024 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -22,13 +22,16 @@
 #define _aspect_postprocess_crystal_preferred_orientation_h
 
 #include <aspect/postprocess/interface.h>
-#include <aspect/particle/world.h>
+#include <aspect/particle/manager.h>
 
 #include <aspect/simulator_access.h>
 
 #include <deal.II/particles/particle_handler.h>
 #include <deal.II/base/data_out_base.h>
+
+#include <random>
 #include <tuple>
+
 
 namespace aspect
 {
@@ -78,8 +81,25 @@ namespace aspect
         required_other_postprocessors () const override;
 
         /**
-        * Declare the parameters this class takes through input files.
-        */
+         * Save the state of this object.
+         */
+        void save (std::map<std::string, std::string> &status_strings) const override;
+
+        /**
+         * Restore the state of the object.
+         */
+        void load (const std::map<std::string, std::string> &status_strings) override;
+
+        /**
+         * Serialize the contents of this class as far as they are not read
+         * from input parameter files.
+         */
+        template <class Archive>
+        void serialize (Archive &ar, const unsigned int version);
+
+        /**
+         * Declare the parameters this class takes through input files.
+         */
         static
         void
         declare_parameters (ParameterHandler &prm);
@@ -91,13 +111,6 @@ namespace aspect
         parse_parameters (ParameterHandler &prm) override;
 
       private:
-
-        /**
-         * Stores the simulation end time, so that it always produces output
-         * at the last timestep.
-         */
-        double end_time;
-
         /**
          * Enums specifying what information to write:
          *
@@ -123,12 +136,15 @@ namespace aspect
 
         /**
          * Random number generator seed used to initialize the random number generator.
+         *
+         * This variable is read from the parameter file through a parameter called 'Random number seed'.
          */
         unsigned int random_number_seed;
 
         /**
          * Interval between output (in years if appropriate simulation
          * parameter is set, otherwise seconds)
+         * This variable is read from the parameter file through a parameter called 'Time between data output'.
          */
         double output_interval;
 
@@ -161,7 +177,7 @@ namespace aspect
         /**
          * A list of pairs (time, pvtu_filename) that have so far been written
          * and that we will pass to DataOutInterface::write_pvd_record
-         * to create a master file that can make the association
+         * to create a main file that can make the association
          * between simulation time and corresponding file name (this
          * is done because there is no way to store the simulation
          * time inside the .pvtu or .vtu files).
@@ -177,7 +193,7 @@ namespace aspect
 
         /**
          * A list of list of filenames, sorted by timestep, that correspond to
-         * what has been created as output. This is used to create a master
+         * what has been created as output. This is used to create a main
          * .visit file for the entire simulation.
          */
         std::vector<std::vector<std::string>> output_file_names_by_timestep;
@@ -204,6 +220,7 @@ namespace aspect
          * move this file to a network file system. If this variable is
          * set to a non-empty string it will be interpreted as a temporary
          * storage location.
+         * This variable is read from the parameter file through a parameter called 'Temporary output location'.
          */
         std::string temporary_output_location;
 
@@ -212,14 +229,15 @@ namespace aspect
          * progress of the rest of the model run. Setting this variable to
          * 'true' moves this process into a background thread, while the
          * rest of the model continues.
+         * This variable is read from the parameter file through a parameter called 'Write in background thread'.
          */
         bool write_in_background_thread;
 
         /**
-         * Handle to a thread that is used to write master file data in the
+         * Handle to a thread that is used to write main file data in the
          * background. The writer() function runs on this background thread.
          */
-        std::thread background_thread_master;
+        std::thread background_thread_main;
 
         /**
          * What "raw" CPO data to write out.
@@ -257,6 +275,8 @@ namespace aspect
 
         /**
          * Whether to compress the raw and weighed cpo data output files with zlib.
+         *
+         * This variable is read from the parameter file through a parameter called 'Compress cpo data files'.
          */
         bool compress_cpo_data_files;
 

@@ -1,21 +1,21 @@
 /*
- Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
- This file is part of ASPECT.
+  This file is part of ASPECT.
 
- ASPECT is free software; you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation; either version 2, or (at your option)
- any later version.
+  ASPECT is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2, or (at your option)
+  any later version.
 
- ASPECT is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
+  ASPECT is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
- You should have received a copy of the GNU General Public License
- along with ASPECT; see the file LICENSE.  If not see
- <http://www.gnu.org/licenses/>.
+  You should have received a copy of the GNU General Public License
+  along with ASPECT; see the file LICENSE.  If not see
+  <http://www.gnu.org/licenses/>.
  */
 
 #ifndef _aspect_postprocess_particle_h
@@ -46,7 +46,7 @@ namespace aspect
        * dimension of zero (the dimension of the particle / point), and a space dimension
        * of dim (the dimension in which this zero-dimensional particle lives).
        */
-      template<int dim>
+      template <int dim>
       class ParticleOutput : public dealii::DataOutInterface<0,dim>
       {
         public:
@@ -181,74 +181,81 @@ namespace aspect
 
       private:
         /**
-         * Interval between output (in years if appropriate simulation
-         * parameter is set, otherwise seconds)
+         * List of interval between output (in years if appropriate simulation
+         * parameter is set, otherwise seconds) for each particle manager.
+         *
+         * This variable is read from the parameter file through a parameter called 'Time between data output'.
          */
-        double output_interval;
+        std::vector<double> output_interval;
 
         /**
-         * Records time for next output to occur
+         * Records time for next output to occur for each particle manager.
          */
-        double last_output_time;
+        std::vector<double> last_output_time;
 
         /**
-         * Set the time output was supposed to be written. In the simplest
-         * case, this is the previous last output time plus the interval, but
-         * in general we'd like to ensure that it is the largest supposed
-         * output time, which is smaller than the current time, to avoid
-         * falling behind with last_output_time and having to catch up once
-         * the time step becomes larger. This is done after every output.
+         * Set the time output was supposed to be written for the given
+         * particle manager. In the simplest case, this is the previous last
+         * output time plus the interval, but in general we'd like to ensure
+         * that it is the largest supposed output time, which is smaller than
+         * the current time, to avoid falling behind with last_output_time and
+         * having to catch up once the time step becomes larger. This is done
+         * after every output.
          */
-        void set_last_output_time (const double current_time);
+        void set_last_output_time (const unsigned int particle_manager,
+                                   const double current_time);
 
         /**
          * Consecutively counted number indicating the how-manyth time we will
-         * create output the next time we get to it.
+         * create output the next time we get to it for each particle manager.
          */
-        unsigned int output_file_number;
+        std::vector<unsigned int> output_file_number;
 
         /**
-         * Graphical output format.
+         * List of graphical output formats for each particle manager.
          */
-        std::vector<std::string> output_formats;
+        std::vector<std::vector<std::string>> output_formats;
 
         /**
-         * A list of pairs (time, pvtu_filename) that have so far been written
-         * and that we will pass to DataOutInterface::write_pvd_record
-         * to create a master file that can make the association
+         * A map between particle manager name and list of pairs of
+         * (time, pvtu_filename) that have so far been written.
+         * We will pass these lists to DataOutInterface::write_pvd_record
+         * to create a description file that can make the association
          * between simulation time and corresponding file name (this
          * is done because there is no way to store the simulation
-         * time inside the .pvtu or .vtu files).
+         * time inside the .pvtu or .vtu files). We store one list
+         * per particle manager, because each particle manager will
+         * have its own output directory and description file.
          */
-        std::vector<std::pair<double,std::string>> times_and_pvtu_file_names;
+        std::map<std::string,std::vector<std::pair<double,std::string>>> times_and_pvtu_file_names;
 
         /**
-         * A corresponding variable that we use for the .visit files created
-         * by DataOutInterface::write_visit_record. The second part of a
-         * pair contains all files that together form a time step.
-         */
-        std::vector<std::pair<double,std::vector<std::string>>> times_and_vtu_file_names;
-
-        /**
-         * A list of list of filenames, sorted by timestep, that correspond to
-         * what has been created as output. This is used to create a master
+         * A map between particle manager name and list of list of
+         * filenames that corresponds to
+         * what has been created as output. This list is sorted by
+         * filename and is used to create a descriptive
          * .visit file for the entire simulation.
+         * We store one list per particle manager, because each particle
+         * manager will have its own output directory and description file.
          */
-        std::vector<std::vector<std::string>> output_file_names_by_timestep;
+        std::map<std::string,std::vector<std::vector<std::string>>> output_file_names_by_timestep;
 
         /**
-         * A set of data related to XDMF file sections describing the HDF5
-         * heavy data files created. These contain things such as the
-         * dimensions and names of data written at all steps during the
-         * simulation.
+         * A map between particle manager name and a list of data for
+         * the XDMF file sections describing the HDF5 files created.
+         * These XDMF data contain things such as the dimensions
+         * and names of data written at all steps during the simulation.
+         * We store one list per particle manager, because each particle
+         * manager will have its own output directory and description file.
          */
-        std::vector<XDMFEntry>  xdmf_entries;
+        std::map<std::string,std::vector<XDMFEntry>> xdmf_entries;
 
         /**
          * VTU file output supports grouping files from several CPUs into one
          * file using MPI I/O when writing on a parallel filesystem. 0 means
          * no grouping (and no parallel I/O). 1 will generate one big file
          * containing the whole solution.
+         * This variable is read from the parameter file through a parameter called 'Number of grouped files'.
          */
         unsigned int group_files;
 
@@ -258,6 +265,7 @@ namespace aspect
          * move this file to a network file system. If this variable is
          * set to a non-empty string it will be interpreted as a temporary
          * storage location.
+         * This variable is read from the parameter file through a parameter called 'Temporary output location'.
          */
         std::string temporary_output_location;
 
@@ -266,6 +274,7 @@ namespace aspect
          * progress of the rest of the model run. Setting this variable to
          * 'true' moves this process into a background thread, while the
          * rest of the model continues.
+         * This variable is read from the parameter file through a parameter called 'Write in background thread'.
          */
         bool write_in_background_thread;
 
@@ -277,9 +286,11 @@ namespace aspect
 
         /**
          * Stores the particle property fields which are excluded from output
-         * to the visualization file.
+         * to the visualization file for each particle manager.
+         *
+         * This variable is read from the parameter file through a parameter called 'Exclude output properties'.
          */
-        std::vector<std::string> exclude_output_properties;
+        std::vector<std::vector<std::string>> exclude_output_properties;
 
         /**
          * A function that writes the text in the second argument to a file
@@ -294,7 +305,7 @@ namespace aspect
                      const std::string &file_contents);
 
         /**
-         * Write the various master record files. The master files are used by
+         * Write the various descriptive record files. These files are used by
          * visualization programs to identify which of the output files in a
          * directory, possibly one file written by each processor, belong to a
          * single time step and/or form the different time steps of a
@@ -305,13 +316,18 @@ namespace aspect
          *
          * @param data_out The DataOut object that was used to write the
          * solutions.
+         * @param description_file_prefix The stem of the filename to be written.
+         * @param solution_file_directory The directory where the solution files
+         * are written.
          * @param solution_file_prefix The stem of the filename to be written.
          * @param filenames List of filenames for the current output from all
          * processors.
          */
-        void write_master_files (const internal::ParticleOutput<dim> &data_out,
-                                 const std::string &solution_file_prefix,
-                                 const std::vector<std::string> &filenames);
+        void write_description_files (const internal::ParticleOutput<dim> &data_out,
+                                      const std::string &description_file_prefix,
+                                      const std::string &solution_file_directory,
+                                      const std::string &solution_file_prefix,
+                                      const std::vector<std::string> &filenames);
     };
   }
 }

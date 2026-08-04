@@ -2,7 +2,7 @@
 # Parameters from Bunge et al, Nature, 1996.
 
 set Dimension                              = 2
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set End time                               = 5e9
 set Output directory                       = output_bunge_et_al
 set CFL number                             = 1
@@ -65,7 +65,7 @@ subsection Initial temperature model
   subsection Function
     set Coordinate system = spherical
     set Variable names      = r,phi
-    set Function constants  = A=100, B=75, C=50, D=25, pi=3.1415926536, Ri=3480e3, Ro=6370e3, Ti=3450, To=1060
+    set Function constants  = A=100, B=75, C=50, D=25, Ri=3480e3, Ro=6370e3, Ti=3450, To=1060
     set Function expression = (r-Ri)/(Ro-Ri)*(To-Ti)+Ti + A*sin(7*phi) + B*sin(13*phi) + C*cos(0.123*phi+pi/3) + D*cos(0.456*phi+pi/6)
   end
 end
@@ -91,10 +91,14 @@ subsection Postprocess
   set List of postprocessors = visualization, velocity statistics, temperature statistics, heat flux statistics, depth average
 
   subsection Visualization
-    set List of output variables = viscosity, strain rate, density, specific heat, thermal expansivity, gravity, heating
+    set List of output variables = material properties, strain rate, gravity, heating
     set Output format                 = vtu
     set Time between graphical output = 1e6
     set Number of grouped files       = 0
+
+    subsection Material properties
+      set List of material properties = viscosity, density, specific heat, thermal expansivity
+    end
   end
 
   subsection Depth average

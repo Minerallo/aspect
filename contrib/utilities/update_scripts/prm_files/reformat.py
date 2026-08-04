@@ -15,7 +15,7 @@ general formatting guidelines. These are:
 - retain as much user formatting in comments and parameter values as possible,
   e.g. spaces for padding values to align between adjacent lines. This is not
   always perfectly possible.
-- retain broken lines (`\`) in values of parameters and comments, remove them
+- retain broken lines (`\\`) in values of parameters and comments, remove them
   from subsection or parameter names.
 """
 
@@ -67,11 +67,80 @@ def reformat (parameters):
 
     return parameters
 
+def merge_deprecated_postprocessors_into_material_properties(parameters):
+    if "Postprocess" in parameters:
+        if "Visualization" in parameters["Postprocess"]["value"]:
+            if "List of output variables" in parameters["Postprocess"]["value"]["Visualization"]["value"]:
+                vis_parameters = parameters["Postprocess"]["value"]["Visualization"]["value"]
+                output_variables = vis_parameters["List of output variables"]["value"].split(",")
+                # variables to remove from the list of output variables and to add to material properties
+                deprecated_variables = ["density", "specific heat", "thermal conductivity", "thermal diffusivity", "thermal expansivity", "viscosity"]
+                # material properties that are active by default
+                default_variables = ["density","thermal expansivity","specific heat","viscosity"]
+                active_deprecated_variables = []
+                active_output_variables = []
+                active_material_properties = []
+
+                for variable in output_variables:
+                    if variable.strip() in deprecated_variables:
+                        active_deprecated_variables.append(variable.strip())
+                        # if subsection didnt exist before, create subsection
+                        if not "Material properties" in vis_parameters:
+                            vis_parameters["Material properties"] = {"comment": "", "value" : dict({}), "type": "subsection"}
+                        # if parameter didnt exist before, create parameter
+                        if not "List of material properties" in vis_parameters["Material properties"]["value"]:
+                            vis_parameters["Material properties"]["value"]["List of material properties"] = {"comment": "", "alignment spaces": 1, "value": "", "type": "parameter"}
+                            # if parameter was missing, but material properties is active, it used the default variables
+                            if "material properties" in output_variables:
+                                active_material_properties = default_variables
+                        # if material properties was not active before, add it
+                        if not "material properties" in output_variables and not "material properties" in active_output_variables:
+                            active_output_variables.append("material properties")
+                    else:
+                        active_output_variables.append(variable.strip())
+
+                if len(active_deprecated_variables) > 0:
+                    existing_material_properties = vis_parameters["Material properties"]["value"]["List of material properties"]["value"].split(",")
+                    for material_property in existing_material_properties:
+                        if material_property.strip() != "":
+                            active_material_properties.append(material_property.strip())
+                    for material_property in active_deprecated_variables:
+                        active_material_properties.append(material_property)
+
+                    vis_parameters["Material properties"]["value"]["List of material properties"]["value"] = ", ".join(active_material_properties)
+                    vis_parameters["List of output variables"]["value"] = ", ".join(active_output_variables)
+
+    return parameters
+
+def rename_linear_least_squares(parameters):
+    if "Particles" in parameters:
+        if "Interpolation scheme" in parameters["Particles"]["value"]:
+            if "bilinear least squares" in parameters["Particles"]["value"]["Interpolation scheme"]["value"]:
+                parameters["Particles"]["value"]["Interpolation scheme"]["value"] = "linear least squares"
+
+        if "Interpolator" in parameters["Particles"]["value"]:
+            if "Bilinear least squares" in parameters["Particles"]["value"]["Interpolator"]["value"]:
+                parameters["Particles"]["value"]["Interpolator"]["value"]["Linear least squares"] = parameters["Particles"]["value"]["Interpolator"]["value"]["Bilinear least squares"]
+                del parameters["Particles"]["value"]["Interpolator"]["value"]["Bilinear least squares"]
+
+    return parameters
+
+def rename_fastscape_vtk_output(parameters):
+    if "Mesh deformation" in parameters:
+        if "Fastscape" in parameters["Mesh deformation"]["value"]:
+            if "Additional output variables" in parameters ["Mesh deformation"]["value"]["Fastscape"]["value"]:
+               if "deposition coefficient" in parameters["Mesh deformation"]["value"]["Fastscape"]["value"]["Additional output variables"]["value"]:
+                  parameters["Mesh deformation"]["value"]["Fastscape"]["value"]["Additional output variables"]["value"] = "transport coefficient"
+
+    return parameters
 
 def main(input_file, output_file):
     """Echo the input arguments to standard output"""
     parameters = aspect.read_parameter_file(input_file)
     parameters = reformat(parameters)
+    parameters = merge_deprecated_postprocessors_into_material_properties(parameters)
+    parameters = rename_linear_least_squares(parameters)
+    parameters = rename_fastscape_vtk_output(parameters)
     aspect.write_parameter_file(parameters, output_file)
 
 

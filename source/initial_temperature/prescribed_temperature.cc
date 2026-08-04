@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -59,15 +59,15 @@ namespace aspect
       for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
         in.composition[0][c] = initial_composition->initial_composition(position, c);
 
-      in.strain_rate.resize(0);
+      in.strain_rate[0] = SymmetricTensor<2,dim>();
 
       this->get_material_model().create_additional_named_outputs(out);
       this->get_material_model().evaluate(in, out);
 
       // set up variable to interpolate prescribed field outputs onto temperature field
       double temperature = in.temperature[0];
-      if (MaterialModel::PrescribedTemperatureOutputs<dim> *prescribed_temperature_out
-          = out.template get_additional_output<MaterialModel::PrescribedTemperatureOutputs<dim>>())
+      if (const std::shared_ptr<const MaterialModel::PrescribedTemperatureOutputs<dim>> prescribed_temperature_out
+          = out.template get_additional_output_object<MaterialModel::PrescribedTemperatureOutputs<dim>>())
         {
           temperature = prescribed_temperature_out->prescribed_temperature_outputs[0];
         }

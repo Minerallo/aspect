@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -46,7 +46,7 @@ namespace aspect
 
       virtual double reference_darcy_coefficient () const
       {
-        const double permeability = 1.0 + std::pow(0.5, 2.0);
+        const double permeability = 1.0 + Utilities::fixed_power<2>(0.5);
         return permeability / 2.0;
       }
 
@@ -67,7 +67,8 @@ namespace aspect
           }
 
         // fill melt outputs if they exist
-        aspect::MaterialModel::MeltOutputs<dim> *melt_out = out.template get_additional_output<aspect::MaterialModel::MeltOutputs<dim>>();
+        const std::shared_ptr<aspect::MaterialModel::MeltOutputs<dim>> melt_out
+          = out.template get_additional_output_object<aspect::MaterialModel::MeltOutputs<dim>>();
 
         if (melt_out != nullptr)
           {
@@ -75,7 +76,7 @@ namespace aspect
               {
                 melt_out->compaction_viscosities[i] = 1.0;
                 melt_out->fluid_viscosities[i]= 2.0;
-                melt_out->permeabilities[i]= 1.0 + std::pow(in.position[i][1],2);
+                melt_out->permeabilities[i]= 1.0 + Utilities::fixed_power<2>(in.position[i][1]);
                 melt_out->fluid_densities[i]= 1.0;
                 melt_out->fluid_density_gradients[i] = Tensor<1,dim>();
               }

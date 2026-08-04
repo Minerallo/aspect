@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,7 +18,7 @@
   <http://www.gnu.org/licenses/>.
 */
 
-
+#include <algorithm>
 #include <aspect/material_model/composition_reaction.h>
 #include <aspect/geometry_model/interface.h>
 #include <aspect/material_model/equation_of_state/interface.h>
@@ -35,7 +35,8 @@ namespace aspect
     evaluate(const MaterialModelInputs<dim> &in,
              MaterialModelOutputs<dim> &out) const
     {
-      ReactionRateOutputs<dim> *reaction_rate_out = out.template get_additional_output<ReactionRateOutputs<dim>>();
+      const std::shared_ptr<ReactionRateOutputs<dim>> reaction_rate_out
+        = out.template get_additional_output_object<ReactionRateOutputs<dim>>();
 
       // The Composition reaction model has up to two compositional fields (plus one background field)
       // that can influence the density
@@ -47,7 +48,7 @@ namespace aspect
           const double temperature = in.temperature[i];
           const std::vector<double> &composition = in.composition[i];
           const double delta_temp = temperature-reference_T;
-          double temperature_dependence = std::max(std::min(std::exp(-thermal_viscosity_exponent*delta_temp/reference_T),1e2),1e-2);
+          double temperature_dependence = std::clamp(std::exp(-thermal_viscosity_exponent*delta_temp/reference_T), 1e-2, 1e2);
 
           if (std::isnan(temperature_dependence))
             temperature_dependence = 1.0;
@@ -59,13 +60,13 @@ namespace aspect
                 break;
               case 1:
                 // geometric interpolation
-                out.viscosities[i] = (pow(10, ((1-composition[0]) * log10(eta*temperature_dependence)
-                                               + composition[0] * log10(eta*composition_viscosity_prefactor_1*temperature_dependence))));
+                out.viscosities[i] = (std::pow(10, ((1-composition[0]) * std::log10(eta*temperature_dependence)
+                                                    + composition[0] * std::log10(eta*composition_viscosity_prefactor_1*temperature_dependence))));
                 break;
               default:
-                out.viscosities[i] = (pow(10, ((1 - 0.5*composition[0] - 0.5*composition[1]) * log10(eta*temperature_dependence)
-                                               + 0.5 * composition[0] * log10(eta*composition_viscosity_prefactor_1*temperature_dependence)
-                                               + 0.5 * composition[1] * log10(eta*composition_viscosity_prefactor_2*temperature_dependence))));
+                out.viscosities[i] = (std::pow(10, ((1 - 0.5*composition[0] - 0.5*composition[1]) * std::log10(eta*temperature_dependence)
+                                                    + 0.5 * composition[0] * std::log10(eta*composition_viscosity_prefactor_1*temperature_dependence)
+                                                    + 0.5 * composition[1] * std::log10(eta*composition_viscosity_prefactor_2*temperature_dependence))));
                 break;
             }
 
@@ -147,7 +148,7 @@ namespace aspect
                              "The reference temperature $T_0$. Units: \\si{\\kelvin}.");
           prm.declare_entry ("Viscosity", "5e24",
                              Patterns::Double (0.),
-                             "The value of the constant viscosity. Units: \\si{\\kilogram\\per\\meter\\per\\second}.");
+                             "The value of the constant viscosity. Units: \\si{\\pascal\\second}.");
           prm.declare_entry ("Composition viscosity prefactor 1", "1.0",
                              Patterns::Double (0.),
                              "A linear dependency of viscosity on the first compositional field. "
@@ -223,7 +224,7 @@ namespace aspect
     CompositionReaction<dim>::create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const
     {
       if (this->get_parameters().use_operator_splitting
-          && out.template get_additional_output<ReactionRateOutputs<dim>>() == nullptr)
+          && out.template has_additional_output_object<ReactionRateOutputs<dim>>() == false)
         {
           const unsigned int n_points = out.n_evaluation_points();
           out.additional_outputs.push_back(

@@ -22,6 +22,8 @@
 #define _aspect_particle_property_function_h
 
 #include <aspect/particle/property/interface.h>
+#include <aspect/simulator_access.h>
+#include <aspect/utilities.h>
 
 #include <deal.II/base/parsed_function.h>
 
@@ -38,7 +40,7 @@ namespace aspect
        * @ingroup ParticleProperties
        */
       template <int dim>
-      class Function : public Interface<dim>
+      class Function : public Interface<dim>, public SimulatorAccess<dim>
       {
         public:
           Function();
@@ -89,8 +91,17 @@ namespace aspect
           std::unique_ptr<Functions::ParsedFunction<dim>> function;
 
           /**
+           * The coordinate representation to evaluate the function. Possible
+           * choices are depth, cartesian and spherical.
+           */
+          Utilities::Coordinates::CoordinateSystem coordinate_system;
+
+          /**
            * A private variable that stores the number of particle property
            * function components.
+           *
+           * This variable is read from the parameter file through a parameter
+           * called 'Number of components'.
            */
           unsigned int n_components;
       };

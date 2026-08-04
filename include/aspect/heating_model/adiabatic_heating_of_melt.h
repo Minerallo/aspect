@@ -29,8 +29,6 @@ namespace aspect
 {
   namespace HeatingModel
   {
-    using namespace dealii;
-
     /**
      * A class that implements a standard adiabatic heating rate
      * for partially molten material.
@@ -63,6 +61,13 @@ namespace aspect
         evaluate (const MaterialModel::MaterialModelInputs<dim> &material_model_inputs,
                   const MaterialModel::MaterialModelOutputs<dim> &material_model_outputs,
                   HeatingModel::HeatingModelOutputs &heating_model_outputs) const override;
+
+        /**
+         * Specify which material model outputs the heating model requires
+         * for computing the heating terms.
+         */
+        MaterialModel::MaterialProperties::Property
+        get_required_properties () const override;
 
         /**
          * @name Functions used in dealing with run-time parameters
@@ -99,6 +104,9 @@ namespace aspect
          */
 
       private:
+        /**
+         * This variable is read from the parameter file through a parameter called 'Use simplified adiabatic heating'.
+         */
         bool simplified_adiabatic_heating;
     };
   }

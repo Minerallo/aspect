@@ -11,11 +11,11 @@ set Dimension                              = 2
 # There are several global variables that have to do with what
 # time system we want to work in and what the end time is. We
 # also designate an output directory.
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set End time                               = 0
 set Maximum time step                      = 1e7
 set Output directory                       = test
-set Nonlinear solver scheme                = first timestep only, single Stokes
+set Nonlinear solver scheme                = no Advection, single Stokes first timestep only
 set Max nonlinear iterations               = 5
 set Pressure normalization                 = surface
 set Surface pressure                       = 110.e9
@@ -25,6 +25,12 @@ set Use operator splitting = true
 
 subsection Melt settings
   set Include melt transport = true
+end
+
+subsection Solver parameters
+  subsection Operator splitting parameters
+    set Reaction solver type                   = fixed step
+  end
 end
 
 subsection Compositional fields
@@ -83,7 +89,7 @@ end
 subsection Boundary composition model
   set Allow fixed composition on outflow boundaries = false
   set Fixed composition boundary indicators   = top
-  set Model name = initial composition
+  set List of model names = initial composition
 end
 
 subsection Heating model

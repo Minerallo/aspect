@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -26,8 +26,12 @@
 #include <aspect/simulator/assemblers/interface.h>
 #include <aspect/melt.h>
 #include <aspect/simulator.h>
+#include <aspect/linear_algebra_types.h>
 
 #include <deal.II/dofs/dof_tools.h>
+#include <deal.II/lac/sparsity_tools.h>
+#include <deal.II/lac/solver_cg.h>
+#include <deal.II/lac/precondition.h>
 
 
 namespace aspect
@@ -50,20 +54,17 @@ namespace aspect
       std::set<types::boundary_id> velocity_boundary_indicators = this->get_boundary_velocity_manager().get_zero_boundary_velocity_indicators();
 
       // Get the tangential velocity boundary indicators
-      const std::set<types::boundary_id> tmp_tangential_vel_boundary_indicators = this->get_boundary_velocity_manager().get_tangential_boundary_velocity_indicators();
-      velocity_boundary_indicators.insert(tmp_tangential_vel_boundary_indicators.begin(),
-                                          tmp_tangential_vel_boundary_indicators.end());
+      const auto &tangential_boundary_indicators = this->get_boundary_velocity_manager().get_tangential_boundary_velocity_indicators();
+      velocity_boundary_indicators.insert(tangential_boundary_indicators.begin(),
+                                          tangential_boundary_indicators.end());
 
       // Get the active velocity boundary indicators
-      const std::map<types::boundary_id, std::pair<std::string,std::vector<std::string>>>
-      tmp_active_vel_boundary_indicators = this->get_boundary_velocity_manager().get_active_boundary_velocity_names();
-
-      for (const auto &p : tmp_active_vel_boundary_indicators)
-        velocity_boundary_indicators.insert(p.first);
+      const auto &prescribed_boundary_indicators = this->get_boundary_velocity_manager().get_prescribed_boundary_velocity_indicators();
+      velocity_boundary_indicators.insert(prescribed_boundary_indicators.begin(),
+                                          prescribed_boundary_indicators.end());
 
       // Get the mesh deformation boundary indicators
-      const std::set<types::boundary_id> tmp_mesh_deformation_boundary_indicators = this->get_mesh_deformation_boundary_indicators();
-      for (const auto &p : tmp_mesh_deformation_boundary_indicators)
+      for (const auto &p : this->get_mesh_deformation_boundary_indicators())
         AssertThrow(velocity_boundary_indicators.find(p) == velocity_boundary_indicators.end(),
                     ExcMessage("The free surface mesh deformation plugin cannot be used with the current velocity boundary conditions"));
     }
@@ -102,24 +103,32 @@ namespace aspect
         mesh_locally_relevant);
       DoFTools::make_hanging_node_constraints(mesh_deformation_dof_handler, mass_matrix_constraints);
 
-      using periodic_boundary_pairs = std::set<std::pair<std::pair<types::boundary_id, types::boundary_id>, unsigned int>>;
-      periodic_boundary_pairs pbp = this->get_geometry_model().get_periodic_boundary_pairs();
-      for (const auto &p : pbp)
-        DoFTools::make_periodicity_constraints(mesh_deformation_dof_handler,
-                                               p.first.first, p.first.second, p.second, mass_matrix_constraints);
+      // Let the geometry model join periodic boundaries. Curved geometries
+      // such as a quarter annulus also rotate vector components when values
+      // pass from one side to the other.
+      this->get_geometry_model().make_periodicity_constraints(mesh_deformation_dof_handler,
+                                                              mass_matrix_constraints);
 
       mass_matrix_constraints.close();
 
       // set up the matrix
       LinearAlgebra::SparseMatrix mass_matrix;
-      TrilinosWrappers::SparsityPattern sp (mesh_locally_owned,
-                                            mesh_locally_owned,
-                                            mesh_locally_relevant,
-                                            this->get_mpi_communicator());
-      DoFTools::make_sparsity_pattern (mesh_deformation_dof_handler, sp, mass_matrix_constraints, false,
+      LinearAlgebra::DynamicSparsityPattern dsp (mesh_locally_relevant);
+
+      DoFTools::make_sparsity_pattern (mesh_deformation_dof_handler,
+                                       dsp,
+                                       mass_matrix_constraints,
+                                       false,
                                        Utilities::MPI::this_mpi_process(this->get_mpi_communicator()));
-      sp.compress();
-      mass_matrix.reinit (sp);
+
+      SparsityTools::distribute_sparsity_pattern(dsp,
+                                                 mesh_locally_owned,
+                                                 this->get_mpi_communicator(),
+                                                 mesh_locally_relevant);
+
+      mass_matrix.reinit (mesh_locally_owned,
+                          dsp,
+                          this->get_mpi_communicator());
 
       FEValuesExtractors::Vector extract_vel(0);
 
@@ -156,31 +165,37 @@ namespace aspect
 
                 cell_vector = 0;
                 cell_matrix = 0;
-                for (unsigned int point=0; point<n_face_q_points; ++point)
+                for (unsigned int q=0; q<n_face_q_points; ++q)
                   {
                     // Select the direction onto which to project the velocity solution
                     Tensor<1,dim> direction;
                     if ( advection_direction == SurfaceAdvection::normal ) // project onto normal vector
-                      direction = fs_fe_face_values.normal_vector(point);
+                      direction = fs_fe_face_values.normal_vector(q);
                     else if ( advection_direction == SurfaceAdvection::vertical ) // project onto local gravity
-                      direction = this->get_gravity_model().gravity_vector(fs_fe_face_values.quadrature_point(point));
+                      direction = this->get_gravity_model().gravity_vector(fs_fe_face_values.quadrature_point(q));
                     else
                       AssertThrow(false, ExcInternalError());
 
                     direction *= ( direction.norm() > 0.0 ? 1./direction.norm() : 0.0 );
 
+                    const double JxW = fs_fe_face_values.JxW(q);
+
+                    small_vector<Tensor<1,dim>> phi_u(dofs_per_cell);
+                    for (unsigned int i=0; i<dofs_per_cell; ++i)
+                      phi_u[i] = fs_fe_face_values[extract_vel].value(i,q);
+
                     for (unsigned int i=0; i<dofs_per_cell; ++i)
                       {
                         for (unsigned int j=0; j<dofs_per_cell; ++j)
                           {
-                            cell_matrix(i,j) += (fs_fe_face_values[extract_vel].value(j,point) *
-                                                 fs_fe_face_values[extract_vel].value(i,point) ) *
-                                                fs_fe_face_values.JxW(point);
+                            cell_matrix(i,j) += (phi_u[j] *
+                                                 phi_u[i]) *
+                                                JxW;
                           }
 
-                        cell_vector(i) += (fs_fe_face_values[extract_vel].value(i,point) * direction)
-                                          * (velocity_values[point] * direction)
-                                          * fs_fe_face_values.JxW(point);
+                        cell_vector(i) += (phi_u[i] * direction)
+                                          * (velocity_values[q] * direction)
+                                          * JxW;
                       }
                   }
 
@@ -194,11 +209,34 @@ namespace aspect
       // Jacobi seems to be fine here.  Other preconditioners (ILU, IC) run into troubles
       // because the matrix is mostly empty, since we don't touch internal vertices.
       LinearAlgebra::PreconditionJacobi preconditioner_mass;
-      preconditioner_mass.initialize(mass_matrix);
+#ifdef ASPECT_USE_TPETRA
+      // Our matrix contains a lot of zeros on the main diagonal, and Tpetra's Jacobi
+      // preconditioner is more sensitive to this than the Epetra version. Strengthen
+      // the main diagonal to avoid floating point exceptions.
+      LinearAlgebra::PreconditionJacobi::AdditionalData preconditioner_control(1,true,1e-16,1);
+#else
+      LinearAlgebra::PreconditionJacobi::AdditionalData preconditioner_control;
+#endif
+      preconditioner_mass.initialize(mass_matrix, preconditioner_control);
 
       SolverControl solver_control(5*rhs.size(), this->get_parameters().linear_stokes_solver_tolerance*rhs.l2_norm());
       SolverCG<LinearAlgebra::Vector> cg(solver_control);
-      cg.solve (mass_matrix, dist_solution, rhs, preconditioner_mass);
+
+      try
+        {
+          cg.solve (mass_matrix, dist_solution, rhs, preconditioner_mass);
+        }
+      catch (const std::exception &exc)
+        {
+          // if the solver fails, report the error from processor 0 with some additional
+          // information about its location, and throw a quiet exception on all other
+          // processors
+          Utilities::throw_linear_solver_failure_exception("iterative free surface solver",
+                                                           "MeshDeformation::FreeSurface::project_velocity_onto_boundary()",
+                                                           std::vector<SolverControl> {solver_control},
+                                                           exc,
+                                                           this->get_mpi_communicator());
+        }
 
       mass_matrix_constraints.distribute (dist_solution);
       output = dist_solution;
@@ -216,15 +254,13 @@ namespace aspect
     void
     FreeSurface<dim>::compute_velocity_constraints_on_boundary(const DoFHandler<dim> &mesh_deformation_dof_handler,
                                                                AffineConstraints<double> &mesh_velocity_constraints,
-                                                               const std::set<types::boundary_id> &boundary_id) const
+                                                               const std::set<types::boundary_id> &boundary_ids) const
     {
       // For the free surface indicators we constrain the displacement to be v.n
       LinearAlgebra::Vector boundary_velocity;
 
       const IndexSet &mesh_locally_owned = mesh_deformation_dof_handler.locally_owned_dofs();
-      IndexSet mesh_locally_relevant;
-      DoFTools::extract_locally_relevant_dofs (mesh_deformation_dof_handler,
-                                               mesh_locally_relevant);
+      const IndexSet mesh_locally_relevant = DoFTools::extract_locally_relevant_dofs (mesh_deformation_dof_handler);
       boundary_velocity.reinit(mesh_locally_owned, mesh_locally_relevant,
                                this->get_mpi_communicator());
       project_velocity_onto_boundary(mesh_deformation_dof_handler, mesh_locally_owned,
@@ -234,11 +270,10 @@ namespace aspect
       const IndexSet constrained_dofs =
         DoFTools::extract_boundary_dofs(mesh_deformation_dof_handler,
                                         ComponentMask(dim, true),
-                                        boundary_id);
+                                        boundary_ids);
 
-      for (unsigned int i = 0; i < constrained_dofs.n_elements();  ++i)
+      for (const types::global_dof_index index : constrained_dofs)
         {
-          types::global_dof_index index = constrained_dofs.nth_index_in_set(i);
           if (mesh_velocity_constraints.can_store_line(index))
             if (mesh_velocity_constraints.is_constrained(index)==false)
               {

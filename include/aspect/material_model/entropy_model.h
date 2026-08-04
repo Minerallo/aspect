@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2016 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2016 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -25,6 +25,7 @@
 
 #include <aspect/utilities.h>
 #include <aspect/simulator_access.h>
+#include <aspect/material_model/thermal_conductivity/interface.h>
 #include <aspect/material_model/rheology/ascii_depth_profile.h>
 #include <aspect/material_model/rheology/drucker_prager.h>
 #include <aspect/material_model/steinberger.h>
@@ -34,7 +35,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
     /**
      * A material model that is designed to use pressure and entropy (rather
      * than pressure and temperature) as independent variables. It will look up
@@ -111,51 +111,99 @@ namespace aspect
         void
         create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const override;
 
+        /**
+         * A signal that is triggered when a multicomponent equilibrium is done
+         * solving the equilibrated temperature for multiple entropy fields.
+         * An iteration count describing how many iterations were required
+         * to solve the equilibrium.
+         */
+        mutable boost::signals2::signal<void (const SimulatorAccess<dim> &,
+                                              const unsigned int iteration_count)> post_multicomponent_equilibrium;
 
       private:
 
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Angle of internal friction'.
+         */
         double angle_of_internal_friction;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Cohesion'.
+         */
         double cohesion;
 
         /**
+         * Parameters limiting the specific heat capacity.
+         * max_limit_specific_heat defines the maximum specific heat capacity allowed by the model.
+         * This value is defined by the 'Maximum limited specific heat capacity' parameter.
+         * max_exact_specific_heat is the exact specific heat capacity value at which the
+         * transition from exact to limited specific heat capacity occurs.
+         * This value is defined by the 'Maximum exact specific heat capacity' parameter.
+         * ln_ratio_max_exact_max_limit_specific_heat is the natural logarithm of the ratio of these two values.
+         */
+        double max_limit_specific_heat;
+        double max_exact_specific_heat;
+        double ln_ratio_max_exact_max_limit_specific_heat;
+
+        /**
+         * Iteration parameters for multicomponent equilibration.
+         * Max iteration is the maximum allowed number of iterations for multicomponent equilibration to
+         * reach the tolerance value, which is the maximum temperature difference between the different components
+         * when they are considered in equilibrium.
+         * If the maximum iteration is reached but the temperature has not been equilibrated, the model will abort.
+         *
+         * This variable is read from the parameter file through a parameter called 'Maximum iteration for multicomponent equilibration'.
+         */
+        double multicomponent_max_iteration;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Multicomponent equilibration tolerance'.
+         */
+        double multicomponent_tolerance;
+
+        /**
          * Minimum/Maximum viscosity and lateral viscosity variations.
+         * This variable is read from the parameter file through a parameter called 'Minimum viscosity'.
          */
         double min_eta;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Maximum viscosity'.
+         */
         double max_eta;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Maximum lateral viscosity variation'.
+         */
         double max_lateral_eta_variation;
 
         /**
-         * The value for thermal conductivity. It can be a constant
-         * for the whole domain, or P-T dependent.
+         * The thermal conductivity parametrization to use. This material
+         * model supports either a constant thermal conductivity or a
+         * pressure- and temperature-dependent thermal conductivity.
          */
-        double thermal_conductivity_value;
-        double thermal_conductivity (const double temperature,
-                                     const double pressure,
-                                     const Point<dim> &position) const;
-
-        enum ConductivityFormulation
-        {
-          constant,
-          p_T_dependent
-        } conductivity_formulation;
+        std::unique_ptr<ThermalConductivity::Interface<dim>> thermal_conductivity;
 
         /**
-         * Parameters for the temperature- and pressure dependence of the
-         * thermal conductivity.
+         * A function that returns the equilibrated temperature for the given
+         * components at given pressure.
+         * The calculation is based on their entropies, mass fractions, and specific heat capacities.
          */
-        std::vector<double> conductivity_transition_depths;
-        std::vector<double> reference_thermal_conductivities;
-        std::vector<double> conductivity_pressure_dependencies;
-        std::vector<double> conductivity_reference_temperatures;
-        std::vector<double> conductivity_exponents;
-        std::vector<double> saturation_scaling;
-        double maximum_conductivity;
-
+        double  equilibrate_temperature (const std::vector<double> &temperature,
+                                         const std::vector<double> &chemical_composition,
+                                         const std::vector<double> &entropy,
+                                         const std::vector<double> &specific_heat,
+                                         const double pressure,
+                                         std::vector<double> &composition_equilibrated_S) const;
         /**
          * Information about the location of data files.
+         *
+         * This variable is read from the parameter file through a parameter called 'Data directory'.
          */
         std::string data_directory;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Material file name'.
+         */
         std::vector<std::string> material_file_names;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Lateral viscosity file name'.
+         */
         std::string lateral_viscosity_file_name;
 
         /**

@@ -5,9 +5,11 @@ To write a test for a new feature, copy one of the existing parameter files in
 the `tests/` folder in the ASPECT source
 directory, or simply any other parameter file, modify it to use the new
 feature, check that the new feature does what it is supposed to do, and then
-just add the parameter file to the tests directory. You will then need to add
-another folder to that directory that is named exactly like the parameter
-file, and add the model output files that prove that the feature is working
+just add the parameter file to the tests directory. Tests may also be placed
+in one of the explicitly configured category directories, such as
+`tests/particles/`. You will then need to add another folder next to the
+parameter file that is named exactly like the parameter file, and add the
+model output files that prove that the feature is working
 (usually, these are the log file and the statistics file, and you will have to
 rename `log.txt` to `screen-output` for historical reasons). The test and
 output files should be as small and quick to run as possible. If you need to
@@ -16,6 +18,8 @@ gnuplot output format, so that the tester can compare the actual numbers (in
 the vtu format, the output files are compressed, and can not be compared using
 Numdiff). An easy way to create all of the files you need is to copy the
 folder of an existing test and rename it to the name of your parameter file.
+
+## Running new tests on your system
 
 To actually run the test, you have to go to your
 ASPECT build directory and run
@@ -44,6 +48,8 @@ the reference output. Of course, you should only do that after you have made
 sure that these output files show that the feature you want to test is working
 as expected.
 
+## Updating test results for pull requests
+
 When you make a new test part of a pull request on GitHub, then as explained
 above that will lead to a run of all tests &ndash; including your new one
 &ndash; on a "reference machine." The reference machine that runs
@@ -52,7 +58,7 @@ which a pull request was developed and from which the output was taken. If
 this has been confirmed to be the source of a failed test run, a file that
 contains the differences between the test output you submitted as part of your
 pull request and the "reference" tester output will be available
-from GitHub (You will have to click on the link labelled "Details"
+from GitHub (You will have to click on the link labeled "Details"
 next to the line that tells you if tests have failed; for the jenkins tester
 that will bring you to a new page, where you have to go to the
 "Artifacts" tab in the top right corner. Depending on the tester,

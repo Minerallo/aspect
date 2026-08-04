@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2020 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2020 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -73,7 +73,7 @@ namespace aspect
         const double unit_scaling_factor = this->convert_output_to_years() ? year_in_seconds : 1.0;
 
         const Postprocess::BoundaryStrainRateResidualStatistics<dim> &boundary_strain_rate_residual_statistics =
-          this->get_postprocess_manager().template get_matching_postprocessor<Postprocess::BoundaryStrainRateResidualStatistics<dim>>();
+          this->get_postprocess_manager().template get_matching_active_plugin<Postprocess::BoundaryStrainRateResidualStatistics<dim>>();
 
         // We only want the output at the top boundary, so only compute it if the current cell
         // has a face at the top boundary.
@@ -100,13 +100,13 @@ namespace aspect
               // Only compute residual for doubles. This condition checks for nan values
               if (data_surface_strain_rate < 1e300 || !std::isnan(data_surface_strain_rate))
                 computed_quantities[q](0) = data_surface_strain_rate -
-                                            std::sqrt(std::fabs(second_invariant(deviator(strain_rate)))) * unit_scaling_factor;
+                                            std::sqrt(std::fabs(Utilities::Tensors::consistent_second_invariant_of_deviatoric_tensor(Utilities::Tensors::consistent_deviator(strain_rate)))) * unit_scaling_factor;
               else
                 continue;
 
             }
 
-        const auto &viz = this->get_postprocess_manager().template get_matching_postprocessor<Postprocess::Visualization<dim>>();
+        const auto &viz = this->get_postprocess_manager().template get_matching_active_plugin<Postprocess::Visualization<dim>>();
         if (!viz.output_pointwise_stress_and_strain())
           average_quantities(computed_quantities);
 

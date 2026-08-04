@@ -1,7 +1,14 @@
+```{tags}
+category:cookbook
+feature:2d
+feature:cartesian
+feature:mesh-deformation
+```
+
 (sec:cookbooks:free-surface)=
 # Using a free surface
 
-*This section was contributed by Ian Rose*.
+*This section was contributed by Ian Rose.*
 
 Free surfaces are numerically challenging but can be useful for self
 consistently tracking dynamic topography and may be quite important as a

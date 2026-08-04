@@ -6,21 +6,17 @@ Number of degrees of freedom: 22,216 (8,442+1,111+4,221+4,221+4,221)
    Skipping temperature solve because RHS is zero.
    Skipping C_1 composition solve because RHS is zero.
    Solving C_2 system ... 0 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 24+0 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 1: 1
+   Solving Stokes system (GMG)... 487+0 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 1: 0.820077
 
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 17+0 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 2: 0.00375062
+   Solving Stokes system (GMG)... 195+0 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 2: 0.0030758
 
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 9+0 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 3: 7.22761e-05
+   Solving Stokes system (GMG)... 102+0 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 3: 5.92695e-05
 
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 4+0 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 4: 9.38333e-07
+   Solving Stokes system (GMG)... 36+0 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 4: 7.71572e-07
 
 
    Postprocessing:
@@ -28,11 +24,6 @@ Number of degrees of freedom: 22,216 (8,442+1,111+4,221+4,221+4,221)
      RMS, max velocity:        0.0102 m/year, 0.0103 m/year
 
 *** Timestep 1:  t=48350 years, dt=48350 years
-TimerOutput objects finalize timed values printed to the
-screen by communicating over MPI in their destructors.
-Since an exception is currently uncaught, this
-synchronization (and subsequent output) will be skipped
-to avoid a possible deadlock.
 
 
 Exception 'ExcMessage ("The " + field_name + " equation can not be solved, because the matrix is zero, " "but the right-hand side is nonzero.")' on rank 0 on processing: 

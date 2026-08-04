@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -81,13 +81,18 @@ namespace aspect
       std::vector<double> global_area_integral(local_area_integral.size());
       Utilities::MPI::sum(local_area_integral, this->get_mpi_communicator(), global_area_integral);
 
-      // compute the RMS velocity for each compositional field and for the selected compositonal fields combined
-      std::vector<double> vrms_per_composition(local_area_integral.size());
+      // compute the RMS velocity for each compositional field and for the selected compositional fields combined
+      std::vector<double> vrms_per_composition(local_area_integral.size(), 0.0);
       double velocity_square_integral_selected_fields = 0., area_integral_selected_fields = 0.;
       for (unsigned int c = 0; c < this->n_compositional_fields(); ++c)
         {
-          vrms_per_composition[c] = std::sqrt(global_velocity_square_integral[c]) /
-                                    std::sqrt(global_area_integral[c]);
+          if (global_area_integral[c] > 0)
+            vrms_per_composition[c] = std::sqrt(global_velocity_square_integral[c]) /
+                                      std::sqrt(global_area_integral[c]);
+          else
+            {
+              // leave the field at its initialization value zero
+            }
 
           const std::vector<std::string>::iterator selected_field_it = std::find(selected_fields.begin(), selected_fields.end(), this->introspection().name_for_compositional_index(c));
           if (selected_field_it != selected_fields.end())
@@ -97,7 +102,13 @@ namespace aspect
             }
         }
 
-      const double vrms_selected_fields = std::sqrt(velocity_square_integral_selected_fields) / std::sqrt(area_integral_selected_fields);
+      double vrms_selected_fields = 0.;
+      if (area_integral_selected_fields > 0)
+        vrms_selected_fields = std::sqrt(velocity_square_integral_selected_fields) / std::sqrt(area_integral_selected_fields);
+      else
+        {
+          // leave the field at its initialization value zero
+        }
 
       const std::string unit = (this->convert_output_to_years()) ? "m/year" : "m/s";
       const double time_scaling = (this->convert_output_to_years()) ? year_in_seconds : 1.0;
@@ -122,13 +133,16 @@ namespace aspect
         }
 
       // Also output the selected fields vrms
-      statistics.add_value("RMS velocity (" + unit + ") for the selected field ",
-                           time_scaling * vrms_selected_fields);
+      if (selected_fields.size() > 0)
+        {
+          statistics.add_value("RMS velocity (" + unit + ") for the selected field(s)",
+                               time_scaling * vrms_selected_fields);
 
-      const std::string column = {"RMS velocity (" + unit + ") for the selected field "};
+          const std::string column = "RMS velocity (" + unit + ") for the selected field(s)";
 
-      statistics.set_precision(column, 8);
-      statistics.set_scientific(column, true);
+          statistics.set_precision(column, 8);
+          statistics.set_scientific(column, true);
+        }
 
       std::ostringstream output;
       output.precision(4);
@@ -137,9 +151,11 @@ namespace aspect
         {
           output << time_scaling *vrms_per_composition[c]
                  << " " << unit;
-          output << " // ";
+          if (c < this->n_compositional_fields()-1)
+            output << " // ";
         }
-      output << time_scaling *vrms_selected_fields;
+      if (selected_fields.size() > 0)
+        output << " // " << time_scaling *vrms_selected_fields << " " << unit;
 
       return std::pair<std::string, std::string>("RMS velocity for compositions and combined selected fields:",
                                                  output.str());
@@ -177,11 +193,21 @@ namespace aspect
         {
           selected_fields = Utilities::split_string_list(prm.get("Names of selected compositional fields"));
 
-          AssertThrow((selected_fields.size() > 0) &&
-                      (selected_fields.size() <= this->n_compositional_fields()),
-                      ExcMessage("The length of the list of names for the compositional "
-                                 "fields for which the RMS velocity is to be summed must be larger than zero "
-                                 "and smaller or equal to the number of compositional fields."));
+          // Check that the names given as selected_fields are actually fields.
+          for (const std::string &field_name: selected_fields)
+            {
+              AssertThrow(this->introspection().compositional_name_exists(field_name),
+                          ExcMessage("The entry '" + field_name + "' in the parameter "
+                                     "<Names of selected compositional fields> in the composition velocity "
+                                     "statistics postprocessor is not a valid name of a compositional field "
+                                     "as specified in the <Compositional fields/Names of fields> parameter."));
+            }
+
+          AssertThrow(Utilities::has_unique_entries(selected_fields),
+                      ExcMessage("The list of compositional fields for the parameter "
+                                 "<Names of selected compositional fields> in the composition velocity "
+                                 "statistics postprocessor contains entries more than once. "
+                                 "This is not allowed. Please check your parameter file."));
         }
         prm.leave_subsection();
       }

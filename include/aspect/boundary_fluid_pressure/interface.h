@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -36,31 +36,15 @@ namespace aspect
    */
   namespace BoundaryFluidPressure
   {
-    using namespace dealii;
-
     /**
      * Base class
      *
      * @ingroup BoundaryFluidPressures
      */
     template <int dim>
-    class Interface
+    class Interface : public Plugins::InterfaceBase
     {
       public:
-        /**
-         * Destructor. Made virtual to enforce that derived classes also have
-         * virtual destructors.
-         */
-        virtual ~Interface() = default;
-
-        /**
-         * Initialization function. This function is called once at the
-         * beginning of the program after parse_parameters is run and after the
-         * SimulatorAccess (if applicable) is initialized.
-         */
-        virtual void initialize ();
-
-
         /**
          * Compute the component of the gradient of the fluid pressure
          * in the direction normal to a boundary for a list of quadrature
@@ -89,26 +73,6 @@ namespace aspect
           const std::vector<Tensor<1,dim>> &normal_vectors,
           std::vector<double> &fluid_pressure_gradient_outputs
         ) const = 0;
-
-        /**
-         * Declare the parameters this class takes through input files. The
-         * default implementation of this function does not describe any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
-         */
-        static
-        void
-        declare_parameters (ParameterHandler &prm);
-
-        /**
-         * Read the parameters this class declares from the parameter file.
-         * The default implementation of this function does not read any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
-         */
-        virtual
-        void
-        parse_parameters (ParameterHandler &prm);
     };
 
 

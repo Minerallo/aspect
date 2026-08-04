@@ -3,7 +3,7 @@
 # The gnuplot output illustrates the viscosity increase at 410 and 660 km depth.
 
 set Dimension                              = 2
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set End time                               = 0
 set Adiabatic surface temperature          = 1600
 
@@ -27,7 +27,7 @@ subsection Material model
     set Phase transition Clapeyron slopes = all:3e6|-2e6
     set Phase transition density jumps    = 100, 200
     set Corresponding phase for density jump = 0, 0
-    set Viscosity prefactors          = 1, 10, 100
+    set Viscosity prefactors              = all:1|10|100
   end
 end
 

@@ -1,10 +1,10 @@
 # A modified 2d convection box with a prescribed, moving surface. The
-# oscillating sin wavee on the surface pushes the rising plume up and
+# oscillating sin wave on the surface pushes the rising plume up and
 # down. This test was used to verify that matrix-based and matrix-free
 # give the same solution in a moving domain with mesh deformation.
 
 set Dimension                              = 2
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set End time                               = 0.0024
 set Pressure normalization                 = surface
 set Surface pressure                       = 0
@@ -23,7 +23,7 @@ subsection Initial temperature model
 
   subsection Function
     set Variable names      = x,z
-    set Function constants  = p=0.01, L=1, pi=3.1415926536, k=1
+    set Function constants  = p=0.01, L=1, k=1
     set Function expression = (1.0-z) - p*cos(k*pi*x/L)*sin(pi*z)
   end
 end

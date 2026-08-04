@@ -30,8 +30,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     /**
      * A material model which is intended for use with multiple compositional
      * fields. Each compositional field is meant to be a single rock type,
@@ -108,23 +106,52 @@ namespace aspect
          * @}
          */
 
+        /**
+        * Creates additional output objects of type PrescribedFieldOutput filled with
+        * the densities (necessary for the projected density approximation of
+        * the Stokes equation).
+        */
+        void
+        create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const override;
+
+
       private:
         /**
          * Enumeration for selecting which viscosity averaging scheme to use.
+         *
+         * This variable is read from the parameter file through a parameter called 'Viscosity averaging scheme'.
          */
         MaterialUtilities::CompositionalAveragingOperation viscosity_averaging;
 
         /**
          * Vector for field viscosities, read from parameter file.
+         * This variable is read from the parameter file through a parameter called 'Viscosities'.
          */
         std::vector<double> viscosities;
 
         /**
          * Vector for field thermal conductivities, read from parameter file.
+         *
+         * This variable is read from the parameter file through a parameter called 'Thermal conductivities'.
          */
         std::vector<double> thermal_conductivities;
 
         EquationOfState::MulticomponentCompressible<dim> equation_of_state;
+
+        /**
+         * Number of phase transitions for each chemical composition (including the background field).
+         */
+        std::vector<unsigned int> n_phase_transitions_for_each_chemical_composition;
+
+        /**
+         * Total number of phases.
+         */
+        unsigned int n_phases;
+
+        /**
+         * Object that handles phase transitions.
+         */
+        MaterialUtilities::PhaseFunction<dim> phase_function;
     };
 
   }

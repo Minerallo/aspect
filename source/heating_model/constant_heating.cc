@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -45,6 +45,16 @@ namespace aspect
 
 
     template <int dim>
+    MaterialModel::MaterialProperties::Property
+    ConstantHeating<dim>::
+    get_required_properties () const
+    {
+      return MaterialModel::MaterialProperties::none;
+    }
+
+
+
+    template <int dim>
     void
     ConstantHeating<dim>::declare_parameters (ParameterHandler &prm)
     {
@@ -57,7 +67,7 @@ namespace aspect
                              "The specific rate of heating due to radioactive decay (or other bulk sources "
                              "you may want to describe). This parameter corresponds to the variable "
                              "$H$ in the temperature equation stated in the manual, and the heating "
-                             "term is $\rho H$. Units: W/kg.");
+                             "term is $\\rho H$. Units: \\si{\\watt\\per\\kilogram}.");
         }
         prm.leave_subsection();
       }

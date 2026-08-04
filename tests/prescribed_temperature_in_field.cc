@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -28,8 +28,6 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
   // Declare and parse additional parameters
   bool prescribe_internal_temperature;
   std::vector <std::string> fixed_compositional_fields;

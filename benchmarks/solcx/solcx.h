@@ -36,8 +36,6 @@ namespace aspect
    */
   namespace InclusionBenchmark
   {
-    using namespace dealii;
-
     namespace AnalyticSolutions
     {
       // based on http://geodynamics.org/hg/cs/AMR/Discontinuous_Stokes with permission
@@ -49,7 +47,7 @@ namespace aspect
         double pos[],
         double _eta_A, double _eta_B,   /* Input parameters: density, viscosity A, viscosity B */
         double _x_c, int _n,      /* Input parameters: viscosity jump location, wavenumber in x */
-        double vel[], double *presssure,
+        double vel[], double *pressure,
         double total_stress[], double strain_rate[])
       {
         const double PI = numbers::PI;
@@ -2852,22 +2850,22 @@ namespace aspect
         /*printf("%0.7f %0.7f %0.7f %0.7f %0.7f %0.7f %0.7f %0.7f\n",x,z,sum1,sum2,sum3,sum4,sum5,sum6);*/
 
         /* Output */
-        if (vel != NULL)
+        if (vel != nullptr)
           {
             vel[0] = sum1;
             vel[1] = sum2;
           }
-        if (presssure != NULL)
+        if (pressure != nullptr)
           {
-            (*presssure) = sum5;
+            (*pressure) = sum5;
           }
-        if (total_stress != NULL)
+        if (total_stress != nullptr)
           {
             total_stress[0] = sum3;
             total_stress[1] = sum6;
             total_stress[2] = sum4;
           }
-        if (strain_rate != NULL)
+        if (strain_rate != nullptr)
           {
             if (x > xc)
               {
@@ -2894,7 +2892,7 @@ namespace aspect
        * The exact solution for the SolCx benchmark, given the value of the
        * jump in viscosity $\eta_B$.
        */
-      template<int dim>
+      template <int dim>
       class FunctionSolCx : public Function<dim>
       {
         public:

@@ -22,13 +22,12 @@
 #define _aspect_material_model_rheology_constant_viscosity_h
 
 #include <aspect/global.h>
+#include <deal.II/base/parameter_handler.h>
 
 namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     namespace Rheology
     {
       class ConstantViscosity
@@ -64,6 +63,8 @@ namespace aspect
            * The constant viscosity that defines this rheology. It
            * is read from the input file by the parse_parameters()
            * function.
+           *
+           * This variable is read from the parameter file through a parameter called 'Viscosity'.
            */
           double viscosity;
       };

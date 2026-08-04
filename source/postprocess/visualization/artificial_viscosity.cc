@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -78,7 +78,7 @@ namespace aspect
                                                   "showing the value of the artificial viscosity on each "
                                                   "cell."
                                                   "\n\n"
-                                                  "Physical units: \\si{\\watt\\per\\meter\\per\\kelvin}.")
+                                                  "Physical units: $\\frac{\\text{W}}{\\text{m}\\text{K}}$.")
     }
   }
 }

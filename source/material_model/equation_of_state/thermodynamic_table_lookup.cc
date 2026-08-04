@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -171,7 +171,7 @@ namespace aspect
       fill_seismic_velocities (const MaterialModel::MaterialModelInputs<dim> &in,
                                const std::vector<double> &composite_densities,
                                const std::vector<std::vector<double>> &volume_fractions,
-                               SeismicAdditionalOutputs<dim> *seismic_out) const
+                               SeismicAdditionalOutputs<dim> &seismic_out) const
       {
         // This function returns the Voigt-Reuss-Hill averages of the
         // seismic velocities of the different materials.
@@ -184,8 +184,8 @@ namespace aspect
           {
             if (material_lookup.size() == 1)
               {
-                seismic_out->vs[i] = material_lookup[0]->seismic_Vs(in.temperature[i],in.pressure[i]);
-                seismic_out->vp[i] = material_lookup[0]->seismic_Vp(in.temperature[i],in.pressure[i]);
+                seismic_out.vs[i] = material_lookup[0]->seismic_Vs(in.temperature[i],in.pressure[i]);
+                seismic_out.vp[i] = material_lookup[0]->seismic_Vp(in.temperature[i],in.pressure[i]);
               }
             else
               {
@@ -196,8 +196,8 @@ namespace aspect
 
                 for (unsigned int j = 0; j < material_lookup.size(); ++j)
                   {
-                    const double mu = material_lookup[j]->density(in.temperature[i],in.pressure[i])*std::pow(material_lookup[j]->seismic_Vs(in.temperature[i],in.pressure[i]), 2.);
-                    const double k =  material_lookup[j]->density(in.temperature[i],in.pressure[i])*std::pow(material_lookup[j]->seismic_Vp(in.temperature[i],in.pressure[i]), 2.) - 4./3.*mu;
+                    const double mu = material_lookup[j]->density(in.temperature[i],in.pressure[i])*Utilities::fixed_power<2>(material_lookup[j]->seismic_Vs(in.temperature[i],in.pressure[i]));
+                    const double k =  material_lookup[j]->density(in.temperature[i],in.pressure[i])*Utilities::fixed_power<2>(material_lookup[j]->seismic_Vp(in.temperature[i],in.pressure[i])) - 4./3.*mu;
 
                     k_voigt += volume_fractions[i][j] * k;
                     mu_voigt += volume_fractions[i][j] * mu;
@@ -207,8 +207,8 @@ namespace aspect
 
                 const double k_VRH = (k_voigt + 1./invk_reuss)/2.;
                 const double mu_VRH = (mu_voigt + 1./invmu_reuss)/2.;
-                seismic_out->vp[i] = std::sqrt((k_VRH + 4./3.*mu_VRH)/composite_densities[i]);
-                seismic_out->vs[i] = std::sqrt(mu_VRH/composite_densities[i]);
+                seismic_out.vp[i] = std::sqrt((k_VRH + 4./3.*mu_VRH)/composite_densities[i]);
+                seismic_out.vs[i] = std::sqrt(mu_VRH/composite_densities[i]);
               }
           }
       }
@@ -220,7 +220,7 @@ namespace aspect
       ThermodynamicTableLookup<dim>::
       fill_phase_volume_fractions (const MaterialModel::MaterialModelInputs<dim> &in,
                                    const std::vector<std::vector<double>> &volume_fractions,
-                                   NamedAdditionalMaterialOutputs<dim> *phase_volume_fractions_out) const
+                                   NamedAdditionalMaterialOutputs<dim> &phase_volume_fractions_out) const
       {
         // Each call to material_lookup[j]->phase_volume_fraction(k,temperature,pressure)
         // returns the volume fraction of the kth phase which is present in that material lookup
@@ -238,7 +238,7 @@ namespace aspect
             for (unsigned int k = 0; k < unique_phase_indices[j].size(); ++k)
               phase_volume_fractions[unique_phase_indices[j][k]][i] += volume_fractions[i][j] * material_lookup[j]->phase_volume_fraction(k,in.temperature[i],in.pressure[i]);
 
-        phase_volume_fractions_out->output_values = phase_volume_fractions;
+        phase_volume_fractions_out.output_values = phase_volume_fractions;
       }
 
 
@@ -421,14 +421,17 @@ namespace aspect
                                                               MaterialModel::MaterialModelOutputs<dim> &out) const
       {
         // fill seismic velocity outputs if they exist
-        if (SeismicAdditionalOutputs<dim> *seismic_out = out.template get_additional_output<SeismicAdditionalOutputs<dim>>())
-          fill_seismic_velocities(in, out.densities, volume_fractions, seismic_out);
+        if (const std::shared_ptr<SeismicAdditionalOutputs<dim>> seismic_out
+            = out.template get_additional_output_object<SeismicAdditionalOutputs<dim>>())
+          fill_seismic_velocities(in, out.densities, volume_fractions, *seismic_out);
 
         // fill phase volume outputs if they exist
-        if (NamedAdditionalMaterialOutputs<dim> *phase_volume_fractions_out = out.template get_additional_output<NamedAdditionalMaterialOutputs<dim>>())
-          fill_phase_volume_fractions(in, volume_fractions, phase_volume_fractions_out);
+        if (const std::shared_ptr<NamedAdditionalMaterialOutputs<dim>> phase_volume_fractions_out
+            = out.template get_additional_output_object<NamedAdditionalMaterialOutputs<dim>>())
+          fill_phase_volume_fractions(in, volume_fractions, *phase_volume_fractions_out);
 
-        if (PhaseOutputs<dim> *dominant_phases_out = out.template get_additional_output<PhaseOutputs<dim>>())
+        if (const std::shared_ptr<PhaseOutputs<dim>> dominant_phases_out
+            = out.template get_additional_output_object<PhaseOutputs<dim>>())
           fill_dominant_phases(in, volume_fractions, *dominant_phases_out);
       }
 
@@ -525,21 +528,21 @@ namespace aspect
       void
       ThermodynamicTableLookup<dim>::create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const
       {
-        if (out.template get_additional_output<NamedAdditionalMaterialOutputs<dim>>() == nullptr)
+        if (out.template has_additional_output_object<NamedAdditionalMaterialOutputs<dim>>() == false)
           {
             const unsigned int n_points = out.n_evaluation_points();
             out.additional_outputs.push_back(
               std::make_unique<MaterialModel::NamedAdditionalMaterialOutputs<dim>> (unique_phase_names, n_points));
           }
 
-        if (out.template get_additional_output<SeismicAdditionalOutputs<dim>>() == nullptr)
+        if (out.template has_additional_output_object<SeismicAdditionalOutputs<dim>>() == false)
           {
             const unsigned int n_points = out.n_evaluation_points();
             out.additional_outputs.push_back(
               std::make_unique<MaterialModel::SeismicAdditionalOutputs<dim>> (n_points));
           }
 
-        if (out.template get_additional_output<PhaseOutputs<dim>>() == nullptr
+        if (out.template has_additional_output_object<PhaseOutputs<dim>>() == false
             && material_lookup[0]->has_dominant_phase())
           {
             const unsigned int n_points = out.n_evaluation_points();

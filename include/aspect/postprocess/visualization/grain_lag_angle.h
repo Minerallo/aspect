@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -56,7 +56,7 @@ namespace aspect
        * timestep behind the other quantities in order to get the gradients, but we're
        * often interested in GOL in a steady-state flow anyway.
        */
-      template<int dim>
+      template <int dim>
       class GrainLagAngle: public CellDataVectorCreator<dim>, public SimulatorAccess<dim>
       {
         public:
@@ -70,7 +70,6 @@ namespace aspect
            */
           std::pair<std::string, std::unique_ptr<Vector<float>>>
           execute() const override;
-
       };
     }
   }

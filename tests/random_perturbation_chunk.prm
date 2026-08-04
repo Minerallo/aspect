@@ -5,7 +5,7 @@
 set Dimension                              = 2
 set Start time                             = 0
 set End time                               = 0
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 
 subsection Geometry model
   set Model name = chunk
@@ -66,7 +66,11 @@ subsection Postprocess
 
   subsection Visualization
     set Interpolate output = false
-    set List of output variables = density
+    set List of output variables = material properties
     set Time between graphical output = 0.1
+
+    subsection Material properties
+      set List of material properties = density
+    end
   end
 end

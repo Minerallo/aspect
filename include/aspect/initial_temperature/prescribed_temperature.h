@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2012 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2012 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -29,8 +29,6 @@ namespace aspect
 {
   namespace InitialTemperature
   {
-    using namespace dealii;
-
     /**
      * A class sets the initial temperature to the precribed temperature
      * outputs computed by the material model.

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -35,7 +35,7 @@ namespace aspect
     DynamicTopography<dim>::execute (TableHandler &)
     {
       const Postprocess::BoundaryPressures<dim> &boundary_pressures =
-        this->get_postprocess_manager().template get_matching_postprocessor<Postprocess::BoundaryPressures<dim>>();
+        this->get_postprocess_manager().template get_matching_active_plugin<Postprocess::BoundaryPressures<dim>>();
 
       // Get the average pressure at the top and bottom boundaries.
       // This will be used to compute the dynamic pressure at the boundaries.
@@ -160,6 +160,7 @@ namespace aspect
                 const double density = out_volume.densities[q];
                 const bool is_compressible = this->get_material_model().is_compressible();
                 const Tensor<1,dim> gravity = this->get_gravity_model().gravity_vector(in_volume.position[q]);
+                const double JxW = fe_volume_values.JxW(q);
 
                 // Set up shape function values
                 for (unsigned int k=0; k<dofs_per_cell; ++k)
@@ -173,20 +174,26 @@ namespace aspect
                   {
                     // Viscous stress part
                     local_vector(i) += 2.0 * eta * ( epsilon_phi_u[i] * in_volume.strain_rate[q]
-                                                     - (is_compressible ? 1./3. * div_phi_u[i] * div_solution[q] : 0.0) ) * fe_volume_values.JxW(q);
+                                                     - (is_compressible ? 1./3. * div_phi_u[i] * div_solution[q] : 0.0) ) * JxW;
                     // Pressure and compressibility parts
-                    local_vector(i) -= div_phi_u[i] * in_volume.pressure[q] * fe_volume_values.JxW(q);
+                    local_vector(i) -= div_phi_u[i] * in_volume.pressure[q] * JxW;
                     // Force part
-                    local_vector(i) -= density * gravity * phi_u[i] * fe_volume_values.JxW(q);
+                    local_vector(i) -= density * gravity * phi_u[i] * JxW;
                   }
               }
             // Assemble the mass matrix for cell face. Since we are using GLL
             // quadrature, the mass matrix will be diagonal, and we can just assemble it into a vector.
             for (unsigned int q=0; q < n_face_q_points; ++q)
-              for (unsigned int i=0; i<dofs_per_cell; ++i)
-                local_mass_matrix(i) += fe_face_values[this->introspection().extractors.velocities].value(i,q) *
-                                        fe_face_values[this->introspection().extractors.velocities].value(i,q) *
-                                        fe_face_values.JxW(q);
+              {
+                const double JxW = fe_face_values.JxW(q);
+                for (unsigned int i=0; i<dofs_per_cell; ++i)
+                  {
+                    const Tensor<1,dim> phi_u = fe_face_values[this->introspection().extractors.velocities].value(i,q);
+                    local_mass_matrix(i) += phi_u *
+                                            phi_u *
+                                            JxW;
+                  }
+              }
 
             cell->distribute_local_to_global(local_vector, rhs_vector);
             cell->distribute_local_to_global(local_mass_matrix, mass_matrix);
@@ -330,21 +337,22 @@ namespace aspect
                 const Point<dim> point = fe_output_values.quadrature_point(q);
                 const Tensor<1,dim> normal = fe_output_values.normal_vector(q);
                 const double gravity_norm = this->get_gravity_model().gravity_vector(point).norm();
+                const double JxW = fe_output_values.JxW(q);
 
                 if (at_upper_surface)
                   {
                     const double delta_rho = out_output.densities[q] - density_above;
                     dynamic_topography += (-stress_output_values[q]*normal - surface_pressure)
-                                          / delta_rho / gravity_norm * fe_output_values.JxW(q);
+                                          / delta_rho / gravity_norm * JxW;
                   }
                 else
                   {
                     const double delta_rho = out_output.densities[q] - density_below;
 
                     dynamic_topography += (-stress_output_values[q]*normal - bottom_pressure)
-                                          / delta_rho / gravity_norm * fe_output_values.JxW(q);
+                                          / delta_rho / gravity_norm * JxW;
                   }
-                face_area += fe_output_values.JxW(q);
+                face_area += JxW;
               }
             // Get the average dynamic topography for the cell
             dynamic_topography = dynamic_topography * (backward_advection ? -1. : 1.) / face_area;
@@ -381,6 +389,26 @@ namespace aspect
     topography_vector() const
     {
       return topo_vector;
+    }
+
+
+
+    template <int dim>
+    double
+    DynamicTopography<dim>::
+    get_density_above() const
+    {
+      return density_above;
+    }
+
+
+
+    template <int dim>
+    double
+    DynamicTopography<dim>::
+    get_density_below() const
+    {
+      return density_below;
     }
 
     /**
@@ -438,8 +466,12 @@ namespace aspect
                  << std::endl;
         }
 
+      Utilities::create_directory (this->get_output_directory() + "dynamic_topography/",
+                                   this->get_mpi_communicator(),
+                                   /* silent=*/true);
+
       std::string filename = this->get_output_directory() +
-                             "dynamic_topography_" + boundary_name + "." +
+                             "dynamic_topography/dynamic_topography_" + boundary_name + "." +
                              Utilities::int_to_string(this->get_timestep_number(), 5);
       if (this->get_parameters().run_postprocessors_on_nonlinear_iterations)
         filename.append("." + Utilities::int_to_string (this->get_nonlinear_iteration(), 4));
@@ -468,7 +500,7 @@ namespace aspect
                              "is part of the material model, this parameter `Density above' allows the user to specify the density "
                              "value of material that is displaced above the solid surface. By default this material is assumed to "
                              "be air, with a density of 0. "
-                             "Units: \\si{\\kilogram\\per\\meter\\cubed}.");
+                             "Units: $\\frac{\\text{kg}}{\\text{m}^3}$.");
           prm.declare_entry ("Density below","9900.",
                              Patterns::Double (0.),
                              "Dynamic topography is calculated as the excess or lack of mass that is supported by mantle flow. "
@@ -477,7 +509,7 @@ namespace aspect
                              "is part of the material model, this parameter `Density below' allows the user to specify the density "
                              "value of material that is displaced below the solid surface. By default this material is assumed to "
                              "be outer core material with a density of 9900. "
-                             "Units: \\si{\\kilogram\\per\\meter\\cubed}.");
+                             "Units: $\\frac{\\text{kg}}{\\text{m}^3}$.");
           prm.declare_entry ("Output surface", "true",
                              Patterns::Bool(),
                              "Whether to output a file containing the surface dynamic topography.");
@@ -497,6 +529,8 @@ namespace aspect
     void
     DynamicTopography<dim>::parse_parameters (ParameterHandler &prm)
     {
+      CitationInfo::add("geoid");
+
       prm.enter_subsection("Postprocess");
       {
         prm.enter_subsection("Dynamic topography");

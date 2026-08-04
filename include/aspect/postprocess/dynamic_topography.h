@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -57,6 +57,20 @@ namespace aspect
         topography_vector() const;
 
         /**
+         * Return the density value used above the top surface when converting
+         * normal traction to dynamic topography.
+         */
+        double
+        get_density_above() const;
+
+        /**
+         * Return the density value used below the bottom surface when converting
+         * normal traction to dynamic topography.
+         */
+        double
+        get_density_below() const;
+
+        /**
          * Return the cell-wise topography vector as calculated by the CBF formulation,
          * where indices of the vector correspond to cell indices.
          * This vector is considerably smaller than the full topography vector returned
@@ -110,22 +124,28 @@ namespace aspect
         /**
          * A parameter that allows users to set the density value
          * above the top surface.
+         *
+         * This variable is read from the parameter file through a parameter called 'Density above'.
          */
         double density_above;
 
         /**
          * A parameter that allows users to set the density value
          * below the bottom surface.
+         * This variable is read from the parameter file through a parameter called 'Density below'.
          */
         double density_below;
 
         /**
          * Whether to output the surface topography.
+         * This variable is read from the parameter file through a parameter called 'Output surface'.
          */
         bool output_surface;
 
         /**
          * Whether to output the bottom topography.
+         *
+         * This variable is read from the parameter file through a parameter called 'Output bottom'.
          */
         bool output_bottom;
     };

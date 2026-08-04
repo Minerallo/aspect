@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -31,11 +31,10 @@
 #include <aspect/fe_variable_collection.h>
 #include <aspect/parameters.h>
 
+#include <map>
 
 namespace aspect
 {
-  using namespace dealii;
-
   /**
    * Helper function to construct the default list of variables to use
    * based on the given set of @p parameters.
@@ -64,13 +63,14 @@ namespace aspect
       porosity = 4,
       density = 5,
       entropy = 6,
-      generic = 7,
-      unspecified = 8
+      reaction_progress = 7,
+      generic = 8,
+      unspecified = 9
     } type;
 
     /**
      * The number of different types defined in Type.
-    */
+     */
     constexpr static unsigned int n_types = 9;
 
     /**
@@ -95,14 +95,51 @@ namespace aspect
         return CompositionalFieldDescription::density;
       else if (input == "entropy")
         return CompositionalFieldDescription::entropy;
+      else if (input == "reaction progress")
+        return CompositionalFieldDescription::reaction_progress;
       else if (input == "generic")
         return CompositionalFieldDescription::generic;
       else if (input == "unspecified")
         return CompositionalFieldDescription::unspecified;
       else
-        AssertThrow(false, ExcNotImplemented());
+        AssertThrow(false, ExcMessage("Unknown compositional field type."));
 
       return CompositionalFieldDescription::Type();
+    }
+
+    /**
+     * This function translates a compositional field type into the string
+     * used in the input file and diagnostic output.
+     */
+    static
+    std::string
+    type_to_string(const Type type)
+    {
+      switch (type)
+        {
+          case chemical_composition:
+            return "chemical composition";
+          case stress:
+            return "stress";
+          case strain:
+            return "strain";
+          case grain_size:
+            return "grain size";
+          case porosity:
+            return "porosity";
+          case density:
+            return "density";
+          case entropy:
+            return "entropy";
+          case generic:
+            return "generic";
+          case unspecified:
+            return "unspecified";
+          default:
+            AssertThrow(false, ExcInternalError());
+        }
+
+      return "";
     }
   };
 
@@ -132,12 +169,6 @@ namespace aspect
        */
       Introspection (const std::vector<VariableDeclaration<dim>> &variables,
                      const Parameters<dim> &parameters);
-
-      /**
-       * Destructor.
-       */
-      ~Introspection ();
-
 
 
       /**
@@ -169,7 +200,7 @@ namespace aspect
        * A variable that holds whether the composition field(s) should use a
        * discontinuous discretization.
        */
-      const bool use_discontinuous_composition_discretization;
+      const std::vector<bool> use_discontinuous_composition_discretization;
 
       /**
        * A structure that enumerates the vector components of the finite
@@ -177,10 +208,10 @@ namespace aspect
        */
       struct ComponentIndices
       {
-        unsigned int       velocities[dim];
-        unsigned int       pressure;
-        unsigned int       temperature;
-        std::vector<unsigned int> compositional_fields;
+        std::array<unsigned int, dim> velocities;
+        unsigned int                  pressure;
+        unsigned int                  temperature;
+        std::vector<unsigned int>     compositional_fields;
       };
       /**
        * A variable that enumerates the vector components of the finite
@@ -205,7 +236,17 @@ namespace aspect
         unsigned int       pressure;
         unsigned int       temperature;
         std::vector<unsigned int> compositional_fields;
+
+        /**
+         * This variable contains the block for each compositional field
+         * where the matrix/sparsity pattern is copied from when we need to
+         * (temporarily) create a matrix. This way, we only need to store a
+         * single sparsity pattern and reuse it for all compositional fields
+         * (assuming they have an identical FiniteElement).
+         */
+        std::vector<unsigned int> compositional_field_sparsity_pattern;
       };
+
       /**
        * A variable that enumerates the vector blocks of the finite element
        * that correspond to each of the variables in this problem.
@@ -225,6 +266,7 @@ namespace aspect
         const FEValuesExtractors::Scalar              temperature;
         const std::vector<FEValuesExtractors::Scalar> compositional_fields;
       };
+
       /**
        * A variable that contains extractors for every block of the finite
        * element used in the overall description.
@@ -235,19 +277,19 @@ namespace aspect
        * A structure that enumerates the base elements of the finite element
        * that correspond to each of the variables in this problem.
        *
-       * If there are compositional fields, they are all discretized with the
-       * same base element and, consequently, we only need a single index. If
-       * a variable does not exist in the problem (e.g., we do not have
-       * compositional fields), then the corresponding index is set to an
-       * invalid number.
+       * The indices here can be used to access the dealii::FiniteElement
+       * that describes the given variable. We support different finite
+       * elements for compositional fields, but we try to reuse the same
+       * element if possible.
        */
       struct BaseElements
       {
-        unsigned int       velocities;
-        unsigned int       pressure;
-        unsigned int       temperature;
-        unsigned int       compositional_fields;
+        unsigned int              velocities;
+        unsigned int              pressure;
+        unsigned int              temperature;
+        std::vector<unsigned int> compositional_fields;
       };
+
       /**
        * A variable that enumerates the base elements of the finite element
        * that correspond to each of the variables in this problem.
@@ -263,10 +305,13 @@ namespace aspect
        */
       struct PolynomialDegree
       {
-        unsigned int       velocities;
-        unsigned int       temperature;
-        unsigned int       compositional_fields;
+        unsigned int              max_degree;
+        unsigned int              velocities;
+        unsigned int              temperature;
+        std::vector<unsigned int> compositional_fields;
+        unsigned int              max_compositional_field;
       };
+
       /**
        * A variable that enumerates the polynomial degree of the finite element
        * that correspond to each of the variables in this problem.
@@ -297,9 +342,11 @@ namespace aspect
         Quadrature<dim>       velocities;
         Quadrature<dim>       pressure;
         Quadrature<dim>       temperature;
-        Quadrature<dim>       compositional_fields;
+        Quadrature<dim>       compositional_field_max;
+        std::vector<Quadrature<dim>> compositional_fields;
         Quadrature<dim>       system;
       };
+
       /**
        * A variable that enumerates the polynomial degree of the finite element
        * that correspond to each of the variables in this problem.
@@ -322,6 +369,7 @@ namespace aspect
         Quadrature<dim-1>       compositional_fields;
         Quadrature<dim-1>       system;
       };
+
       /**
        * A variable that enumerates the polynomial degree of the finite element
        * that correspond to each of the variables in this problem.
@@ -335,13 +383,38 @@ namespace aspect
        */
       struct ComponentMasks
       {
-        ComponentMasks (FEVariableCollection<dim> &fevs);
+        ComponentMasks (const FEVariableCollection<dim> &fevs, const Introspection<dim>::ComponentIndices &indices);
 
+        /**
+         * The component mask for all velocity components.
+         */
         ComponentMask              velocities;
+
+        /**
+         * The component mask for the pressure component.
+         */
         ComponentMask              pressure;
+
+        /**
+         * The component mask for the temperature component.
+         */
         ComponentMask              temperature;
+
+        /**
+         * The component mask for each individual compositional field.
+         * The size of this vector is equal to the number of compositional fields.
+         * Each entry is a component mask that selects the component
+         * that corresponds to the respective compositional field.
+         */
         std::vector<ComponentMask> compositional_fields;
+
+        /**
+         * The component mask for all composition components.
+         * This mask selects all compositional fields.
+         */
+        ComponentMask              compositions;
       };
+
       /**
        * A variable that contains component masks for each of the variables in
        * this problem. Component masks are a deal.II concept, see the deal.II
@@ -363,6 +436,26 @@ namespace aspect
        * element.
        */
       std::vector<types::global_dof_index> system_dofs_per_block;
+
+      /**
+       * Information about one local DoF in the Stokes system.
+       */
+      struct StokesDoFInfo
+      {
+        unsigned int local_dof_index;
+        unsigned int component_index;
+      };
+
+      /**
+       * The local DoF and component indices in the system finite element that
+       * belong to the Stokes system being assembled. This vector is
+       * initialized by initialize_stokes_dof_info() from
+       * Simulator::setup_introspection(), after the system finite element has
+       * been constructed. Without melt transport that is velocity and solid
+       * pressure; with melt transport, MeltHandler replaces the contents with
+       * velocity, fluid pressure, and compaction pressure.
+       */
+      std::vector<StokesDoFInfo> stokes_dof_info;
 
       /**
        * A structure that contains index sets describing which of the globally
@@ -425,6 +518,7 @@ namespace aspect
          */
         IndexSet locally_owned_fluid_pressure_dofs;
       };
+
       /**
        * A variable that contains index sets describing which of the globally
        * enumerated degrees of freedom are owned by the current processor in a
@@ -448,6 +542,31 @@ namespace aspect
       /**
        * @}
        */
+
+      /**
+       * Return a vector that contains the base element indices of the deal.II FiniteElement
+       * that are used for compositional fields. Note that compositional fields can share the
+       * same base element, so this vector can (and usually will) be smaller than the number
+       * of compositional fields. The function get_compositional_field_indices_with_base_element()
+       * can be used to translate from base element index to all compositional field indices
+       * using the specified base element.
+       * If several fields are the finite element type (same degree and both continuous or both
+       * discontinuous), they share base elements. If you have no compositional fields, the
+       * vector returned has length 0. If all compositional fields have the same finite element
+       * space, the length is 1.
+       */
+      const std::vector<unsigned int> &
+      get_composition_base_element_indices() const;
+
+      /**
+       * Return a vector with all compositional field indices that belong to a given
+       * base element index as returned by get_composition_base_element_indices().
+       * The indices returned are therefore between 0 and n_compositional_fields-1.
+       * If you have a single compositional field, this function returns {0} when passing
+       * in base_element_index=0.
+       */
+      const std::vector<unsigned int> &
+      get_compositional_field_indices_with_base_element(const unsigned int base_element_index) const;
 
       /**
        * A function that gets the name of a compositional field as an input
@@ -577,6 +696,28 @@ namespace aspect
       bool
       is_stokes_component (const unsigned int component_index) const;
 
+      /**
+       * Initialize the local finite-element DoF indices and component indices
+       * for the Stokes system (velocity and solid pressure). This function
+       * must be called after the simulator finite element has been
+       * constructed, and before stokes_dof_info is used. The Simulator calls
+       * it from Simulator::setup_introspection(). When melt transport is
+       * enabled, MeltHandler::initialize_stokes_dof_info() then replaces the
+       * contents for the melt Stokes system.
+       */
+      void
+      initialize_stokes_dof_info (const FiniteElement<dim> &finite_element);
+
+      /**
+       * A function that gets a component index as an input
+       * parameter and returns if the component is one of the
+       * compositional fields.
+       *
+       * @param component_index The component index to check.
+       */
+      bool
+      is_composition_component (const unsigned int component_index) const;
+
     private:
       /**
        * A vector that stores the names of the compositional fields that will
@@ -604,6 +745,19 @@ namespace aspect
        * given in CompositionalFieldDescription.
        */
       std::vector<std::vector<unsigned int>> composition_indices_for_type;
+
+      /**
+       * List of base element indices used by compositional fields. Cached
+       * result returned by get_composition_base_element_indices().
+       */
+      std::vector<unsigned int> composition_base_element_indices;
+
+      /**
+       * Map base_element_index to list of compositional field indices that use
+       * that base element. Cached result returned by
+       * get_compositional_field_indices_with_base_element();
+       */
+      std::map<unsigned int, std::vector<unsigned int>> compositional_field_indices_with_base_element;
   };
 }
 

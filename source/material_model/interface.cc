@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -25,12 +25,11 @@
 #include <aspect/utilities.h>
 #include <aspect/newton.h>
 
-#include <deal.II/base/exceptions.h>
 #include <deal.II/base/signaling_nan.h>
-#include <tuple>
 #include <deal.II/fe/fe_values.h>
 #include <deal.II/fe/fe_q.h>
 
+#include <tuple>
 #include <list>
 
 #ifdef DEBUG
@@ -73,42 +72,14 @@ namespace aspect
 
 
 
-    template <int dim>
-    void
-    Interface<dim>::initialize ()
-    {}
-
-
-
-    template <int dim>
-    void
-    Interface<dim>::update ()
-    {}
-
-
-
-    template <int dim>
-    void
-    Interface<dim>::
-    declare_parameters (dealii::ParameterHandler &)
-    {}
-
-
-
-    template <int dim>
-    void
-    Interface<dim>::parse_parameters (dealii::ParameterHandler &)
-    {}
-
-
 // -------------------------------- Deal with registering material models and automating
 // -------------------------------- their setup and selection at run time
 
     namespace
     {
       std::tuple
-      <void *,
-      void *,
+      <aspect::internal::Plugins::UnusablePluginList,
+      aspect::internal::Plugins::UnusablePluginList,
       aspect::internal::Plugins::PluginList<Interface<2>>,
       aspect::internal::Plugins::PluginList<Interface<3>>> registered_plugins;
     }
@@ -350,6 +321,25 @@ namespace aspect
 
     template <int dim>
     void
+    MaterialModelInputs<dim>::resize(const unsigned int n_points,
+                                     const unsigned int n_comp)
+    {
+      AssertThrow(additional_inputs.size() == 0,
+                  ExcMessage("The resize() function is not implemented if additional material inputs are attached."));
+
+      position.assign(n_points, Point<dim>(numbers::signaling_nan<Tensor<1,dim>>()));
+      temperature.assign(n_points, numbers::signaling_nan<double>());
+      pressure.assign(n_points, numbers::signaling_nan<double>());
+      pressure_gradient.assign(n_points, numbers::signaling_nan<Tensor<1,dim>>());
+      velocity.assign(n_points, numbers::signaling_nan<Tensor<1,dim>>());
+      composition.assign(n_points, std::vector<double>(n_comp, numbers::signaling_nan<double>()));
+      strain_rate.assign(n_points, numbers::signaling_nan<SymmetricTensor<2,dim>>());
+    }
+
+
+
+    template <int dim>
+    void
     MaterialModelInputs<dim>::reinit(const FEValuesBase<dim,dim> &fe_values,
                                      const typename DoFHandler<dim>::active_cell_iterator &cell_x,
                                      const Introspection<dim> &introspection,
@@ -411,17 +401,10 @@ namespace aspect
     template <int dim>
     MaterialModelOutputs<dim>::MaterialModelOutputs(const unsigned int n_points,
                                                     const unsigned int n_comp)
-      :
-      viscosities(n_points, numbers::signaling_nan<double>()),
-      densities(n_points, numbers::signaling_nan<double>()),
-      thermal_expansion_coefficients(n_points, numbers::signaling_nan<double>()),
-      specific_heat(n_points, numbers::signaling_nan<double>()),
-      thermal_conductivities(n_points, numbers::signaling_nan<double>()),
-      compressibilities(n_points, numbers::signaling_nan<double>()),
-      entropy_derivative_pressure(n_points, numbers::signaling_nan<double>()),
-      entropy_derivative_temperature(n_points, numbers::signaling_nan<double>()),
-      reaction_terms(n_points, std::vector<double>(n_comp, numbers::signaling_nan<double>()))
-    {}
+    {
+      resize(n_points,n_comp);
+    }
+
 
 
     template <int dim>
@@ -446,6 +429,28 @@ namespace aspect
 
 
     template <int dim>
+    void
+    MaterialModelOutputs<dim>::resize(const unsigned int n_points,
+                                      const unsigned int n_comp,
+                                      const bool remove_additional_outputs)
+    {
+      viscosities.assign(n_points, numbers::signaling_nan<double>());
+      densities.assign(n_points, numbers::signaling_nan<double>());
+      thermal_expansion_coefficients.assign(n_points, numbers::signaling_nan<double>());
+      specific_heat.assign(n_points, numbers::signaling_nan<double>());
+      thermal_conductivities.assign(n_points, numbers::signaling_nan<double>());
+      compressibilities.assign(n_points, numbers::signaling_nan<double>());
+      entropy_derivative_pressure.assign(n_points, numbers::signaling_nan<double>());
+      entropy_derivative_temperature.assign(n_points, numbers::signaling_nan<double>());
+      reaction_terms.assign(n_points, std::vector<double>(n_comp, numbers::signaling_nan<double>()));
+
+      if (remove_additional_outputs == true)
+        additional_outputs.clear();
+    }
+
+
+
+    template <int dim>
     unsigned int
     MaterialModelOutputs<dim>::n_evaluation_points() const
     {
@@ -458,7 +463,7 @@ namespace aspect
     {
       std::string get_averaging_operation_names ()
       {
-        return "none|arithmetic average|harmonic average|geometric average|pick largest|project to Q1|log average|harmonic average only viscosity|geometric average only viscosity|project to Q1 only viscosity";
+        return "none|default averaging|arithmetic average|harmonic average|geometric average|pick largest|project to Q1|log average|harmonic average only viscosity|geometric average only viscosity|project to Q1 only viscosity";
       }
 
 
@@ -484,6 +489,8 @@ namespace aspect
           return geometric_average_only_viscosity;
         else if (s == "project to Q1 only viscosity")
           return project_to_Q1_only_viscosity;
+        else if (s == "default averaging")
+          return default_averaging;
         else
           AssertThrow (false,
                        ExcMessage ("The value <" + s + "> for a material "
@@ -846,6 +853,7 @@ namespace aspect
                     const typename DoFHandler<dim>::active_cell_iterator &cell,
                     const Quadrature<dim>         &quadrature_formula,
                     const Mapping<dim>            &mapping,
+                    const MaterialProperties::Property &requested_properties,
                     MaterialModelOutputs<dim>     &values_out)
       {
         if (operation == none)
@@ -853,6 +861,8 @@ namespace aspect
 
         FullMatrix<double> projection_matrix;
         FullMatrix<double> expansion_matrix;
+
+        const bool average_viscosity = requested_properties & MaterialProperties::Property::viscosity;
 
         if (operation == project_to_Q1
             ||
@@ -873,39 +883,42 @@ namespace aspect
 
         // store the original viscosities if we need to compute the
         // system jacobian later on
-        MaterialModelDerivatives<dim> *derivatives =
-          values_out.template get_additional_output<MaterialModelDerivatives<dim>>();
+        const std::shared_ptr<MaterialModelDerivatives<dim>> derivatives =
+          values_out.template get_additional_output_object<MaterialModelDerivatives<dim>>();
 
         std::vector<double> viscosity_before_averaging;
         if (derivatives != nullptr)
           viscosity_before_averaging = values_out.viscosities;
 
         // compute the average of viscosity
-        if (operation == harmonic_average_only_viscosity)
-          average_property (harmonic_average, projection_matrix, expansion_matrix,
-                            values_out.viscosities);
-
-        else if (operation == geometric_average_only_viscosity)
-          average_property (geometric_average, projection_matrix, expansion_matrix,
-                            values_out.viscosities);
-
-        else if (operation == project_to_Q1_only_viscosity)
-          average_property (project_to_Q1, projection_matrix, expansion_matrix,
-                            values_out.viscosities);
-
-        else
-          average_property (operation, projection_matrix, expansion_matrix,
-                            values_out.viscosities);
-
-        // calculate the weight of viscosity derivative at each
-        // quadrature point
-        if (derivatives != nullptr)
+        if (average_viscosity)
           {
-            for (unsigned int q = 0; q < values_out.n_evaluation_points(); ++q)
-              derivatives->viscosity_derivative_averaging_weights[q] =
-                compute_viscosity_derivative_averaging_weight(
-                  operation, values_out.viscosities[q], viscosity_before_averaging[q],
-                  1. / values_out.n_evaluation_points());
+            if (operation == harmonic_average_only_viscosity)
+              average_property (harmonic_average, projection_matrix, expansion_matrix,
+                                values_out.viscosities);
+
+            else if (operation == geometric_average_only_viscosity)
+              average_property (geometric_average, projection_matrix, expansion_matrix,
+                                values_out.viscosities);
+
+            else if (operation == project_to_Q1_only_viscosity)
+              average_property (project_to_Q1, projection_matrix, expansion_matrix,
+                                values_out.viscosities);
+
+            else
+              average_property (operation, projection_matrix, expansion_matrix,
+                                values_out.viscosities);
+
+            // calculate the weight of viscosity derivative at each
+            // quadrature point
+            if (derivatives != nullptr)
+              {
+                for (unsigned int q = 0; q < values_out.n_evaluation_points(); ++q)
+                  derivatives->viscosity_derivative_averaging_weights[q] =
+                    compute_viscosity_derivative_averaging_weight(
+                      operation, values_out.viscosities[q], viscosity_before_averaging[q],
+                      1. / values_out.n_evaluation_points());
+              }
           }
 
         if (operation == harmonic_average_only_viscosity ||
@@ -928,13 +941,40 @@ namespace aspect
         average_property (operation, projection_matrix, expansion_matrix,
                           values_out.entropy_derivative_temperature);
 
-        // the reaction terms are unfortunately stored in reverse
-        // indexing. it's also not quite clear whether these should
-        // really be averaged, so avoid this for now
+        // The reaction terms are unfortunately stored in reverse
+        // indexing. It's also not quite clear whether these should
+        // really be averaged, so avoid this for now.
 
         // average all additional outputs
         for (unsigned int i=0; i<values_out.additional_outputs.size(); ++i)
           values_out.additional_outputs[i]->average (operation, projection_matrix, expansion_matrix);
+      }
+
+
+
+      AveragingOperation
+      get_averaging_operation_for_viscosity(const AveragingOperation operation)
+      {
+        AveragingOperation operation_for_viscosity = operation;
+        switch (operation)
+          {
+            case harmonic_average:
+              operation_for_viscosity = harmonic_average_only_viscosity;
+              break;
+
+            case geometric_average:
+              operation_for_viscosity = geometric_average_only_viscosity;
+              break;
+
+            case project_to_Q1:
+              operation_for_viscosity = project_to_Q1_only_viscosity;
+              break;
+
+            default:
+              operation_for_viscosity = operation;
+          }
+
+        return operation_for_viscosity;
       }
     }
 
@@ -976,7 +1016,7 @@ namespace aspect
 
 
 
-    template<int dim>
+    template <int dim>
     std::vector<double>
     NamedAdditionalMaterialOutputs<dim>::get_nth_output(const unsigned int idx) const
     {
@@ -991,10 +1031,24 @@ namespace aspect
 
 
 
+    namespace
+    {
+      std::vector<std::string> make_prescribed_dilation_outputs_names()
+      {
+        std::vector<std::string> names;
+        names.emplace_back("dilation_lhs_term");
+        names.emplace_back("dilation_rhs_term");
+        return names;
+      }
+    }
+
+
+
     template <int dim>
     PrescribedPlasticDilation<dim>::PrescribedPlasticDilation (const unsigned int n_points)
-      : NamedAdditionalMaterialOutputs<dim>(std::vector<std::string>(1, "prescribed_dilation")),
-        dilation(n_points, numbers::signaling_nan<double>())
+      : NamedAdditionalMaterialOutputs<dim>(make_prescribed_dilation_outputs_names()),
+        dilation_lhs_term(n_points, numbers::signaling_nan<double>()),
+        dilation_rhs_term(n_points, numbers::signaling_nan<double>())
     {}
 
 
@@ -1002,9 +1056,20 @@ namespace aspect
     template <int dim>
     std::vector<double> PrescribedPlasticDilation<dim>::get_nth_output(const unsigned int idx) const
     {
-      (void)idx;
-      Assert(idx==0, ExcInternalError());
-      return dilation;
+      AssertIndexRange (idx, 2);
+      switch (idx)
+        {
+          case 0:
+            return dilation_lhs_term;
+
+          case 1:
+            return dilation_rhs_term;
+
+          default:
+            AssertThrow(false, ExcInternalError());
+        }
+      // we will never get here, so just return something
+      return std::vector<double>();
     }
 
 
@@ -1078,7 +1143,7 @@ namespace aspect
 
 
 
-    template<int dim>
+    template <int dim>
     ReactionRateOutputs<dim>::ReactionRateOutputs (const unsigned int n_points,
                                                    const unsigned int n_comp)
       :
@@ -1088,7 +1153,7 @@ namespace aspect
 
 
 
-    template<int dim>
+    template <int dim>
     std::vector<double>
     ReactionRateOutputs<dim>::get_nth_output(const unsigned int idx) const
     {
@@ -1125,7 +1190,7 @@ namespace aspect
 
 
 
-    template<int dim>
+    template <int dim>
     PrescribedFieldOutputs<dim>::PrescribedFieldOutputs (const unsigned int n_points,
                                                          const unsigned int n_comp)
       :
@@ -1135,7 +1200,7 @@ namespace aspect
 
 
 
-    template<int dim>
+    template <int dim>
     std::vector<double>
     PrescribedFieldOutputs<dim>::get_nth_output(const unsigned int idx) const
     {
@@ -1151,7 +1216,7 @@ namespace aspect
 
 
 
-    template<int dim>
+    template <int dim>
     PrescribedTemperatureOutputs<dim>::PrescribedTemperatureOutputs (const unsigned int n_points)
       :
       NamedAdditionalMaterialOutputs<dim>(std::vector<std::string>(1,"prescribed_temperature")),
@@ -1160,7 +1225,7 @@ namespace aspect
 
 
 
-    template<int dim>
+    template <int dim>
     std::vector<double>
     PrescribedTemperatureOutputs<dim>::get_nth_output(const unsigned int idx) const
     {
@@ -1174,20 +1239,6 @@ namespace aspect
 // explicit instantiations
 namespace aspect
 {
-  namespace internal
-  {
-    namespace Plugins
-    {
-      template <>
-      std::list<internal::Plugins::PluginList<MaterialModel::Interface<2>>::PluginInfo> *
-      internal::Plugins::PluginList<MaterialModel::Interface<2>>::plugins = nullptr;
-
-      template <>
-      std::list<internal::Plugins::PluginList<MaterialModel::Interface<3>>::PluginInfo> *
-      internal::Plugins::PluginList<MaterialModel::Interface<3>>::plugins = nullptr;
-    }
-  }
-
   namespace MaterialModel
   {
 #define INSTANTIATE(dim) \
@@ -1220,9 +1271,9 @@ namespace aspect
   std::unique_ptr<Interface<dim>> \
   create_material_model<dim> (ParameterHandler &prm); \
   \
-  template struct MaterialModelInputs<dim>; \
+  template class MaterialModelInputs<dim>; \
   \
-  template struct MaterialModelOutputs<dim>; \
+  template class MaterialModelOutputs<dim>; \
   \
   template class AdditionalMaterialOutputs<dim>; \
   \
@@ -1247,7 +1298,8 @@ namespace aspect
                   const DoFHandler<dim>::active_cell_iterator &cell, \
                   const Quadrature<dim>     &quadrature_formula, \
                   const Mapping<dim>        &mapping, \
-                  MaterialModelOutputs<dim>      &values_out); \
+                  const MaterialProperties::Property &requested_properties, \
+                  MaterialModelOutputs<dim> &values_out); \
   }
 
 

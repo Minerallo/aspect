@@ -19,7 +19,7 @@
  */
 
 #include <aspect/global.h>
-#include <aspect/simulator.h>
+#include <aspect/advection_field.h>
 #include <aspect/volume_of_fluid/handler.h>
 #include <aspect/volume_of_fluid/utilities.h>
 
@@ -28,8 +28,6 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
   template <int dim>
   void VolumeOfFluidHandler<dim>::set_initial_volume_fractions ()
   {
@@ -57,7 +55,7 @@ namespace aspect
         sim.old_old_solution.block(volume_of_fluidLS_blockidx) = sim.solution.block(volume_of_fluidLS_blockidx);
 
         // Update associated composition field
-        const typename Simulator<dim>::AdvectionField composition_field = Simulator<dim>::AdvectionField::composition(data[f].composition_index);
+        const AdvectionField composition_field = AdvectionField::composition(data[f].composition_index);
         update_volume_of_fluid_composition (composition_field, data[f], sim.solution);
         const unsigned int volume_of_fluid_C_blockidx = composition_field.block_index(this->introspection());
         sim.old_solution.block(volume_of_fluid_C_blockidx) = sim.solution.block(volume_of_fluid_C_blockidx);
@@ -100,12 +98,13 @@ namespace aspect
         double volume_of_fluid_val = 0.0;
         double cell_vol = 0.0;
 
-        for (unsigned int i = 0; i < fe_init.n_quadrature_points; ++i)
+        for (unsigned int q = 0; q < fe_init.n_quadrature_points; ++q)
           {
-            const double fraction_at_point = this->get_initial_composition_manager().initial_composition(fe_init.quadrature_point(i),
+            const double fraction_at_point = this->get_initial_composition_manager().initial_composition(fe_init.quadrature_point(q),
                                              field.composition_index);
-            volume_of_fluid_val += fraction_at_point * fe_init.JxW (i);
-            cell_vol += fe_init.JxW(i);
+            const double JxW = fe_init.JxW(q);
+            volume_of_fluid_val += fraction_at_point * JxW;
+            cell_vol += JxW;
           }
 
         volume_of_fluid_val /= cell_vol;
@@ -184,11 +183,11 @@ namespace aspect
           {
 
             // For each quadrature point compute an approximation to the fluid fraction in the surrounding region
-            for (unsigned int i = 0; i < fe_init.n_quadrature_points; ++i)
+            for (unsigned int q = 0; q < fe_init.n_quadrature_points; ++q)
               {
                 double d = 0.0;
                 Tensor<1, dim, double> grad;
-                Point<dim> xU = quadrature.point (i);
+                Point<dim> xU = quadrature.point (q);
 
                 // Get an approximation to local normal at the closest interface (level set gradient)
                 // and the distance to the closest interface (value of level set function)
@@ -208,8 +207,9 @@ namespace aspect
                   }
                 // Use the basic fluid fraction formula to compute an approximation to the fluid fraction
                 const double fraction_at_point = VolumeOfFluid::Utilities::compute_fluid_fraction (grad, d);
-                volume_of_fluid_val += fraction_at_point * fe_init.JxW (i);
-                cell_vol += fe_init.JxW (i);
+                const double JxW = fe_init.JxW(q);
+                volume_of_fluid_val += fraction_at_point * JxW;
+                cell_vol += JxW;
               }
             volume_of_fluid_val /= cell_vol;
           }

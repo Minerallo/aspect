@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2014 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2014 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -24,7 +24,9 @@
 #include <aspect/geometry_model/initial_topography_model/zero_topography.h>
 #include <aspect/geometry_model/box.h>
 #include <aspect/simulator.h>
-#include <aspect/stokes_matrix_free.h>
+#include <aspect/simulator/solver/matrix_free_operators.h>
+#include <aspect/simulator/solver/stokes_matrix_free.h>
+#include <aspect/linear_algebra_types.h>
 
 #include <deal.II/dofs/dof_renumbering.h>
 #include <deal.II/dofs/dof_accessor.h>
@@ -36,6 +38,7 @@
 #include <deal.II/fe/mapping_q_eulerian.h>
 
 #include <deal.II/lac/sparsity_tools.h>
+#include <deal.II/lac/precondition.h>
 
 #include <deal.II/numerics/vector_tools.h>
 
@@ -50,6 +53,8 @@ namespace aspect
       :
       free_surface_theta(stabilization_theta)
     {}
+
+
 
     template <int dim>
     void
@@ -74,7 +79,6 @@ namespace aspect
         }
 
       const Introspection<dim> &introspection = this->introspection();
-      const FiniteElement<dim> &fe = this->get_fe();
 
       const typename DoFHandler<dim>::active_cell_iterator cell (&this->get_triangulation(),
                                                                  scratch.finite_element_values.get_cell()->level(),
@@ -109,30 +113,36 @@ namespace aspect
 
               this->get_material_model().evaluate(scratch.face_material_model_inputs, scratch.face_material_model_outputs);
 
-              for (unsigned int q_point = 0; q_point < n_face_q_points; ++q_point)
+              for (unsigned int q = 0; q < n_face_q_points; ++q)
                 {
-                  for (unsigned int i = 0, i_stokes = 0; i_stokes < stokes_dofs_per_cell; /*increment at end of loop*/)
+                  for (unsigned int i_stokes = 0; i_stokes < stokes_dofs_per_cell; ++i_stokes)
                     {
-                      if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
-                        {
-                          scratch.phi_u[i_stokes] = scratch.face_finite_element_values[introspection.extractors.velocities].value(i, q_point);
-                          ++i_stokes;
-                        }
-                      ++i;
+                      const unsigned int i = introspection.stokes_dof_info[i_stokes].local_dof_index;
+                      scratch.phi_u[i_stokes] = scratch.face_finite_element_values[introspection.extractors.velocities].value(i, q);
                     }
 
                   const Tensor<1,dim>
-                  gravity = this->get_gravity_model().gravity_vector(scratch.face_finite_element_values.quadrature_point(q_point));
+                  gravity = this->get_gravity_model().gravity_vector(scratch.face_finite_element_values.quadrature_point(q));
                   const double g_norm = gravity.norm();
 
                   // construct the relevant vectors
-                  const Tensor<1,dim> n_hat = scratch.face_finite_element_values.normal_vector(q_point);
+                  const Tensor<1,dim> n_hat = scratch.face_finite_element_values.normal_vector(q);
                   const Tensor<1,dim> g_hat = (g_norm == 0.0 ? Tensor<1,dim>() : gravity/g_norm);
 
-                  const double pressure_perturbation = scratch.face_material_model_outputs.densities[q_point] *
+                  small_vector<double> phi_u_times_g_hat(stokes_dofs_per_cell);
+                  small_vector<double> phi_u_times_n_hat(stokes_dofs_per_cell);
+                  for (unsigned int i=0; i<stokes_dofs_per_cell; ++i)
+                    {
+                      phi_u_times_g_hat[i] = scratch.phi_u[i] * g_hat;
+                      phi_u_times_n_hat[i] = scratch.phi_u[i] * n_hat;
+                    }
+
+                  const double pressure_perturbation = scratch.face_material_model_outputs.densities[q] *
                                                        this->get_timestep() *
                                                        free_surface_theta *
                                                        g_norm;
+
+                  const double JxW = scratch.face_finite_element_values.JxW(q);
 
                   // see Kaus et al 2010 for details of the stabilization term
                   for (unsigned int i=0; i< stokes_dofs_per_cell; ++i)
@@ -140,8 +150,8 @@ namespace aspect
                       {
                         // The fictive stabilization stress is (phi_u[i].g)*(phi_u[j].n)
                         const double stress_value = -pressure_perturbation*
-                                                    (scratch.phi_u[i]*g_hat) * (scratch.phi_u[j]*n_hat)
-                                                    *scratch.face_finite_element_values.JxW(q_point);
+                                                    phi_u_times_g_hat[i] * phi_u_times_n_hat[j]
+                                                    * JxW;
 
                         data.local_matrix(i,j) += stress_value;
                       }
@@ -154,20 +164,6 @@ namespace aspect
 
   namespace MeshDeformation
   {
-    template <int dim>
-    void
-    Interface<dim>::initialize ()
-    {}
-
-
-
-    template <int dim>
-    void
-    Interface<dim>::update ()
-    {}
-
-
-
     template <int dim>
     bool
     Interface<dim>::needs_surface_stabilization () const
@@ -191,6 +187,29 @@ namespace aspect
     template <int dim>
     void
     Interface<dim>::
+    compute_initial_deformation_as_constraints(const Mapping<dim> &mapping,
+                                               const DoFHandler<dim> &mesh_deformation_dof_handler,
+                                               const types::boundary_id boundary_indicator,
+                                               AffineConstraints<double> &constraints) const
+    {
+      Utilities::VectorFunctionFromVelocityFunctionObject<dim> vel
+      (dim,
+       [&] (const Point<dim> &x) -> Tensor<1,dim>
+      {
+        return this->compute_initial_deformation_on_boundary(boundary_indicator, x);
+      });
+
+      VectorTools::interpolate_boundary_values (mapping,
+                                                mesh_deformation_dof_handler,
+                                                boundary_indicator,
+                                                vel,
+                                                constraints);
+    }
+
+
+    template <int dim>
+    void
+    Interface<dim>::
     compute_velocity_constraints_on_boundary(const DoFHandler<dim> &/*mesh_deformation_dof_handler*/,
                                              AffineConstraints<double> &/*mesh_velocity_constraints*/,
                                              const std::set<types::boundary_id> &/*boundary_id*/) const
@@ -199,30 +218,14 @@ namespace aspect
 
 
     template <int dim>
-    void
-    Interface<dim>::
-    declare_parameters (ParameterHandler &)
-    {}
-
-
-
-    template <int dim>
-    void
-    Interface<dim>::parse_parameters (ParameterHandler &)
-    {}
-
-
-
-    template <int dim>
     MeshDeformationHandler<dim>::MeshDeformationHandler (Simulator<dim> &simulator)
       : sim(simulator),  // reference to the simulator that owns the MeshDeformationHandler
-        mesh_deformation_fe (FE_Q<dim>(1),dim), // Q1 elements which describe the mesh geometry
+        mesh_deformation_fe (FE_Q<dim>(sim.parameters.stokes_velocity_degree),dim),
         mesh_deformation_dof_handler (sim.triangulation),
-        include_initial_topography(false)
+        include_initial_topography(false),
+        use_automatic_mapping_order(true),
+        explicit_mapping_order(1)
     {
-      // Now reset the mapping of the simulator to be something that captures mesh deformation in time.
-      sim.mapping = std::make_unique<MappingQ1Eulerian<dim, LinearAlgebra::Vector>> (mesh_deformation_dof_handler,
-                                                                                      mesh_displacements);
     }
 
 
@@ -242,8 +245,8 @@ namespace aspect
     namespace
     {
       std::tuple
-      <void *,
-      void *,
+      <aspect::internal::Plugins::UnusablePluginList,
+      aspect::internal::Plugins::UnusablePluginList,
       aspect::internal::Plugins::PluginList<Interface<2>>,
       aspect::internal::Plugins::PluginList<Interface<3>>> registered_plugins;
     }
@@ -254,6 +257,13 @@ namespace aspect
     void
     MeshDeformationHandler<dim>::initialize ()
     {
+      // For geometries with curved elements, higher-order mesh deformation
+      // is required for accurate representation
+      if (this->get_geometry_model().has_curved_elements())
+        AssertThrow(this->get_parameters().stokes_velocity_degree > 1,
+                    ExcMessage("For geometries with curved elements, the Stokes velocity polynomial degree "
+                               "must be greater than 1 to ensure accurate mesh deformation."));
+
       // In case we prescribed initial topography, we should take this into
       // account. However, it is not included in the mesh displacements,
       // so we need to fetch it separately.
@@ -367,6 +377,16 @@ namespace aspect
                            "The format is id1: object1 \\& object2, id2: object3 \\& object2, where "
                            "objects are one of " + std::get<dim>(registered_plugins).get_description_string());
 
+        prm.declare_entry ("Mesh deformation mapping order", "auto",
+                           Patterns::Anything(),
+                           "Polynomial degree used by the MappingQEulerian object for mesh deformation. "
+                           "Set to `auto` to choose a robust default. For geometries with curved elements, "
+                           "the mapping order is the larger of 4 and the Stokes velocity polynomial degree. For geometries "
+                           "without curved elements, the mapping order is 1. "
+                           "Set this parameter to an integer >= 1 to explicitly enforce a mapping order. "
+                           "In most cases, `auto` is recommended. Explicit values are mainly useful for "
+                           "stability investigations or reproducibility studies.");
+
         prm.enter_subsection ("Free surface");
         {
           prm.declare_entry("Free surface stabilization theta", "0.5",
@@ -433,6 +453,12 @@ namespace aspect
             // Store the boundary indicator. If the entry exists this does nothing.
             prescribed_mesh_deformation_boundary_indicators.insert(boundary_id);
 
+            // If the mesh deformation boundary also has a tangential velocity boundary condition,
+            // store it in the appropriate set.
+            const auto &indicators = this->get_boundary_velocity_manager().get_tangential_boundary_velocity_indicators();
+            if (indicators.find(boundary_id) != indicators.end())
+              tangential_velocity_with_prescribed_mesh_deformation_boundary_indicators.insert(boundary_id);
+
             for (const auto &object_name : object_names)
               {
                 // Make sure there are no duplicated entries. If this boundary is not
@@ -448,6 +474,14 @@ namespace aspect
                 if (object_name == "free surface")
                   free_surface_boundary_indicators.insert(boundary_id);
               }
+          }
+
+        // Create the list of indicators for tangential velocity boundaries on which mesh deformation does not occur
+        for (const auto &boundary_id : this->get_boundary_velocity_manager().get_tangential_boundary_velocity_indicators())
+          {
+            if (prescribed_mesh_deformation_boundary_indicators.find(boundary_id)
+                == prescribed_mesh_deformation_boundary_indicators.end())
+              tangential_velocity_without_prescribed_mesh_deformation_boundary_indicators.insert(boundary_id);
           }
 
         // Create the list of tangential mesh movement boundary indicators
@@ -504,6 +538,37 @@ namespace aspect
         }
         prm.leave_subsection ();
 
+        const std::string mapping_order = prm.get("Mesh deformation mapping order");
+        if (mapping_order == "auto")
+          {
+            use_automatic_mapping_order = true;
+            explicit_mapping_order = 1;
+          }
+        else
+          {
+            use_automatic_mapping_order = false;
+
+            int parsed_mapping_order = -1;
+            try
+              {
+                parsed_mapping_order = Utilities::string_to_int(mapping_order);
+              }
+            catch (const std::exception &)
+              {
+                AssertThrow(false,
+                            ExcMessage("The entry <Mesh deformation/Mesh deformation mapping order> "
+                                       "must be either `auto' or an integer >= 1, but is <"
+                                       + mapping_order + ">."));
+              }
+
+            AssertThrow(parsed_mapping_order >= 1,
+                        ExcMessage("The entry <Mesh deformation/Mesh deformation mapping order> "
+                                   "must be either `auto' or an integer >= 1, but is <"
+                                   + mapping_order + ">."));
+
+            explicit_mapping_order = static_cast<unsigned int>(parsed_mapping_order);
+          }
+
       }
       prm.leave_subsection ();
 
@@ -542,7 +607,7 @@ namespace aspect
     {
       AssertThrow(sim.parameters.mesh_deformation_enabled, ExcInternalError());
 
-      TimerOutput::Scope timer (sim.computing_timer, "Mesh deformation");
+      this->get_computing_timer().enter_subsection("Mesh deformation");
 
       old_mesh_displacements = mesh_displacements;
 
@@ -563,6 +628,8 @@ namespace aspect
 
       // After changing the mesh we need to rebuild things
       sim.rebuild_stokes_matrix = sim.rebuild_stokes_preconditioner = true;
+
+      this->get_computing_timer().leave_subsection("Mesh deformation");
     }
 
 
@@ -583,25 +650,16 @@ namespace aspect
 
       // Now construct the mesh displacement constraints
       mesh_velocity_constraints.clear();
-#if DEAL_II_VERSION_GTE(9,6,0)
       mesh_velocity_constraints.reinit(mesh_deformation_dof_handler.locally_owned_dofs(),
                                        mesh_locally_relevant);
-#else
-      mesh_velocity_constraints.reinit(mesh_locally_relevant);
-#endif
       // mesh_velocity_constraints can use the same hanging node
       // information that was used for mesh_vertex constraints.
       mesh_velocity_constraints.merge(mesh_vertex_constraints);
 
-      // Add the vanilla periodic boundary constraints
-      using periodic_boundary_pairs = std::set<std::pair<std::pair<types::boundary_id, types::boundary_id>, unsigned int>>;
-      const periodic_boundary_pairs pbp = this->get_geometry_model().get_periodic_boundary_pairs();
-      for (const auto &p : pbp)
-        DoFTools::make_periodicity_constraints(mesh_deformation_dof_handler,
-                                               p.first.first,
-                                               p.first.second,
-                                               p.second,
-                                               mesh_velocity_constraints);
+      // Let the geometry model join periodic boundaries, including any
+      // rotation needed by curved geometries.
+      this->get_geometry_model().make_periodicity_constraints(mesh_deformation_dof_handler,
+                                                              mesh_velocity_constraints);
 
       // Zero out the displacement for the zero-velocity boundaries
       // if the boundary is not in the set of tangential mesh boundaries and not in the set of mesh deformation boundary indicators
@@ -615,35 +673,52 @@ namespace aspect
         }
 
       this->get_signals().pre_compute_no_normal_flux_constraints(sim.triangulation);
-      // Make the no flux boundary constraints
+
+      // Make the no flux boundary constraints for all boundaries on which the mesh
+      // is allowed to move tangential to that boundary. This is independent of any
+      // constraints on the movement of material on these boundaries.
+      // As these boundaries are not allowed to move normal to themselves, they
+      // should remain aligned with the initial manifold. We can therefore use
+      // the manifold to compute the normal vector.
       VectorTools::compute_no_normal_flux_constraints (mesh_deformation_dof_handler,
                                                        /* first_vector_component= */
                                                        0,
                                                        tangential_mesh_deformation_boundary_indicators,
                                                        mesh_velocity_constraints,
-                                                       this->get_mapping());
+                                                       this->get_mapping(),
+                                                       /* use_manifold_for_normal= */
+                                                       true);
 
       this->get_signals().post_compute_no_normal_flux_constraints(sim.triangulation);
 
       // Ask all plugins to add their constraints.
-      // For the moment add constraints from all plugins into one matrix, then
-      // merge that matrix with the existing constraints (respecting the existing
-      // constraints as more important)
+      // For the moment add constraints from all plugins into one object, then
+      // merge that object with the existing constraints (respecting the existing
+      // constraints as more important).
+#if DEAL_II_VERSION_GTE(9,7,0)
+      AffineConstraints<double> plugin_constraints(mesh_deformation_dof_handler.locally_owned_dofs(),
+                                                   mesh_vertex_constraints.get_local_lines());
+#else
       AffineConstraints<double> plugin_constraints(mesh_vertex_constraints.get_local_lines());
+#endif
 
       for (const auto &boundary_id : mesh_deformation_objects)
         {
-          std::set<types::boundary_id> boundary_id_set;
-          boundary_id_set.insert(boundary_id.first);
+          const std::set<types::boundary_id> boundary_id_set = { boundary_id.first };
 
           for (const auto &model : boundary_id.second)
             {
+#if DEAL_II_VERSION_GTE(9,7,0)
+              AffineConstraints<double> current_plugin_constraints(mesh_deformation_dof_handler.locally_owned_dofs(),
+                                                                   mesh_vertex_constraints.get_local_lines());
+#else
               AffineConstraints<double> current_plugin_constraints(mesh_vertex_constraints.get_local_lines());
+#endif
 
               model->compute_velocity_constraints_on_boundary(mesh_deformation_dof_handler,
                                                               current_plugin_constraints,
                                                               boundary_id_set);
-              if ((this->is_stokes_matrix_free()))
+              if (this->is_stokes_matrix_free())
                 {
                   mg_constrained_dofs.make_zero_boundary_constraints(mesh_deformation_dof_handler,
                                                                      boundary_id_set);
@@ -670,14 +745,15 @@ namespace aspect
                         {
                           // Add the inhomogeneity of the current plugin to the existing constraints
                           const double inhomogeneity = plugin_constraints.get_inhomogeneity(local_line);
-                          plugin_constraints.set_inhomogeneity(local_line, current_plugin_constraints.get_inhomogeneity(local_line) + inhomogeneity);
+                          plugin_constraints.set_inhomogeneity(local_line,
+                                                               current_plugin_constraints.get_inhomogeneity(local_line) + inhomogeneity);
                         }
                     }
                 }
             }
         }
 
-      mesh_velocity_constraints.merge(plugin_constraints,AffineConstraints<double>::left_object_wins);
+      mesh_velocity_constraints.merge(plugin_constraints, AffineConstraints<double>::left_object_wins);
       mesh_velocity_constraints.close();
     }
 
@@ -703,21 +779,10 @@ namespace aspect
       // information that was used for mesh_vertex constraints.
       mesh_velocity_constraints.merge(mesh_vertex_constraints);
 
-      // Add the vanilla periodic boundary constraints
-      std::set<types::boundary_id> periodic_boundaries;
-      using periodic_boundary_pairs = std::set<std::pair<std::pair<types::boundary_id, types::boundary_id>, unsigned int>>;
-      const periodic_boundary_pairs pbp = this->get_geometry_model().get_periodic_boundary_pairs();
-      for (const auto &p : pbp)
-        {
-          periodic_boundaries.insert(p.first.first);
-          periodic_boundaries.insert(p.first.second);
-
-          DoFTools::make_periodicity_constraints(mesh_deformation_dof_handler,
-                                                 p.first.first,
-                                                 p.first.second,
-                                                 p.second,
-                                                 mesh_velocity_constraints);
-        }
+      // Let the geometry model join periodic boundaries, including any
+      // rotation needed by curved geometries.
+      this->get_geometry_model().make_periodicity_constraints(mesh_deformation_dof_handler,
+                                                              mesh_velocity_constraints);
 
       // Zero out the displacement for the fixed boundaries
       for (const types::boundary_id &boundary_id : zero_mesh_deformation_boundary_indicators)
@@ -729,21 +794,33 @@ namespace aspect
                                                     mesh_velocity_constraints);
         }
 
-      // Make tangential deformation constraints for tangential boundaries
+      // Make the no flux boundary constraints for all boundaries on which the mesh
+      // is allowed to move tangential to that boundary. This is independent of any
+      // constraints on the movement of material on these boundaries.
+      // As these boundaries are not allowed to move normal to themselves, they
+      // should remain aligned with the initial manifold. We can therefore use
+      // the manifold to compute the normal vector.
       this->get_signals().pre_compute_no_normal_flux_constraints(sim.triangulation);
       VectorTools::compute_no_normal_flux_constraints (mesh_deformation_dof_handler,
                                                        /* first_vector_component= */
                                                        0,
                                                        tangential_mesh_deformation_boundary_indicators,
                                                        mesh_velocity_constraints,
-                                                       this->get_mapping());
+                                                       this->get_mapping(),
+                                                       /* use_manifold_for_normal= */
+                                                       true);
       this->get_signals().post_compute_no_normal_flux_constraints(sim.triangulation);
 
       // Ask all plugins to add their constraints.
       // For the moment add constraints from all plugins into one matrix, then
       // merge that matrix with the existing constraints (respecting the existing
       // constraints as more important)
+#if DEAL_II_VERSION_GTE(9,7,0)
+      AffineConstraints<double> plugin_constraints(mesh_vertex_constraints.get_local_lines(),
+                                                   mesh_vertex_constraints.get_local_lines());
+#else
       AffineConstraints<double> plugin_constraints(mesh_vertex_constraints.get_local_lines());
+#endif
 
       std::set<types::boundary_id> boundary_id_set;
 
@@ -751,20 +828,18 @@ namespace aspect
         {
           for (const auto &deformation_object : boundary_id_and_deformation_objects.second)
             {
+#if DEAL_II_VERSION_GTE(9,7,0)
+              AffineConstraints<double> current_plugin_constraints(mesh_vertex_constraints.get_local_lines(),
+                                                                   mesh_vertex_constraints.get_local_lines());
+#else
               AffineConstraints<double> current_plugin_constraints(mesh_vertex_constraints.get_local_lines());
+#endif
 
-              Utilities::VectorFunctionFromVelocityFunctionObject<dim> vel
-              (dim,
-               [&] (const Point<dim> &x) -> Tensor<1,dim>
-              {
-                return deformation_object->compute_initial_deformation_on_boundary(boundary_id_and_deformation_objects.first, x);
-              });
-
-              VectorTools::interpolate_boundary_values (this->get_mapping(),
-                                                        mesh_deformation_dof_handler,
-                                                        boundary_id_and_deformation_objects.first,
-                                                        vel,
-                                                        current_plugin_constraints);
+              deformation_object->compute_initial_deformation_as_constraints(
+                this->get_mapping(),
+                mesh_deformation_dof_handler,
+                boundary_id_and_deformation_objects.first,
+                current_plugin_constraints);
 
               boundary_id_set.insert(boundary_id_and_deformation_objects.first);
 
@@ -849,17 +924,22 @@ namespace aspect
         coupling[c][c] = DoFTools::always;
 
       LinearAlgebra::SparseMatrix mesh_matrix;
-      TrilinosWrappers::SparsityPattern sp (mesh_locally_owned,
-                                            mesh_locally_owned,
-                                            mesh_locally_relevant,
-                                            sim.mpi_communicator);
+      LinearAlgebra::DynamicSparsityPattern dsp (mesh_locally_relevant);
       DoFTools::make_sparsity_pattern (mesh_deformation_dof_handler,
-                                       coupling, sp,
-                                       mesh_velocity_constraints, false,
-                                       Utilities::MPI::
-                                       this_mpi_process(sim.mpi_communicator));
-      sp.compress();
-      mesh_matrix.reinit (sp);
+                                       coupling,
+                                       dsp,
+                                       mesh_velocity_constraints,
+                                       false,
+                                       Utilities::MPI::this_mpi_process(sim.mpi_communicator));
+
+      SparsityTools::distribute_sparsity_pattern(dsp,
+                                                 mesh_locally_owned,
+                                                 this->get_mpi_communicator(),
+                                                 mesh_locally_relevant);
+
+      mesh_matrix.reinit (mesh_locally_owned,
+                          dsp,
+                          this->get_mpi_communicator());
 
       // carry out the solution
       FEValuesExtractors::Vector extract_vel(0);
@@ -868,9 +948,7 @@ namespace aspect
       rhs.reinit(mesh_locally_owned, sim.mpi_communicator);
       solution.reinit(mesh_locally_owned, sim.mpi_communicator);
 
-      typename DoFHandler<dim>::active_cell_iterator cell = mesh_deformation_dof_handler.begin_active(),
-                                                     endc= mesh_deformation_dof_handler.end();
-      for (; cell!=endc; ++cell)
+      for (const auto &cell : mesh_deformation_dof_handler.active_cell_iterators())
         if (cell->is_locally_owned())
           {
             cell->get_dof_indices (cell_dof_indices);
@@ -878,14 +956,17 @@ namespace aspect
 
             cell_vector = 0;
             cell_matrix = 0;
-            for (unsigned int point=0; point<n_q_points; ++point)
-              for (unsigned int i=0; i<dofs_per_cell; ++i)
-                {
-                  for (unsigned int j=0; j<dofs_per_cell; ++j)
-                    cell_matrix(i,j) += scalar_product( fe_values[extract_vel].gradient(i,point),
-                                                        fe_values[extract_vel].gradient(j,point) ) *
-                                        fe_values.JxW(point);
-                }
+            for (unsigned int q=0; q<n_q_points; ++q)
+              {
+                const double JxW = fe_values.JxW(q);
+                for (unsigned int i=0; i<dofs_per_cell; ++i)
+                  {
+                    for (unsigned int j=0; j<dofs_per_cell; ++j)
+                      cell_matrix(i,j) += scalar_product( fe_values[extract_vel].gradient(i,q),
+                                                          fe_values[extract_vel].gradient(j,q) ) *
+                                          JxW;
+                  }
+              }
 
             mesh_velocity_constraints.distribute_local_to_global (cell_matrix, cell_vector,
                                                                   cell_dof_indices, mesh_matrix, rhs, false);
@@ -894,20 +975,27 @@ namespace aspect
       rhs.compress (VectorOperation::add);
       mesh_matrix.compress (VectorOperation::add);
 
-      // Make the AMG preconditioner
+      // TODO: think about keeping object between time steps
+      LinearAlgebra::PreconditionAMG preconditioner_stiffness;
+      LinearAlgebra::PreconditionAMG::AdditionalData Amg_data;
+
+#ifndef ASPECT_USE_TPETRA
+#if !DEAL_II_VERSION_GTE(9,7,0)
       std::vector<std::vector<bool>> constant_modes;
       DoFTools::extract_constant_modes (mesh_deformation_dof_handler,
                                         ComponentMask(dim, true),
                                         constant_modes);
-      // TODO: think about keeping object between time steps
-      LinearAlgebra::PreconditionAMG preconditioner_stiffness;
-      LinearAlgebra::PreconditionAMG::AdditionalData Amg_data;
       Amg_data.constant_modes = constant_modes;
+#else
+      Amg_data.constant_modes = DoFTools::extract_constant_modes (mesh_deformation_dof_handler,
+                                                                  ComponentMask(dim, true));
+#endif
+      Amg_data.higher_order_elements = this->get_parameters().stokes_velocity_degree > 1 ? true : false;
+#endif
       Amg_data.elliptic = true;
-      Amg_data.higher_order_elements = false;
       Amg_data.smoother_sweeps = 2;
       Amg_data.aggregation_threshold = 0.02;
-      preconditioner_stiffness.initialize(mesh_matrix);
+      preconditioner_stiffness.initialize(mesh_matrix, Amg_data);
 
       // we solve with higher accuracy in the initial timestep:
       const double tolerance
@@ -917,8 +1005,23 @@ namespace aspect
       SolverControl solver_control(5*rhs.size(), tolerance * rhs.l2_norm());
       SolverCG<LinearAlgebra::Vector> cg(solver_control);
 
-      cg.solve (mesh_matrix, solution, rhs, preconditioner_stiffness);
-      this->get_pcout() << "   Solving mesh displacement system... " << solver_control.last_step() <<" iterations."<< std::endl;
+      try
+        {
+          this->get_pcout() << "   Solving mesh displacement system... " << std::flush;
+          cg.solve (mesh_matrix, solution, rhs, preconditioner_stiffness);
+          this->get_pcout() << solver_control.last_step() <<" iterations."<< std::endl;
+        }
+      catch (const std::exception &exc)
+        {
+          // if the solver fails, report the error from processor 0 with some additional
+          // information about its location, and throw a quiet exception on all other
+          // processors
+          Utilities::throw_linear_solver_failure_exception("iterative mesh displacement solver",
+                                                           "MeshDeformationHandler::compute_mesh_displacements()",
+                                                           std::vector<SolverControl> {solver_control},
+                                                           exc,
+                                                           this->get_mpi_communicator());
+        }
 
       mesh_velocity_constraints.distribute (solution);
 
@@ -940,8 +1043,6 @@ namespace aspect
           mesh_displacements = solution;
         }
 
-      if (this->is_stokes_matrix_free())
-        update_multilevel_deformation();
     }
 
 
@@ -949,6 +1050,32 @@ namespace aspect
     template <int dim>
     void MeshDeformationHandler<dim>::compute_mesh_displacements_gmg()
     {
+      // We use the same polynomial degree for the mesh deformation as for the
+      // Stokes velocity. This ensures that we have consistent accuracy between
+      // the two physics solvers.
+      switch (this->get_parameters().stokes_velocity_degree)
+        {
+          case 1:
+            compute_mesh_displacements_gmg_for_degree<1>();
+            break;
+          case 2:
+            compute_mesh_displacements_gmg_for_degree<2>();
+            break;
+          case 3:
+            compute_mesh_displacements_gmg_for_degree<3>();
+            break;
+          default:
+            AssertThrow(false, ExcMessage("Unsupported polynomial degree (determined from Stokes velocity degree)!"));
+        }
+    }
+
+
+
+    template <int dim>
+    template <unsigned int mesh_deformation_fe_degree>
+    void MeshDeformationHandler<dim>::compute_mesh_displacements_gmg_for_degree()
+    {
+
       // Same as compute_mesh_displacements, but using matrix-free GMG
       // instead of matrix-based AMG.
 
@@ -961,10 +1088,8 @@ namespace aspect
       // 3. Although this gmg solver is much faster than the amg solver, it's only tested for
       //    limited free surface cases.
 
-      Assert(mesh_deformation_fe.degree == 1, ExcNotImplemented());
       // To be efficient, the operations performed in the matrix-free implementation require
       // knowledge of loop lengths at compile time, which are given by the degree of the finite element.
-      const unsigned int mesh_deformation_fe_degree = 1;
 
       using SystemOperatorType = dealii::MatrixFreeOperators::
                                  LaplaceOperator<dim, mesh_deformation_fe_degree, mesh_deformation_fe_degree + 1, dim>;
@@ -1029,6 +1154,9 @@ namespace aspect
         }
       rhs.compress(VectorOperation::add);
 
+      // clear the level constraints of the previous time step
+      mg_constrained_dofs.clear_user_constraints();
+
       // setup GMG, following deal.II step-37:
       const unsigned int n_levels = sim.triangulation.n_global_levels();
 
@@ -1048,10 +1176,17 @@ namespace aspect
 
       for (unsigned int level = 0; level < n_levels; ++level)
         {
+#if DEAL_II_VERSION_GTE(9,7,0)
+          const IndexSet relevant_dofs = DoFTools::extract_locally_relevant_level_dofs(mesh_deformation_dof_handler,
+                                                                                       level);
+#else
           IndexSet relevant_dofs;
           DoFTools::extract_locally_relevant_level_dofs(mesh_deformation_dof_handler,
                                                         level,
                                                         relevant_dofs);
+#endif
+
+
           AffineConstraints<double> level_constraints;
 #if DEAL_II_VERSION_GTE(9,6,0)
           level_constraints.reinit(mesh_deformation_dof_handler.locally_owned_mg_dofs(level),
@@ -1079,14 +1214,16 @@ namespace aspect
 #endif
               const IndexSet &refinement_edge_indices =
                 mg_constrained_dofs.get_refinement_edge_indices(level);
-              dealii::VectorTools::compute_no_normal_flux_constraints_on_level(
+              VectorTools::compute_no_normal_flux_constraints_on_level(
                 mesh_deformation_dof_handler,
                 0,
                 no_flux_boundary,
                 user_level_constraints,
                 mapping,
                 refinement_edge_indices,
-                level);
+                level,
+                /* use_manifold_for_normal= */
+                true);
 
               user_level_constraints.close();
               mg_constrained_dofs.add_user_constraints(level, user_level_constraints);
@@ -1115,7 +1252,7 @@ namespace aspect
                                         level);
         }
 
-      MGTransferMF<dim, double> mg_transfer(mg_constrained_dofs);
+      MGTransferType<dim, double> mg_transfer(mg_constrained_dofs);
       mg_transfer.build(mesh_deformation_dof_handler);
 
       using SmootherType =
@@ -1149,7 +1286,7 @@ namespace aspect
               // because we want to use the Chebyshev iteration as a solver.
               smoother_data[0].smoothing_range = 1e-3;
               smoother_data[0].degree = numbers::invalid_unsigned_int;
-              smoother_data[0].eig_cg_n_iterations = mg_matrices[0].m();
+              smoother_data[0].eig_cg_n_iterations = 50;
             }
           mg_matrices[level].compute_diagonal();
           smoother_data[level].preconditioner =
@@ -1171,7 +1308,7 @@ namespace aspect
       mg.set_edge_matrices(mg_interface, mg_interface);
       PreconditionMG<dim,
                      dealii::LinearAlgebra::distributed::Vector<double>,
-                     MGTransferMF<dim, double>>
+                     MGTransferType<dim, double>>
                      preconditioner(mesh_deformation_dof_handler, mg, mg_transfer);
 
 
@@ -1185,8 +1322,24 @@ namespace aspect
       SolverCG<dealii::LinearAlgebra::distributed::Vector<double>> cg(solver_control_mf);
 
       mesh_velocity_constraints.set_zero(solution);
-      cg.solve(laplace_operator, solution, rhs, preconditioner);
-      this->get_pcout() << "   Solving mesh displacement system... " << solver_control_mf.last_step() <<" iterations."<< std::endl;
+
+      try
+        {
+          this->get_pcout() << "   Solving mesh displacement system... " << std::flush;
+          cg.solve(laplace_operator, solution, rhs, preconditioner);
+          this->get_pcout() << solver_control_mf.last_step() <<" iterations."<< std::endl;
+        }
+      catch (const std::exception &exc)
+        {
+          // if the solver fails, report the error from processor 0 with some additional
+          // information about its location, and throw a quiet exception on all other
+          // processors
+          Utilities::throw_linear_solver_failure_exception("iterative mesh displacement solver",
+                                                           "MeshDeformationHandler::compute_mesh_displacements_gmg()",
+                                                           std::vector<SolverControl> {solver_control_mf},
+                                                           exc,
+                                                           this->get_mpi_communicator());
+        }
 
       mesh_velocity_constraints.distribute(solution);
       solution.update_ghost_values();
@@ -1300,27 +1453,28 @@ namespace aspect
       std::vector<Tensor<1,dim>> velocity_values(n_q_points);
 
       typename DoFHandler<dim>::active_cell_iterator
-      cell = sim.dof_handler.begin_active(), endc= sim.dof_handler.end();
-      typename DoFHandler<dim>::active_cell_iterator
       fscell = mesh_deformation_dof_handler.begin_active();
 
-      for (; cell!=endc; ++cell, ++fscell)
-        if (cell->is_locally_owned())
-          {
-            cell->get_dof_indices (cell_dof_indices);
+      for (const auto &cell : sim.dof_handler.active_cell_iterators())
+        {
+          if (cell->is_locally_owned())
+            {
+              cell->get_dof_indices (cell_dof_indices);
 
-            fe_values.reinit (cell);
-            fs_fe_values.reinit (fscell);
-            fs_fe_values[extract_vel].get_function_values(fs_mesh_velocity, velocity_values);
-            for (unsigned int j=0; j<n_q_points; ++j)
-              for (unsigned int dir=0; dir<dim; ++dir)
-                {
-                  const unsigned int support_point_index
-                    = sim.finite_element.component_to_system_index(/*velocity component=*/ sim.introspection.component_indices.velocities[dir],
-                                                                                           /*dof index within component=*/ j);
-                  distributed_mesh_velocity[cell_dof_indices[support_point_index]] = velocity_values[j][dir];
-                }
-          }
+              fe_values.reinit (cell);
+              fs_fe_values.reinit (fscell);
+              fs_fe_values[extract_vel].get_function_values(fs_mesh_velocity, velocity_values);
+              for (unsigned int j=0; j<n_q_points; ++j)
+                for (unsigned int dir=0; dir<dim; ++dir)
+                  {
+                    const unsigned int support_point_index
+                      = sim.finite_element.component_to_system_index(/*velocity component=*/ sim.introspection.component_indices.velocities[dir],
+                                                                                             /*dof index within component=*/ j);
+                    distributed_mesh_velocity[cell_dof_indices[support_point_index]] = velocity_values[j][dir];
+                  }
+            }
+          ++fscell;
+        }
 
       distributed_mesh_velocity.compress(VectorOperation::insert);
       mesh_velocity = distributed_mesh_velocity;
@@ -1345,6 +1499,36 @@ namespace aspect
       // cells are created.
       DoFRenumbering::hierarchical (mesh_deformation_dof_handler);
 
+      const unsigned int mapping_degree = get_mapping_degree();
+
+      // If necessary reset the mapping of the simulator to something
+      // that captures mesh deformation in time. This has to
+      // happen after we distribute the mesh_deformation DoFs
+      // above.
+      if (dynamic_cast<const MappingQEulerian<dim, LinearAlgebra::Vector>*>(&(this->get_mapping())) == nullptr)
+        {
+          sim.mapping.reset (new MappingQEulerian<dim, LinearAlgebra::Vector> (mapping_degree,
+                                                                               mesh_deformation_dof_handler,
+                                                                               mesh_displacements));
+
+          // Reset the simulator's mapping to a MappingQEulerian that captures mesh deformation over time.
+          // This must be done *after* distributing the mesh_deformation degrees of freedom (DoFs),
+          // because the mapping depends on those DoFs being set up correctly.
+          //
+          // Note that resetting the mapping changes the underlying pointer, which invalidates
+          // the ParticleHandler's internal non-owning pointer to the mapping. Therefore,
+          // we must reinitialize each particle handler here to ensure they use the updated mapping
+          // and avoid dangling references or errors.
+          //
+          // This design choice was made to correctly track mesh deformation in time,
+          // but it requires careful synchronization between the mesh deformation DoFs,
+          // the mapping, and the particle handlers.
+          for (auto &pm : sim.particle_managers)
+            pm.get_particle_handler().initialize(this->get_triangulation(),
+                                                 this->get_mapping(),
+                                                 pm.get_property_manager().get_n_property_components());
+        }
+
       if (this->is_stokes_matrix_free())
         {
           mesh_deformation_dof_handler.distribute_mg_dofs();
@@ -1360,10 +1544,15 @@ namespace aspect
           // need to evaluate the mapping later.
           for (unsigned int level = 0; level < n_levels; ++level)
             {
+#if DEAL_II_VERSION_GTE(9,7,0)
+              const IndexSet relevant_mg_dofs = DoFTools::extract_locally_relevant_level_dofs(mesh_deformation_dof_handler, level);
+#else
               IndexSet relevant_mg_dofs;
               DoFTools::extract_locally_relevant_level_dofs(mesh_deformation_dof_handler,
                                                             level,
                                                             relevant_mg_dofs);
+#endif
+
               level_displacements[level].reinit(mesh_deformation_dof_handler.locally_owned_mg_dofs(level),
                                                 relevant_mg_dofs,
                                                 sim.mpi_communicator);
@@ -1376,7 +1565,7 @@ namespace aspect
           {
             object = std::make_unique<MappingQEulerian<dim,
             dealii::LinearAlgebra::distributed::Vector<double>>>(
-              /* degree = */ 1,
+              mapping_degree,
               mesh_deformation_dof_handler,
               level_displacements[level],
               level);
@@ -1413,8 +1602,12 @@ namespace aspect
       }
 
       mesh_locally_owned = mesh_deformation_dof_handler.locally_owned_dofs();
+#if DEAL_II_VERSION_GTE(9,7,0)
+      mesh_locally_relevant = DoFTools::extract_locally_relevant_dofs(mesh_deformation_dof_handler);
+#else
       DoFTools::extract_locally_relevant_dofs (mesh_deformation_dof_handler,
                                                mesh_locally_relevant);
+#endif
 
       // This will initialize the mesh displacement and free surface
       // mesh velocity vectors with zero-valued entries.
@@ -1451,13 +1644,15 @@ namespace aspect
       if (this->simulator_is_past_initialization() == false ||
           this->get_timestep_number() == 0)
         {
-          TimerOutput::Scope timer (sim.computing_timer, "Mesh deformation initialize");
+          this->get_computing_timer().enter_subsection("Mesh deformation initialize");
 
           make_initial_constraints();
           if (this->is_stokes_matrix_free())
             compute_mesh_displacements_gmg();
           else
             compute_mesh_displacements();
+
+          this->get_computing_timer().leave_subsection("Mesh deformation initialize");
         }
 
       if (this->is_stokes_matrix_free())
@@ -1475,10 +1670,16 @@ namespace aspect
       // to transfer to the MG levels below. The conversion is done by
       // going through a ReadWriteVector.
       dealii::LinearAlgebra::distributed::Vector<double> displacements(mesh_deformation_dof_handler.locally_owned_dofs(),
-                                                                       this->get_triangulation().get_communicator());
+                                                                       this->get_mpi_communicator());
       dealii::LinearAlgebra::ReadWriteVector<double> rwv;
+#ifndef ASPECT_USE_TPETRA
       rwv.reinit(mesh_displacements);
-      displacements.import(rwv, VectorOperation::insert);
+#else
+      rwv.reinit(mesh_displacements.locally_owned_elements());
+      rwv.import_elements(mesh_displacements, VectorOperation::insert);
+#endif
+
+      displacements.import_elements(rwv, VectorOperation::insert);
 
       const unsigned int n_levels = sim.triangulation.n_global_levels();
       for (unsigned int level = 0; level < n_levels; ++level)
@@ -1522,6 +1723,23 @@ namespace aspect
     MeshDeformationHandler<dim>::get_active_mesh_deformation_boundary_indicators () const
     {
       return prescribed_mesh_deformation_boundary_indicators;
+    }
+
+
+    template <int dim>
+    const std::set<types::boundary_id> &
+    MeshDeformationHandler<dim>::get_tangential_velocity_with_active_mesh_deformation_boundary_indicators () const
+    {
+      return tangential_velocity_with_prescribed_mesh_deformation_boundary_indicators;
+    }
+
+
+
+    template <int dim>
+    const std::set<types::boundary_id> &
+    MeshDeformationHandler<dim>::get_tangential_velocity_without_active_mesh_deformation_boundary_indicators () const
+    {
+      return tangential_velocity_without_prescribed_mesh_deformation_boundary_indicators;
     }
 
 
@@ -1595,6 +1813,36 @@ namespace aspect
       std::get<dim>(registered_plugins).write_plugin_graph ("Mesh deformation interface",
                                                             out);
     }
+
+
+
+    template <int dim>
+    unsigned int
+    MeshDeformationHandler<dim>::get_mapping_degree() const
+    {
+      const bool geometry_has_curved_elements = this->get_geometry_model().has_curved_elements();
+
+      if (use_automatic_mapping_order)
+        {
+          if (geometry_has_curved_elements)
+            return std::max(4u, mesh_deformation_fe.degree);
+
+          return 1u;
+        }
+      else
+        {
+          if (geometry_has_curved_elements)
+            this->get_pcout() << "Warning: You set <Mesh deformation/Mesh deformation mapping order> to "
+                              << explicit_mapping_order
+                              << " for a geometry with curved elements. "
+                              << "Higher mapping orders can improve geometric accuracy; "
+                              << "consider using `auto` or a larger value if accuracy is affected "
+                              << "(for example, 4 is commonly used for spherical geometries)."
+                              << std::endl;
+
+          return explicit_mapping_order;
+        }
+    }
   }
 }
 
@@ -1602,19 +1850,6 @@ namespace aspect
 // explicit instantiation of the functions we implement in this file
 namespace aspect
 {
-  namespace internal
-  {
-    namespace Plugins
-    {
-      template <>
-      std::list<internal::Plugins::PluginList<MeshDeformation::Interface<2>>::PluginInfo> *
-      internal::Plugins::PluginList<MeshDeformation::Interface<2>>::plugins = nullptr;
-      template <>
-      std::list<internal::Plugins::PluginList<MeshDeformation::Interface<3>>::PluginInfo> *
-      internal::Plugins::PluginList<MeshDeformation::Interface<3>>::plugins = nullptr;
-    }
-  }
-
   namespace MeshDeformation
   {
 #define INSTANTIATE(dim) \

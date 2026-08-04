@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,15 +18,17 @@
   <http://www.gnu.org/licenses/>.
 */
 
-
+#include <algorithm>
 #include <aspect/geometry_model/ellipsoidal_chunk.h>
 #include <aspect/utilities.h>
+#include <aspect/geometry_model/initial_topography_model/prm_polygon.h>
+#include <aspect/geometry_model/initial_topography_model/zero_topography.h>
+
 #include <deal.II/grid/tria_iterator.h>
 #include <deal.II/grid/tria_accessor.h>
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/grid_tools.h>
 #include <boost/lexical_cast.hpp>
-#include <aspect/compat.h>
 
 
 /**
@@ -66,14 +68,14 @@ namespace aspect
 
       // Constructor
       template <int dim>
-      EllipsoidalChunkGeometry<dim>::EllipsoidalChunkGeometry(const InitialTopographyModel::Interface<dim> &topo,
+      EllipsoidalChunkGeometry<dim>::EllipsoidalChunkGeometry(const std::shared_ptr<const InitialTopographyModel::Interface<dim>> &topo,
                                                               const double para_semi_major_axis_a,
                                                               const double para_eccentricity,
                                                               const double para_semi_minor_axis_b,
                                                               const double para_bottom_depth,
                                                               const std::vector<Point<2>> &para_corners)
         :
-        topography (&topo),
+        topography (topo),
         semi_major_axis_a (para_semi_major_axis_a),
         eccentricity (para_eccentricity),
         semi_minor_axis_b (para_semi_minor_axis_b),
@@ -124,8 +126,8 @@ namespace aspect
         const double p      = std::sqrt(x(0) * x(0) + x(1) * x(1)); // distance from origin projected onto x-y plane
         const double th     = std::atan2(R * x(2), b * p); // starting guess for theta
         const double phi    = std::atan2(x(1), x(0)); // azimuth (geodetic longitude)
-        const double theta  = std::atan2(x(2) + (R * R - b * b) / b * std::pow(std::sin(th),3),
-                                         (p - (eccentricity * eccentricity * R  * std::pow(std::cos(th),3)))); // first iterate for theta
+        const double theta  = std::atan2(x(2) + (R * R - b * b) / b * Utilities::fixed_power<3>(std::sin(th)),
+                                         (p - (eccentricity * eccentricity * R  * Utilities::fixed_power<3>(std::cos(th))))); // first iterate for theta
         const double R_bar  = R / (std::sqrt(1 - eccentricity * eccentricity * std::sin(theta) * std::sin(theta))); // first iterate for R_bar
 
         Point<3> phi_theta_d;
@@ -212,7 +214,11 @@ namespace aspect
     void
     EllipsoidalChunk<dim>::initialize()
     {
-      manifold = std::make_unique<internal::EllipsoidalChunkGeometry<dim>>(this->get_initial_topography_model(),
+      AssertThrow(Plugins::plugin_type_matches<const InitialTopographyModel::ZeroTopography<dim>>(this->get_initial_topography_model()) ||
+                  Plugins::plugin_type_matches<const InitialTopographyModel::PrmPolygon<dim>>(this->get_initial_topography_model()),
+                  ExcMessage("At the moment, only the Zero or Prm polygon initial topography model can be used with the Ellipsoidal Chunk geometry model."));
+
+      manifold = std::make_unique<internal::EllipsoidalChunkGeometry<dim>>(this->get_initial_topography_model_pointer(),
                                                                             semi_major_axis_a,
                                                                             eccentricity,
                                                                             semi_minor_axis_b,
@@ -495,7 +501,7 @@ namespace aspect
           bottom_depth = prm.get_double("Depth");
           semi_major_axis_a = prm.get_double("Semi-major axis");
           eccentricity = prm.get_double("Eccentricity");
-          semi_minor_axis_b = std::sqrt((1 - pow(eccentricity,2.)) * pow(semi_major_axis_a,2.));
+          semi_minor_axis_b = std::sqrt((1 - Utilities::fixed_power<2>(eccentricity)) * Utilities::fixed_power<2>(semi_major_axis_a));
           EW_subdiv = prm.get_integer("East-West subdivisions");
           NS_subdiv = prm.get_integer("North-South subdivisions");
           depth_subdiv = prm.get_integer("Depth subdivisions");
@@ -609,17 +615,23 @@ namespace aspect
     double
     EllipsoidalChunk<dim>::depth(const Point<dim> &position) const
     {
-      return std::max(std::min(-manifold->pull_back(position)[dim-1], maximal_depth()), 0.0);
+      return std::clamp(-manifold->pull_back(position)[dim-1], 0.0, maximal_depth());
     }
 
     template <int dim>
     double
-    EllipsoidalChunk<dim>::height_above_reference_surface(const Point<dim> &/*position*/) const
+    EllipsoidalChunk<dim>::height_above_reference_surface(const Point<dim> &position) const
     {
-      AssertThrow(false, ExcMessage("Function height_above_reference_surface is not yet implemented "
-                                    "for the ellipsoidal chunk geometry model. "
-                                    "Consider using a box, spherical shell, or chunk.") );
-      return numbers::signaling_nan<double>();
+      Point<dim> ellipsoidal_point = manifold->pull_back(position);
+
+      AssertThrow (dim == 3, ExcMessage("The topography in ellipsoidal chunk can currently only be used in 3d."));
+
+      // Extract the surface point to compute topography. The last coordinate of manifold
+      // returns the negative depth from the deformed surface.
+      const Point<dim-1> phi_theta(ellipsoidal_point[0] * constants::radians_to_degree,
+                                   ellipsoidal_point[1] * constants::radians_to_degree);
+
+      return  manifold->topography->value(phi_theta) + ellipsoidal_point[dim-1];
     }
 
 
@@ -627,15 +639,7 @@ namespace aspect
     double
     EllipsoidalChunk<dim>::maximal_depth() const
     {
-      return bottom_depth;
-    }
-
-    template <int dim>
-    double
-    EllipsoidalChunk<dim>::get_radius(const Point<dim> &position) const
-    {
-      const Point<dim> long_lat_depth = manifold->pull_back(position);
-      return semi_major_axis_a / (std::sqrt(1 - eccentricity * eccentricity * std::sin(long_lat_depth[1]) * std::sin(long_lat_depth[1])));
+      return bottom_depth + this->get_initial_topography_model().max_topography();
     }
 
     template <int dim>
@@ -734,7 +738,10 @@ namespace aspect
       // the chunk manifold works internally with a vector with longitude, latitude, depth.
       // We need to output radius, longitude, latitude to be consistent.
       // Ignore the topography by calling pull_back_ellipsoid to avoid a loop when calling the
-      // AsciiDataBoundary for topography which uses this function....
+      // AsciiDataBoundary for topography which uses this function.
+      //
+      // Start by building a vector with 3 components, even if the input point is 2d, if
+      // necessary leaving the remaining components zero.
       Point<3> cartesian_point;
       for (unsigned int d=0; d<dim; ++d)
         cartesian_point[d] = position_point[d];

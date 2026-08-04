@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -26,8 +26,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     template <int dim>
     class CompressibilityIteratedStokes : public MaterialModel::Simple<dim>
     {
@@ -61,7 +59,7 @@ namespace aspect
       Simple<dim>::evaluate(in, out);
       for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
         {
-          out.densities[i] = 10.0/11.0*exp(in.pressure[i]/100.0);
+          out.densities[i] = 10.0/11.0*std::exp(in.pressure[i]/100.0);
           out.compressibilities[i] = 0.01;
         }
     }

@@ -46,6 +46,15 @@ namespace aspect
 
       template <int dim>
       void
+      HeatFluxMap<dim>::initialize ()
+      {
+        CitationInfo::add("cbfheatflux");
+      }
+
+
+
+      template <int dim>
+      void
       HeatFluxMap<dim>::update ()
       {
         if (output_point_wise_heat_flux)
@@ -202,7 +211,7 @@ namespace aspect
                                                   "by evaluating the CBF solution vector point-wise "
                                                   "instead of computing cell-wise averaged values."
                                                   "\n\n"
-                                                  "Physical units: \\si{\\watt\\per\\meter\\squared}.")
+                                                  "Physical units: $\\frac{\\text{W}}{\\text{m}^2}$.")
     }
   }
 }

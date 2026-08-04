@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018-2024 by the authors of the World Builder code.
+  Copyright (C) 2018-2026 by the authors of the World Builder code.
 
   This file is part of the World Builder.
 
@@ -250,6 +250,32 @@ namespace WorldBuilder
       return *std::min_element(distances.begin(),distances.end()) * sign;
     }
 
+    Point<2> polygon_bary_center(const std::vector<Point<2> > &point_list)
+    {
+      Point<2> bary_center(0,0,point_list[0].get_coordinate_system());
+      for (auto point : point_list)
+        {
+          bary_center[0] += point[0];
+          bary_center[1] += point[1];
+        }
+      bary_center[0] /= static_cast<double>(point_list.size());
+      bary_center[1] /= static_cast<double>(point_list.size());
+      return bary_center;
+    }
+
+    std::vector<Point<2>> get_scaled_polygon(const std::vector<Point<2>> &polygon, double scaling_factor)
+    {
+      Point<2> bary_center = polygon_bary_center(polygon);
+      std::vector<Point<2>> scaled_polygon(polygon.size(),Point<2>(0.,0.,polygon[0].get_coordinate_system()));
+      for (size_t index = 0; index < polygon.size(); ++index)
+        {
+          scaled_polygon[index][0] = bary_center[0] + scaling_factor * (polygon[index][0] - bary_center[0]);
+          scaled_polygon[index][1] = bary_center[1] + scaling_factor * (polygon[index][1] - bary_center[1]);
+        }
+      return scaled_polygon;
+
+    }
+
 
     std::array<double,3>
     cartesian_to_spherical_coordinates(const Point<3> &position)
@@ -296,7 +322,7 @@ namespace WorldBuilder
     }
 
 
-    template<int dim>
+    template<unsigned int dim>
     std::array<double,dim>
     convert_point_to_array(const Point<dim> &point_)
     {
@@ -388,6 +414,7 @@ namespace WorldBuilder
                                       const bool only_positive,
                                       const Objects::BezierCurve &bezier_curve)
     {
+      // Initialize variables that this function will return
       double distance = std::numeric_limits<double>::infinity();
       double new_distance = std::numeric_limits<double>::infinity();
       double along_plane_distance = std::numeric_limits<double>::infinity();
@@ -425,12 +452,7 @@ namespace WorldBuilder
       size_t i_section_min_distance = 0;
       double fraction_CPL_P1P2 = std::numeric_limits<double>::infinity();
 
-      // get an estimate for the closest point between P1 and P2.
-      //constexpr double parts = 1;
-      //constexpr double one_div_parts = 1./parts;
-      //double minimum_distance_to_reference_point = std::numeric_limits<double>::infinity();
-      //const size_t number_of_points = point_list.size();
-
+      // Get the closest point on the curve (the trench or the fault trace) to the check point.
       const Objects::ClosestPointOnCurve closest_point_on_curve = bezier_curve.closest_point_on_curve_segment(check_point_surface_2d);
       Point<2> closest_point_on_line_2d = closest_point_on_curve.point;
 
@@ -489,7 +511,7 @@ namespace WorldBuilder
           // just nudge it into a direction, which seems to work very well.
           if (std::fabs((check_point_surface - closest_point_on_line_surface).norm()) < 2e-14)
             {
-              // If the point to check is on the line, we don't need to search any further, because we know the distance is zero.
+              // The surface coordinates are very close to the line, but the depth coordinate is not. The point is beneath the line.
               if (std::fabs((check_point - closest_point_on_line_cartesian).norm()) > 2e-14)
                 {
                   const Point<2> &P1(point_list[i_section_min_distance]);
@@ -574,6 +596,8 @@ namespace WorldBuilder
                            "Internal error: The x_axis variable is not a number: " << x_axis[2]);
                 }
               else
+
+                // The point to check is on the line, we don't need to search any further, because we know the distance is zero.
                 {
                   total_average_angle = plane_segment_angles[original_current_section][0][0]
                                         + fraction_CPL_P1P2 * (plane_segment_angles[original_next_section][0][0]
@@ -592,6 +616,8 @@ namespace WorldBuilder
                   return return_values;
                 }
             }
+
+          // The point is not on or beneath the line.
           else
             {
               WBAssert(std::abs(y_axis.norm()) > std::numeric_limits<double>::epsilon(),
@@ -621,9 +647,9 @@ namespace WorldBuilder
 
               if (!bool_cartesian)
                 {
-                  const double normal = std::fabs(point_list[i_section_min_distance+(int)(std::round(fraction_CPL_P1P2))][0]-check_point_surface_2d[0]);
-                  const double plus   = std::fabs(point_list[i_section_min_distance+(int)(std::round(fraction_CPL_P1P2))][0]-(check_point_surface_2d[0]+2*Consts::PI));
-                  const double min    = std::fabs(point_list[i_section_min_distance+(int)(std::round(fraction_CPL_P1P2))][0]-(check_point_surface_2d[0]-2*Consts::PI));
+                  const double normal = std::fabs(point_list[i_section_min_distance+static_cast<size_t>(std::round(fraction_CPL_P1P2))][0]-check_point_surface_2d[0]);
+                  const double plus   = std::fabs(point_list[i_section_min_distance+static_cast<size_t>(std::round(fraction_CPL_P1P2))][0]-(check_point_surface_2d[0]+2*Consts::PI));
+                  const double min    = std::fabs(point_list[i_section_min_distance+static_cast<size_t>(std::round(fraction_CPL_P1P2))][0]-(check_point_surface_2d[0]-2*Consts::PI));
 
                   // find out whether the check point, checkpoint + 2pi or check point -2 pi is closest to the point list.
                   if (plus < normal)
@@ -696,6 +722,8 @@ namespace WorldBuilder
           double add_angle = 0.0;
           double add_angle_correction = 0.0;
           double average_angle = 0.0;
+
+          // We know which section is closest to the point, now iterate through the segments within that section.
           for (size_t i_segment = 0; i_segment < plane_segment_lengths[original_current_section].size(); i_segment++)
             {
               const size_t current_segment = i_segment;
@@ -1178,26 +1206,24 @@ namespace WorldBuilder
       MPI_Initialized(&mpi_initialized);
       if (mpi_initialized != 0)
         {
-          const unsigned int invalid_unsigned_int = static_cast<unsigned int>(-1);
-
           const MPI_Comm comm = MPI_COMM_WORLD;
-          int my_rank = invalid_unsigned_int;
+          int my_rank = 0;
           MPI_Comm_rank(comm, &my_rank);
           if (my_rank == 0)
             {
-              std::size_t filesize;
+              int filesize;
               std::ifstream filestream;
               filestream.open(filename.c_str());
               WBAssertThrow (filestream.is_open(), std::string("Could not open file <") + filename + ">.");
 
               // Need to convert to unsigned int, because MPI_Bcast does not support
               // size_t or const unsigned int
-              unsigned int invalid_file_size = invalid_unsigned_int;
+              int invalid_file_size = -1;
 
               if (!filestream)
                 {
                   // broadcast failure state, then throw
-                  const int ierr = MPI_Bcast(&invalid_file_size, 1, MPI_UNSIGNED, 0, comm);
+                  const int ierr = MPI_Bcast(&invalid_file_size, 1, MPI_INT, 0, comm);
                   WBAssertThrow (ierr,
                                  std::string("Could not open file <") + filename + ">.");
                 }
@@ -1212,17 +1238,19 @@ namespace WorldBuilder
               catch (const std::ios::failure &)
                 {
                   // broadcast failure state, then throw
-                  const int ierr = MPI_Bcast(&invalid_file_size, 1, MPI_UNSIGNED, 0, comm);
+                  const int ierr = MPI_Bcast(&invalid_file_size, 1, MPI_INT, 0, comm);
                   WBAssertThrow(ierr == 0, "MPI_Bcast failed.");
                   WBAssertThrow (false,
                                  std::string("Could not read file content from <") + filename + ">.");
                 }
 
               data_string = datastream.str();
-              filesize = data_string.size();
+              WBAssertThrow(static_cast<long int>(data_string.size()) < std::numeric_limits<int>::max(),
+                            "File is too large to be send with MPI.");
+              filesize = static_cast<int>(data_string.size());
 
               // Distribute data_size and data across processes
-              int ierr = MPI_Bcast(&filesize, 1, MPI_UNSIGNED, 0, comm);
+              int ierr = MPI_Bcast(&filesize, 1, MPI_INT, 0, comm);
               WBAssertThrow(ierr == 0, "MPI_Bcast failed.");
 
               // Receive and store data
@@ -1236,13 +1264,13 @@ namespace WorldBuilder
           else
             {
               // Prepare for receiving data
-              unsigned int filesize = 0;
-              int ierr = MPI_Bcast(&filesize, 1, MPI_UNSIGNED, 0, comm);
+              int filesize = 0;
+              int ierr = MPI_Bcast(&filesize, 1, MPI_INT, 0, comm);
               WBAssertThrow(ierr == 0, "MPI_Bcast failed.");
-              WBAssertThrow(filesize != invalid_unsigned_int,
+              WBAssertThrow(filesize != -1,
                             std::string("Could not open file <") + filename + ">.");
 
-              data_string.resize(filesize);
+              data_string.resize(static_cast<size_t>(filesize));
 
               // Receive and store data
               ierr = MPI_Bcast(&data_string[0],
@@ -1485,23 +1513,44 @@ namespace WorldBuilder
       WBAssert(ridge_parameters.size() == 4, "Internal error: ridge_parameters have the wrong size: " << ridge_parameters.size() << " instead of 4.");
       const double seconds_in_year = 60.0 * 60.0 * 24.0 * 365.25;  // sec/y
       const double spreading_velocity = ridge_parameters[0] * seconds_in_year; // m/yr
-      double subducting_velocity = ridge_parameters[2] * seconds_in_year; // m/yr
+      const double distance_ridge = ridge_parameters[1];
+      const double subducting_velocity = ridge_parameters[2] * seconds_in_year; // m/yr
 
-      if (subducting_velocity <= 0)
-        subducting_velocity = spreading_velocity;
-
-      const double age_at_trench = ridge_parameters[1] / spreading_velocity; // m/(m/y) = yr
-      const double plate_age_sec = age_at_trench * seconds_in_year; // y --> seconds
+      WBAssertThrow(subducting_velocity >= 0, "The subducting velocity is less than 0. "
+                    "Subducting velocity: " << subducting_velocity);
 
       // Plate age increases with distance along the slab in the mantle
-      double effective_plate_age = plate_age_sec + (distance_along_plane / subducting_velocity) * seconds_in_year; // m/(m/y) = y(seconds_in_year)
-      WBAssertThrow(effective_plate_age >= 0, "The age of the subducting plate is less than or equal to 0. "
-                    "Effective plate age: " << effective_plate_age);
+      double effective_plate_age = (distance_ridge + distance_along_plane) / spreading_velocity; // m/(m/y) = yr
+
+      // Age of trench when the query point was at the trench
+      const double age_at_trench = effective_plate_age - distance_along_plane / subducting_velocity; // m/(m/y) = yr
+      WBAssertThrow(age_at_trench >= 0, "The age of trench at subducting initiation is less than 0. "
+                    "Age at trench: " << age_at_trench);
+
       std::vector<double> result;
       result.push_back(age_at_trench);
       result.push_back(effective_plate_age);
       return result;
 
+    }
+
+    std::array<std::array<double,3>,3>
+    multiply_3x3_matrices(const std::array<std::array<double,3>,3> mat1, const std::array<std::array<double,3>,3> mat2)
+    {
+      std::array<std::array<double,3>,3> result;
+      for (size_t i = 0; i < 3; i++)
+        {
+          for (size_t j = 0; j < 3; j++)
+            {
+              result[i][j] = 0;
+              for (size_t k = 0; k < 3; k++)
+                {
+                  result[i][j] += mat1[i][k] * mat2[k][j];
+                }
+            }
+        }
+
+      return result;
     }
   } // namespace Utilities
 } // namespace WorldBuilder

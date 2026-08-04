@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -35,45 +35,15 @@ namespace aspect
    */
   namespace BoundaryHeatFlux
   {
-    using namespace dealii;
-
     /**
      * Base class
      *
      * @ingroup BoundaryHeatFlux
      */
     template <int dim>
-    class Interface
+    class Interface : public Plugins::InterfaceBase
     {
       public:
-        /**
-         * Destructor. Made virtual to enforce that derived classes also have
-         * virtual destructors.
-         */
-        virtual ~Interface() = default;
-
-        /**
-         * Initialization function. This function is called once at the
-         * beginning of the program after parse_parameters is run and after the
-         * SimulatorAccess (if applicable) is initialized.
-         */
-        virtual void initialize ();
-
-        /**
-         * A function that is called at the beginning of each time step. The
-         * default implementation of the function does nothing, but derived
-         * classes that need more elaborate setups for a given time step may
-         * overload the function.
-         *
-         * The point of this function is to allow complex boundary heat flux
-         * models to do an initialization step once at the beginning of each
-         * time step. An example would be a model that needs to call an
-         * external program to compute a heat flux change at bottom.
-         */
-        virtual
-        void
-        update ();
-
         /**
          * Compute the heat flux for a list of quadrature points.
          *
@@ -87,7 +57,18 @@ namespace aspect
          * @param material_model_inputs The material property inputs.
          * @param material_model_outputs The material property outputs.
          * @param normal_vectors The normal vector at each quadrature point.
+         *
          * @return A vector of heat flux vectors at the evaluation points.
+         *   For historical reasons, the function is asked
+         *   to provide the heat flux as a vector, even though the place where the
+         *   heat flux is used only uses the component of this vector that is
+         *   to the boundary (which it computes by taking the dot product *normal*
+         *   between the returned vector and the normal vector). Because there are
+         *   situations where all you can do is compute the normal heat flux as a
+         *   scalar, the `heat_flux()` function also receives the normal vector as
+         *   an input argument. As a consequence, one way for the function to
+         *   compute the required heat flux vector is to compute the scalar heat
+         *   flux and multiply it by the normal vector.
          */
         virtual
         std::vector<Tensor<1,dim>>
@@ -95,26 +76,6 @@ namespace aspect
                    const MaterialModel::MaterialModelInputs<dim> &material_model_inputs,
                    const MaterialModel::MaterialModelOutputs<dim> &material_model_outputs,
                    const std::vector<Tensor<1,dim>> &normal_vectors) const = 0;
-
-        /**
-         * Declare the parameters this class takes through input files. The
-         * default implementation of this function does not describe any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
-         */
-        static
-        void
-        declare_parameters (ParameterHandler &prm);
-
-        /**
-         * Read the parameters this class declares from the parameter file.
-         * The default implementation of this function does not read any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
-         */
-        virtual
-        void
-        parse_parameters (ParameterHandler &prm);
     };
 
 
@@ -122,7 +83,7 @@ namespace aspect
      * Register a boundary heat flux model so that it can be selected from
      * the parameter file.
      *
-     * @param name A string that identifies the fluid pressure boundary model
+     * @param name A string that identifies the boundary heat flux model
      * @param description A text description of what this model does and that
      * will be listed in the documentation of the parameter file.
      * @param declare_parameters_function A pointer to a function that can be

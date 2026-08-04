@@ -1,3 +1,11 @@
+```{tags}
+category:benchmark
+feature:2d
+feature:cartesian
+feature:community-benchmark
+```
+
+(sec:benchmarks:sinking_block)=
 # The sinking block benchmark
 
 This benchmark is based on the benchmark presented in {cite:t}`gerya:2010` and
@@ -34,7 +42,7 @@ $\delta\rho=8,32,128~\text{ kg m}^{-3}$. Results are shown in
 {numref}`fig:sinking_block2` and we indeed recover the expected trend with all data
 points forming a single smooth line.
 
-**[Description of benchmark files](../README.md)**
+**[Description of benchmark files](../README)**
 
 ```{figure-md} fig:sinking_block1
 <img src="dens_vel.png" style="width:60.0%" />

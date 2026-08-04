@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2020 by the authors of the ASPECT code.
+  Copyright (C) 2020 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -25,11 +25,9 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
   namespace MeshDeformation
   {
-    template<int dim>
+    template <int dim>
     class PrescribedDeformation : public Interface<dim>, public SimulatorAccess<dim>
     {
       public:

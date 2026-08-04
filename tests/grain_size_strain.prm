@@ -8,7 +8,7 @@
 
 set Dimension                              = 2
 set End time                               = 5000
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set Surface pressure                       = 0
 set Adiabatic surface temperature          = 1600
 
@@ -68,7 +68,6 @@ subsection Initial composition model
 
   subsection Function
     set Variable names      = x,z
-    set Function constants  =
     set Function expression = if(z<50000,1e-3,1.0000001e-3)
   end
 end
@@ -126,5 +125,5 @@ subsection Mesh refinement
 end
 
 subsection Postprocess
-  set List of postprocessors = composition statistics,temperature statistics, velocity statistics
+  set List of postprocessors = composition statistics, temperature statistics, velocity statistics, ODE statistics
 end

@@ -3,7 +3,7 @@
 # them in through an ascii data file.
 
 set Dimension                              = 2
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set End time                               = 0
 
 subsection Material model
@@ -102,7 +102,6 @@ subsection Initial temperature model
 
   subsection Function
     set Variable names      = x,z
-    set Function constants  = pi=3.1415926
     set Function expression = if(sqrt(x*x+(z-4500000)*(z-4500000))<1000000,800,0)
   end
 end

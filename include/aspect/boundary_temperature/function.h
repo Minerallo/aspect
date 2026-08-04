@@ -32,8 +32,6 @@ namespace aspect
 {
   namespace BoundaryTemperature
   {
-    using namespace dealii;
-
     /**
      * A class that implements boundary temperature based on a functional
      * description provided in the input file.
@@ -86,10 +84,7 @@ namespace aspect
 
 
         /**
-         * Declare the parameters this class takes through input files. The
-         * default implementation of this function does not describe any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
+         * Declare the parameters this class takes through input files.
          */
         static
         void
@@ -97,9 +92,6 @@ namespace aspect
 
         /**
          * Read the parameters this class declares from the parameter file.
-         * The default implementation of this function does not read any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
          */
         void
         parse_parameters (ParameterHandler &prm) override;
@@ -112,13 +104,22 @@ namespace aspect
 
         /**
          * Temperatures at the inner and outer boundaries.
+         *
+         * This variable is read from the parameter file through a parameter called 'Minimal temperature'.
          */
         double min_temperature;
+
+        /**
+         * Temperatures at the inner and outer boundaries.
+         * This variable is read from the parameter file through a parameter called 'Maximal temperature'.
+         */
         double max_temperature;
 
         /**
          * The coordinate representation to evaluate the function. Possible
          * choices are depth, cartesian and spherical.
+         *
+         * This variable is read from the parameter file through a parameter called 'Coordinate system'.
          */
         Utilities::Coordinates::CoordinateSystem coordinate_system;
     };

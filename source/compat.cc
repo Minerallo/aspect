@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -20,14 +20,15 @@
 
 
 #include <aspect/compat.h>
+#include <aspect/global.h>
 
+namespace aspect
+{
 // deal.II versions up to 9.5 had a poorly designed interface of the
 // SphericalManifold class that made it impossible for us to use.
 // This file thus contains a copy of it.
 #if !DEAL_II_VERSION_GTE(9,6,0)
 
-namespace aspect
-{
   namespace
   {
     template <int dim, int spacedim>
@@ -323,12 +324,6 @@ namespace aspect
 
   namespace internal
   {
-    // The pull_back function fails regularly in the compute_chart_points
-    // method, and, instead of throwing an exception, returns a point outside
-    // the unit cell. The individual coordinates of that point are given by the
-    // value below.
-    static constexpr double invalid_pull_back_coordinate = 20.0;
-
     // Rotate a given unit vector u around the axis dir
     // where the angle is given by the length of dir.
     // This is the exponential map for a sphere.
@@ -571,11 +566,11 @@ namespace aspect
         return;
       }
 
-    boost::container::small_vector<std::pair<double, Tensor<1, spacedim>>, 100>
+    small_vector<std::pair<double, Tensor<1, spacedim>>>
     new_candidates(new_points.size());
-    boost::container::small_vector<Tensor<1, spacedim>, 100> directions(
+    small_vector<Tensor<1, spacedim>> directions(
       surrounding_points.size(), Point<spacedim>());
-    boost::container::small_vector<double, 100> distances(
+    small_vector<double> distances(
       surrounding_points.size(), 0.0);
     double max_distance = 0.;
     for (unsigned int i = 0; i < surrounding_points.size(); ++i)
@@ -603,7 +598,7 @@ namespace aspect
     // Step 1: Check for some special cases, create simple linear guesses
     // otherwise.
     const double                              tolerance = 1e-10;
-    boost::container::small_vector<bool, 100> accurate_point_was_found(
+    small_vector<bool> accurate_point_was_found(
       new_points.size(), false);
     const ArrayView<const Tensor<1, spacedim>> array_directions =
       make_array_view(directions.begin(), directions.end());
@@ -659,11 +654,11 @@ namespace aspect
 
         // Search for duplicate directions and merge them to minimize the cost of
         // the get_new_point function call below.
-        boost::container::small_vector<double, 1000> merged_weights(
+        small_vector<double, 1000> merged_weights(
           weights.size());
-        boost::container::small_vector<Tensor<1, spacedim>, 100>
+        small_vector<Tensor<1, spacedim>>
         merged_directions(surrounding_points.size(), Point<spacedim>());
-        boost::container::small_vector<double, 100> merged_distances(
+        small_vector<double> merged_distances(
           surrounding_points.size(), 0.0);
 
         unsigned int n_unique_directions = 0;
@@ -700,7 +695,7 @@ namespace aspect
 
         // Search for duplicate weight rows and merge them to minimize the cost of
         // the get_new_point function call below.
-        boost::container::small_vector<unsigned int, 100> merged_weights_index(
+        small_vector<unsigned int> merged_weights_index(
           new_points.size(), numbers::invalid_unsigned_int);
         for (unsigned int row = 0; row < weight_rows; ++row)
           {
@@ -801,6 +796,116 @@ namespace aspect
 
   template class SphericalManifold<2>;
   template class SphericalManifold<3>;
+#endif
+
+}
+
+
+
+
+// deal.II versions up to 9.6 had a bug for very thin shell geometries.
+// This function contains a fixed version.
+#if !DEAL_II_VERSION_GTE(9,7,0)
+
+#include <deal.II/grid/grid_generator.h>
+
+namespace aspect
+{
+  template <int dim>
+  void
+  colorize_quarter_hyper_shell(Triangulation<dim> &/*tria*/,
+                               const Point<dim>   &/*center*/,
+                               const double      /*inner_radius*/,
+                               const double      /*outer_radius*/)
+  {
+    AssertThrow(false, ExcNotImplemented());
+  }
+
+  /**
+   * Assign boundary number zero the inner shell boundary, one to the outer
+   * shell boundary, two to the face with x=0, three to the face with y=0,
+   * four to the face with z=0.
+   */
+  template <>
+  void
+  colorize_quarter_hyper_shell(Triangulation<3> &tria,
+                               const Point<3>   &center,
+                               const double      inner_radius,
+                               const double      outer_radius)
+  {
+    if (tria.n_cells() != 3)
+      AssertThrow(false, ExcNotImplemented());
+
+    const double middle_radius =
+      (outer_radius - inner_radius) / 2e0 + inner_radius;
+    const double eps = 1e-3 * middle_radius;
+
+    for (const auto &cell : tria.cell_iterators())
+      for (const unsigned int f : cell->face_indices())
+        {
+          const auto face = cell->face(f);
+          if (!face->at_boundary())
+            continue;
+
+          const double face_center_radius =
+            (face->center(true) - center).norm();
+
+          if (std::fabs(face->center()[0]) < eps) // x = 0 set boundary 2
+            {
+              face->set_boundary_id(2);
+              for (const unsigned int line_no : face->line_indices())
+                if (face->line(line_no)->at_boundary())
+                  if (std::fabs(face->line(line_no)->vertex(0).norm() -
+                                face->line(line_no)->vertex(1).norm()) > eps)
+                    face->line(line_no)->set_boundary_id(2);
+            }
+          else if (std::fabs(face->center()[1]) < eps) // y = 0 set boundary 3
+            {
+              face->set_boundary_id(3);
+              for (const unsigned int line_no : face->line_indices())
+                if (face->line(line_no)->at_boundary())
+                  if (std::fabs(face->line(line_no)->vertex(0).norm() -
+                                face->line(line_no)->vertex(1).norm()) > eps)
+                    face->line(line_no)->set_boundary_id(3);
+            }
+          else if (std::fabs(face->center()[2]) < eps) // z = 0 set boundary 4
+            {
+              face->set_boundary_id(4);
+              for (const unsigned int line_no : face->line_indices())
+                if (face->line(line_no)->at_boundary())
+                  if (std::fabs(face->line(line_no)->vertex(0).norm() -
+                                face->line(line_no)->vertex(1).norm()) > eps)
+                    face->line(line_no)->set_boundary_id(4);
+            }
+          else if (face_center_radius <
+                   middle_radius) // inner radius set boundary 0
+            {
+              face->set_boundary_id(0);
+              for (const unsigned int line_no : face->line_indices())
+                if (face->line(line_no)->at_boundary())
+                  if (std::fabs(face->line(line_no)->vertex(0).norm() -
+                                face->line(line_no)->vertex(1).norm()) < eps)
+                    face->line(line_no)->set_boundary_id(0);
+            }
+          else if (face_center_radius >
+                   middle_radius) // outer radius set boundary 1
+            {
+              face->set_boundary_id(1);
+              for (const unsigned int line_no : face->line_indices())
+                if (face->line(line_no)->at_boundary())
+                  if (std::fabs(face->line(line_no)->vertex(0).norm() -
+                                face->line(line_no)->vertex(1).norm()) < eps)
+                    face->line(line_no)->set_boundary_id(1);
+            }
+          else
+            AssertThrow(false, ExcInternalError());
+        }
+  }
+
+  template void colorize_quarter_hyper_shell<2>(Triangulation<2> &,
+                                                const Point<2> &,
+                                                const double,
+                                                const double);
 }
 
 #endif

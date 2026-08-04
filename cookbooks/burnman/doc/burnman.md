@@ -1,7 +1,15 @@
+```{tags}
+category:cookbook
+feature:2d
+feature:spherical
+feature:compressibility
+feature:data-integration
+```
+
 (sec:cookbooks:burnman)=
 # 2D compressible convection with a reference profile and material properties from BurnMan
 
-*This section was contributed by Juliane Dannberg and Ren&eacute; Gassm&ouml;ller*
+*This section was contributed by Juliane Dannberg and Ren&eacute; Gassm&ouml;ller.*
 
 In this cookbook we will set up a compressible mantle convection model that uses the (truncated) anelastic liquid approximation (see {ref}`sec:methods:approximate-equations:ala` and {ref}`sec:methods:approximate-equations:tala`), together with a reference profile read in from an ASCII data file.
 The data we use here is generated with the open source mineral physics toolkit BurnMan (<https://geodynamics.github.io/burnman/>) using the python example program `simple_adiabat.py`.
@@ -67,9 +75,9 @@ Visualizing material properties such as density, thermal expansivity or specific
 We can also visualize the gravity and the adiabatic profile, to ensure that the data we provided in the `data/adiabatic-conditions/ascii-data/isentrope_properties.txt` file is used in our model.
 
 ```{figure-md} fig:burnman-convection
-<img src="temperature.png" style="width:48.0%" alt="Compressible convection in a 2d spherical shell, using a reference profile exported form BurnMan, which is based on the Birch-Murnaghan equation of state. The figure shows the state at the end of the model evolution over 260&#x2006;Ma." />
+<img src="temperature.png" style="width:48.0%" alt="Compressible convection in a 2d spherical shell, using a reference profile exported from BurnMan, which is based on the Birch-Murnaghan equation of state. The figure shows the state at the end of the model evolution over 260 Ma." />
 
-Compressible convection in a 2d spherical shell, using a reference profile exported form BurnMan, which is based on the Birch-Murnaghan equation of state. The figure shows the state at the end of the model evolution over 260&#x2006;Ma.
+Compressible convection in a 2d spherical shell, using a reference profile exported from BurnMan, which is based on the Birch-Murnaghan equation of state. The figure shows the state at the end of the model evolution over 260 Ma.
 ```
 
 
@@ -99,7 +107,7 @@ They demonstrate that upwellings and downwellings may occur in slightly differen
 ```{figure-md} fig:burnman-comparison
 <img src="comparison.*" style="width:95.0%" />
 
-Comparison between the anelastic liquid approximation, the truncated anelastic liquid approximation and the isothermal compression approximation, showing the temperature distribution for the different models at the end of the model evolution at 260&#x2006;Ma.
+Comparison between the anelastic liquid approximation, the truncated anelastic liquid approximation and the isothermal compression approximation, showing the temperature distribution for the different models at the end of the model evolution at 260 Ma.
 ```
 
 ```{figure-md} fig:burnman-vrms

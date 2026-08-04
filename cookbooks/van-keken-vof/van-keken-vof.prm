@@ -4,7 +4,7 @@
 set Dimension                              = 2
 set Start time                             = 0
 set End time                               = 2000
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set CFL number                             = 0.5
 set Output directory                       = output-van-keken-vof
 
@@ -71,7 +71,6 @@ subsection Initial composition model
 
   subsection Function
     set Variable names      = x,z
-    set Function constants  = pi=3.1415926
     set Function expression  =  0.2+0.02*cos(pi*x/0.9142)-z
   end
 end

@@ -25,7 +25,7 @@
 set Dimension                              = 2
 set Start time                             = 0
 set End time                               = 500
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set Nonlinear solver scheme                = iterated Advection and Stokes
 set Max nonlinear iterations               = 5
 set CFL number                             = 0.5
@@ -97,7 +97,7 @@ subsection Initial composition model
 
   subsection Function
     set Variable names      = x,y
-    set Function constants  = pi=3.1415926,x0=100000,y0=50000,c=12500, A_f=0.2, A_s = 1.0
+    set Function constants  = x0=100000,y0=50000,c=12500, A_f=0.2, A_s = 1.0
     set Function expression = A_f; if((x - x0)*(x - x0) + (y - y0)*(y - y0) <= c*c, A_s, 0)
   end
 end

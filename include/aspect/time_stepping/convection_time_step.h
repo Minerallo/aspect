@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2014 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2014 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -29,8 +29,6 @@ namespace aspect
 {
   namespace TimeStepping
   {
-    using namespace dealii;
-
     /**
      * Compute the convection time step based on the current solution and
      * return it.

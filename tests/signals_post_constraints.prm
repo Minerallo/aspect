@@ -4,7 +4,7 @@
 # otherwise identical to blankenbach.prm
 
 set End time                               = 0.002 # 1.0 for full benchmark
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 
 subsection Boundary temperature model
   set List of model names = box
@@ -39,7 +39,7 @@ subsection Initial temperature model
   set Model name = function
 
   subsection Function
-    set Function constants  = z1=0.102367, z2=0.897633, pi=3.14159265359
+    set Function constants  = z1=0.102367, z2=0.897633
     set Function expression = if(z<z1,0.5+0.5*(z1-z)/z1,if(z>z2,0.5*(1-z)/(1-z2),0.5)) + 0.1 * cos(x*pi) * sin(z*pi)
     set Variable names      = x,z
   end

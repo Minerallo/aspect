@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -23,6 +23,9 @@
 
 #include <aspect/material_model/interface.h>
 #include <aspect/material_model/equation_of_state/thermodynamic_table_lookup.h>
+#include <aspect/material_model/thermal_conductivity/interface.h>
+#include <aspect/material_model/rheology/drucker_prager.h>
+#include <aspect/material_model/utilities.h>
 
 #include <aspect/simulator_access.h>
 #include <deal.II/fe/component_mask.h>
@@ -31,8 +34,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     namespace internal
     {
       /**
@@ -118,7 +119,8 @@ namespace aspect
      * The viscosity of this model is based on the paper
      * Steinberger & Calderwood 2006: "Models of large-scale viscous flow in the
      * Earth's mantle with constraints from mineral physics and surface
-     * observations". The thermal conductivity is constant and the other
+     * observations". The thermal conductivity is constant or follows a
+     * pressure-temperature dependent approximation and the other
      * parameters are provided via lookup tables from the software PERPLEX.
      *
      * @ingroup MaterialModels
@@ -139,19 +141,6 @@ namespace aspect
          * model to update internal data structures.
          */
         void update() override;
-
-        /**
-         * @name Physical parameters used in the basic equations
-         * @{
-         */
-        virtual double viscosity (const double                  temperature,
-                                  const double                  pressure,
-                                  const std::vector<double>    &compositional_fields,
-                                  const SymmetricTensor<2,dim> &strain_rate,
-                                  const Point<dim>             &position) const;
-        /**
-         * @}
-         */
 
         /**
          * @name Qualitative properties one can ask a material model
@@ -205,17 +194,16 @@ namespace aspect
 
       private:
         /**
-         * Compute the pressure- and temperature-dependent thermal
-         * conductivity either as a constant value, or based on the
-         * equation given in Stackhouse et al., 2015: First-principles
-         * calculations of the lattice thermal conductivity of the
-         * lower mantle, or based on the equation given in Tosi et al.,
-         * 2013: Mantle dynamics with pressure- and temperature-dependent
-         * thermal expansivity and conductivity.
+         * Given the material model inputs @p in, and the volume fractions
+         * @p volume_fractions of all chemical fields, compute the viscosity for
+         * the evaluation point @p q, and fill the additional material model outputs
+         * in @p out that have to do with the viscosity (the plastic additional
+         * outputs) for evaluation point @p q.
          */
-        double thermal_conductivity (const double temperature,
-                                     const double pressure,
-                                     const Point<dim> &position) const;
+        double viscosity (const unsigned int q,
+                          const std::vector<double> &volume_fractions,
+                          const MaterialModel::MaterialModelInputs<dim> &in,
+                          MaterialModel::MaterialModelOutputs<dim> &out) const;
 
         /**
          * Whether the compositional fields representing mass fractions
@@ -246,63 +234,67 @@ namespace aspect
          * Boolean describing whether to use the lateral average temperature
          * for computing the viscosity, rather than the temperature
          * on the reference adiabat.
+         *
+         * This variable is read from the parameter file through a parameter called 'Use lateral average temperature for viscosity'.
          */
         bool use_lateral_average_temperature;
 
         /**
-         * The value of the thermal conductivity if a constant thermal
-         * conductivity is used for the whole domain.
+         * The thermal conductivity parametrization to use. This material
+         * model supports either a constant thermal conductivity or a
+         * pressure- and temperature-dependent thermal conductivity.
          */
-        double thermal_conductivity_value;
-
-        /**
-         * Enumeration for selecting which type of conductivity law to use.
-         */
-        enum ConductivityFormulation
-        {
-          constant,
-          p_T_dependent
-        } conductivity_formulation;
-
-        /**
-         * Parameters for the temperature- and pressure dependence of the
-         * thermal conductivity.
-         */
-        std::vector<double> conductivity_transition_depths;
-        std::vector<double> reference_thermal_conductivities;
-        std::vector<double> conductivity_pressure_dependencies;
-        std::vector<double> conductivity_reference_temperatures;
-        std::vector<double> conductivity_exponents;
-        std::vector<double> saturation_scaling;
-        double maximum_conductivity;
+        std::unique_ptr<ThermalConductivity::Interface<dim>> thermal_conductivity;
 
         /**
          * Compositional prefactors with which to multiply the reference viscosity.
          * Volume fractions are used to weight the prefactors according to the
          * assigned viscosity averaging scheme.
+         * This variable is read from the parameter file through a parameter called 'Composition viscosity prefactors'.
          */
         std::vector<double> viscosity_prefactors;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Viscosity averaging scheme'.
+         */
         MaterialUtilities::CompositionalAveragingOperation viscosity_averaging_scheme;
 
         /**
          * Information about lateral temperature averages.
          */
         std::vector<double> average_temperature;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Number lateral average bands'.
+         */
         unsigned int n_lateral_slices;
 
         /**
          * Minimum and maximum allowed viscosity, as well as the maximum allowed
          * viscosity variation compared to the average radial viscosity.
+         * This variable is read from the parameter file through a parameter called 'Minimum viscosity'.
          */
         double min_eta;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Maximum viscosity'.
+         */
         double max_eta;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Maximum lateral viscosity variation'.
+         */
         double max_lateral_eta_variation;
 
         /**
          * Information about the location of data files.
+         *
+         * This variable is read from the parameter file through a parameter called 'Data directory'.
          */
         std::string data_directory;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Radial viscosity file name'.
+         */
         std::string radial_viscosity_file_name;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Lateral viscosity file name'.
+         */
         std::string lateral_viscosity_file_name;
 
         /**
@@ -327,6 +319,17 @@ namespace aspect
                                       const std::vector<double> &volume_fractions,
                                       const MaterialModel::MaterialModelInputs<dim> &in,
                                       MaterialModel::MaterialModelOutputs<dim> &out) const;
+
+        /**
+         * Drucker-Prager rheology related
+         * Objects for computing plastic stresses, viscosities, and additional outputs
+         */
+        Rheology::DruckerPrager<dim> drucker_prager_plasticity;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Use Drucker-Prager rheology'.
+         */
+        bool enable_drucker_prager_rheology;
+        Rheology::DruckerPragerParameters drucker_prager_parameters;
 
     };
   }

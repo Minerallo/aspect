@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -21,6 +21,7 @@
 #ifndef _aspect_material_model_melt_visco_plastic_h
 #define _aspect_material_model_melt_visco_plastic_h
 
+#include <algorithm>
 #include <aspect/material_model/interface.h>
 #include <aspect/simulator.h>
 #include <aspect/simulator_access.h>
@@ -37,8 +38,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     /**
      * Additional output fields for the plastic parameters weakened (or hardened)
      * by strain to be added to the MaterialModel::MaterialModelOutputs structure
@@ -50,7 +49,7 @@ namespace aspect
       public:
         PlasticAdditionalOutputs2(const unsigned int n_points);
 
-        virtual std::vector<double> get_nth_output(const unsigned int idx) const;
+        virtual std::vector<double> get_nth_output(const unsigned int idx) const override;
 
         /**
          * Cohesions at the evaluation points passed to
@@ -114,7 +113,8 @@ namespace aspect
                       typename Interface<dim>::MaterialModelOutputs &out) const override;
 
         virtual void melt_fractions (const MaterialModel::MaterialModelInputs<dim> &in,
-                                     std::vector<double> &melt_fractions) const;
+                                     std::vector<double> &melt_fractions,
+                                     const MaterialModel::MaterialModelOutputs<dim> *out = nullptr) const override;
 
         /**
          * @}
@@ -136,7 +136,7 @@ namespace aspect
          */
         virtual
         void
-        parse_parameters (ParameterHandler &prm);
+        parse_parameters (ParameterHandler &prm) override;
         /**
          * @}
          */
@@ -253,8 +253,6 @@ namespace aspect
   namespace MaterialModel
   {
 
-    using namespace dealii;
-
     namespace
     {
       std::vector<std::string> make_plastic_additional_outputs_names()
@@ -305,7 +303,7 @@ namespace aspect
     reference_darcy_coefficient () const
     {
       // 0.01 = 1% melt
-      return reference_permeability * std::pow(0.01,3.0) / eta_f;
+      return reference_permeability * Utilities::fixed_power<3>(0.01) / eta_f;
     }
 
     template <int dim>
@@ -349,7 +347,7 @@ namespace aspect
       if (peridotite_melt_fraction > F_max && temperature < T_liquidus)
         {
           const double T_max = std::pow(F_max,1/beta) * (T_lherz_liquidus - T_solidus) + T_solidus;
-          peridotite_melt_fraction = F_max + (1 - F_max) * pow((temperature - T_max) / (T_liquidus - T_max),beta);
+          peridotite_melt_fraction = F_max + (1 - F_max) * std::pow((temperature - T_max) / (T_liquidus - T_max),beta);
         }
       return peridotite_melt_fraction;
     }
@@ -358,7 +356,8 @@ namespace aspect
     void
     MeltViscoPlastic<dim>::
     melt_fractions (const MaterialModel::MaterialModelInputs<dim> &in,
-                    std::vector<double> &melt_fractions) const
+                    std::vector<double> &melt_fractions,
+                    const MaterialModel::MaterialModelOutputs<dim> *) const
     {
       for (unsigned int q=0; q<in.n_evaluation_points(); ++q)
         melt_fractions[q] = melt_fraction(in.temperature[q],
@@ -396,7 +395,8 @@ namespace aspect
       std::vector<double> volumetric_strain_rates(in.n_evaluation_points());
       std::vector<double> volumetric_yield_strength(in.n_evaluation_points());
 
-      ReactionRateOutputs<dim> *reaction_rate_out = out.template get_additional_output<ReactionRateOutputs<dim>>();
+      const std::shared_ptr<ReactionRateOutputs<dim>> reaction_rate_out
+        = out.template get_additional_output_object<ReactionRateOutputs<dim>>();
 
       if (this->include_melt_transport() )
         {
@@ -486,11 +486,11 @@ namespace aspect
 
               // 4) Reduce shear viscosity due to melt presence
               const double porosity = std::min(1.0, std::max(in.composition[i][porosity_idx],0.0));
-              out.viscosities[i] *= exp(- alpha_phi * porosity);
+              out.viscosities[i] *= std::exp(- alpha_phi * porosity);
             }
         }
 
-      if (in.requests_property(MaterialProperties::viscosity) )
+      if (in.requests_property(MaterialProperties::viscosity) || in.requests_property(MaterialProperties::additional_outputs))
         {
           // 5) Compute plastic weakening of the viscosity
           for (unsigned int i=0; i<in.n_evaluation_points(); ++i)
@@ -534,7 +534,7 @@ namespace aspect
 
                   // Convert friction angle from degrees to radians
                   double phi = angles_internal_friction[c] * constants::degree_to_radians;
-                  const double transition_pressure = (cohesions[c] * std::cos(phi) - tensile_strength_c) / (1.0 -  sin(phi));
+                  const double transition_pressure = (cohesions[c] * std::cos(phi) - tensile_strength_c) / (1.0 -  std::sin(phi));
 
                   double yield_strength_c = 0.0;
                   // In case we're not using the Keller et al. formulation,
@@ -570,7 +570,8 @@ namespace aspect
               const double cohesion = MaterialUtilities::average_value(volume_fractions, cohesions, viscosity_averaging);
               const double angle_internal_friction = MaterialUtilities::average_value(volume_fractions, angles_internal_friction, viscosity_averaging);
 
-              PlasticAdditionalOutputs2<dim> *plastic_out = out.template get_additional_output<PlasticAdditionalOutputs2<dim>>();
+              const std::shared_ptr<PlasticAdditionalOutputs2<dim>> plastic_out
+                = out.template get_additional_output_object<PlasticAdditionalOutputs2<dim>>();
               if (plastic_out != nullptr)
                 {
                   plastic_out->cohesions[i] = cohesion;
@@ -579,7 +580,7 @@ namespace aspect
                 }
 
               // Limit the viscosity with specified minimum and maximum bounds
-              out.viscosities[i] = std::min(std::max(out.viscosities[i], min_viscosity), max_viscosity);
+              out.viscosities[i] = std::clamp(out.viscosities[i], min_viscosity, max_viscosity);
 
               // Compute the volumetric yield strength (Keller et al. eq (38))
               volumetric_yield_strength[i] = viscous_stress - tensile_strength;
@@ -587,16 +588,17 @@ namespace aspect
         }
 
       // fill melt outputs if they exist
-      MeltOutputs<dim> *melt_out = out.template get_additional_output<MeltOutputs<dim>>();
+      const std::shared_ptr<MeltOutputs<dim>> melt_out
+        = out.template get_additional_output_object<MeltOutputs<dim>>();
 
-      if (melt_out != NULL)
+      if (melt_out != nullptr && in.requests_property(MaterialProperties::additional_outputs))
         {
           for (unsigned int i=0; i<in.n_evaluation_points(); ++i)
             {
               const unsigned int porosity_idx = this->introspection().compositional_index_for_name("porosity");
               double porosity = std::min(1.0, std::max(in.composition[i][porosity_idx],0.0));
               melt_out->fluid_viscosities[i] = eta_f;
-              melt_out->permeabilities[i] = reference_permeability * std::pow(porosity,3) * std::pow(1.0-porosity,2);
+              melt_out->permeabilities[i] = reference_permeability * Utilities::fixed_power<3>(porosity) * Utilities::fixed_power<2>(1.0-porosity);
 
               melt_out->fluid_densities[i] = out.densities[i] + melt_density_change;
               melt_out->fluid_density_gradients[i] = 0.0;
@@ -604,7 +606,7 @@ namespace aspect
               const double compaction_pressure = (1.0 - porosity) * (in.pressure[i] - fluid_pressures[i]);
 
               const double phi_0 = 0.05;
-              porosity = std::max(std::min(porosity,0.995),1.e-8);
+              porosity = std::clamp(porosity, 1.e-8, 0.995);
               // compaction viscosities (Keller et al. eq (51)
               melt_out->compaction_viscosities[i] = intrinsic_viscosities[i] * phi_0 / porosity;
 
@@ -618,7 +620,7 @@ namespace aspect
 
               // effective compaction viscosity (Keller et al. eq (43) )
               // NB: I've added a minus sign as according to eq 43
-              if (in.strain_rate.size() && compaction_pressure < volumetric_yield_strength[i])
+              if (compaction_pressure < volumetric_yield_strength[i])
                 {
                   // the volumetric strain rate might be negative, but will always have the same sign as the volumetric yield strength
                   if (volumetric_strain_rates[i] >= 0)
@@ -629,7 +631,7 @@ namespace aspect
                 }
 
               // Limit the viscosity with specified minimum and maximum bounds
-              melt_out->compaction_viscosities[i] = std::min(std::max(melt_out->compaction_viscosities[i], min_viscosity), max_viscosity);
+              melt_out->compaction_viscosities[i] = std::clamp(melt_out->compaction_viscosities[i], min_viscosity, max_viscosity);
             }
         }
 
@@ -775,7 +777,7 @@ namespace aspect
                              "Also note that the melting time scale has to be larger than or equal to the reaction "
                              "time step used in the operator splitting scheme, otherwise reactions can not be "
                              "computed. "
-                             "Units: yr or s, depending on the ``Use years in output instead of seconds'' parameter.");
+                             "Units: yr or s, depending on the ``Use years instead of seconds'' parameter.");
 
           prm.declare_entry ("A1", "1085.7",
                              Patterns::Double (),
@@ -1008,7 +1010,7 @@ namespace aspect
     void
     MeltViscoPlastic<dim>::create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const
     {
-      if (out.template get_additional_output<PlasticAdditionalOutputs2<dim>>() == nullptr)
+      if (out.template has_additional_output_object<PlasticAdditionalOutputs2<dim>>() == false)
         {
           const unsigned int n_points = out.n_evaluation_points();
           out.additional_outputs.push_back(

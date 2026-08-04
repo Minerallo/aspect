@@ -5,44 +5,68 @@ members — i.e., including you! It is our goal to build an inclusive
 and participatory community so we are happy that you are interested in
 participating!
 
-## Getting started with git and GitHub
-
-If you are new to using git or the GitHub platform you may find it
-helpful to review [video lecture
-32.8](http://www.math.colostate.edu/~bangerth/videos.676.32.8.html), which
-should be enough to help you get started with using GitHub or possibly
-contributing to ASPECT itself. Alternatively, GitHub provides a helpful
-guide on the process of contributing to an open-source project
-[here](https://opensource.guide/how-to-contribute/).
-
 ## Asking and answering questions about ASPECT
 
 For questions about ASPECT on all levels, please use the
 [ASPECT forum](https://community.geodynamics.org/c/aspect).
-Archived discussions from the inactive aspect-devel mailing list can be downloaded
-at [aspect-devel archives](https://geodynamics.org/pipermail/aspect-devel/).
 
-## Bug reports
+Please note that no one in the forum is paid or obliged to answer
+your questions. Everyone answering forum posts is volunteering
+their time to help make our community a friendly and helpful
+place to inhabit. Therefore, we ask that you keep your inquiries
+polite, take some effort to make them easily readable, and
+include all useful information as described below. If there is
+something you can test on your own, please test it first,
+before asking a question on the forum.
+
+There is no guarantee that we can or will help with your problem, but
+you are welcome to contact us and we will try to jointly improve
+ASPECT for your application case. Depending on the level of
+effort provided a thank you note or an acknowledgment in
+a paper is always appreciated. Keep in mind that for significant
+and scientifically creative contributions by a community member
+(but usually only then) a co-authorship on a publication
+is appropriate.
+
+## Reporting bugs and asking questions
 
 It is a great help to the community if you report any bugs that you
 may find. We keep track of all open issues related to ASPECT
 [here](https://github.com/geodynamics/aspect/issues).
 
-Please follow these simple instructions before opening a new bug report:
+Please follow these instructions before opening a new bug report or ask
+a question:
 
-- Do a search in the [list of open and closed issues](https://github.com/geodynamics/aspect/issues?q=is%3Aissue)
-  for a duplicate of your problem.
-- Do a search in the [ASPECT forum](https://community.geodynamics.org/c/aspect) for a
-  duplicate of your problem.
-- If you did not find an answer, open a new
-  [issue](https://github.com/geodynamics/aspect/issues/new) and explain your
-  problem in as much detail as possible.
-- Attach as much as possible of the following information to your issue:
-  - a minimal parameter file that reproduces the issue,
+- Make sure you have run your model in
+  [DEBUG mode](https://aspect-documentation.readthedocs.io/en/latest/user/run-aspect/debug-mode.html).
+  DEBUG mode reports many errors in greater detail and may already solve your
+  question.
+- Search in the
+  [list of open and closed issues](https://github.com/geodynamics/aspect/issues?q=is%3Aissue)
+  for a duplicate of your question.
+- Search in the [ASPECT forum](https://community.geodynamics.org/c/aspect) for
+  a duplicate of your question.
+- If you did not find an answer in the previous searches, open a new question:
+  - If you suspect you have found a bug, open a new
+    [issue](https://github.com/geodynamics/aspect/issues/new) and explain your
+    problem as described below.
+  - If you are not sure how to set up a model, ask a question in the
+    [ASPECT forum](https://community.geodynamics.org/c/aspect) as described below.
+  - If you are not sure what to do, you can post a question in the
+    [ASPECT forum](https://community.geodynamics.org/c/aspect).
+- In either case, attach the following information:
+  - a parameter file with a simplified and small model that reproduces the
+    issue,
   - the `log.txt` file that was created during the model run,
-  - the error message you saw on your screen,
-  - any information that helps us understand why you think this is a bug, and
-    how to reproduce it.
+  - one or several screenshots of the full error message you saw on your
+    screen,
+  - any information that helps us understand why you think this is a bug
+    (screenshots, data series, comparisons to reference results, etc.),
+  - instructions for how to reproduce the problem.
+
+Without providing the information above, we will be less likely able to help
+you, it may take significantly longer until you receive a reply, and we will
+just ask you for this information anyway.
 
 ## Making ASPECT better
 
@@ -60,12 +84,22 @@ your idea with one of the maintainers. This allows us to give you early
 feedback and prevents you from spending much time on a project that might already be
 planned, or that conflicts with other plans.
 
+### Getting started with git and GitHub
+
+If you are new to using git or the GitHub platform you may find it
+helpful to review [video lecture
+32.8](http://www.math.colostate.edu/~bangerth/videos.676.32.8.html), which
+should be enough to help you get started with using GitHub or possibly
+contributing to ASPECT itself. Alternatively, GitHub provides a helpful
+guide on the process of contributing to an open-source project
+[here](https://opensource.guide/how-to-contribute/).
+
 ### Opening pull requests
 
 To make a change to ASPECT you should:
 
 - Create a
-[fork](https://guides.github.com/activities/forking/#fork) (through GitHub) of
+[fork](https://guides.github.com/activities/forking) (through GitHub) of
 the code base.
 - Create a separate
 [branch](https://guides.github.com/introduction/flow/) (sometimes called a
@@ -99,7 +133,7 @@ use a set of
 equal to those used by [deal.II](http://www.dealii.org)
 upon which ASPECT is based, so as to keep the style of the source code
 consistent. This convention essentially consists of using
-[astyle](http://astyle.sourceforge.net/astyle.html) v.2.04 with a
+[astyle](http://astyle.sourceforge.net/astyle.html) version 2.04 with a
 [style file](https://github.com/geodynamics/aspect/blob/main/contrib/utilities/astyle.rc)
 for indentation, CamelCase for classes and
 namespaces, and lower_case_names_with_underscores for everything else. If you
@@ -109,22 +143,112 @@ you would like to contribute some code.
 
 ### Installing astyle
 
-To correctly indent the code in ASPECT you can use `make indent` or `ninja indent`
-depending on the build system you are using. The indenting script needs version 2.04 astyle.
-If you installed deal.II through candi, the correct astyle may already on your system and in your path.
-If the indenting script complains that it could not find (the correct version of) astyle,
-you can find it [here](https://sourceforge.net/projects/astyle/files/astyle/astyle%202.04/).
+If you installed deal.II through candi with `./candi.sh --packages="<other packages> astyle"`,
+the correct astyle may already on your system. First, add astyle to your path by sourcing the
+deal.II environment script with:
 
-An easy way to install it is through using the following command in Linux (do not do this in the aspect directory):
-`mkdir astyle && cd astyle && wget 'https://sourceforge.net/projects/astyle/files/astyle/astyle 2.04/astyle_2.04_linux.tar.gz' && tar -zxvf astyle_2.04_linux.tar.gz && cd astyle/build/gcc && make && sudo make install`.
-This will create a new directory called astyle, download, unpack, compile and install it.
-When you add the bin directory to to your path, the indent command should find astyle.
+```{code-block} bash
+source $HOME/dealii-candi/configuration/enable.sh
+```
+
+This will make astyle available to ASPECT's indentation script. Then confirm that astyle is available
+and correctly versioned with:
+
+```{code-block} bash
+which astyle
+astyle --version
+```
+
+If `which astyle` returns `astyle not found` or if `astyle --version` does not show
+`Artistic Style Version 2.04` you will need to use one of the methods below to install
+the correct version manually.
+
+#### With candi (Linux/macOS/Windows and HPC clusters)
+
+If you installed deal.II with candi but didn't include astyle in the list of packages, you
+can still install it with:
+
+```{code-block} bash
+git clone https://github.com/dealii/candi.git
+cd candi
+./candi.sh --packages="astyle"
+source $HOME/dealii-candi/configuration/enable.sh
+```
+
+:::{important}
+Installing astyle via candi is the preferred method for HPC Linux clusters. The astyle
+installation methods below require sudo privileges, which will not work for typical HPC
+cluster users!
+:::
+
+#### From source (Linux/macOS)
+
+Linux users can install astyle from source with:
+
+```{code-block} bash
+# Do this outside of the ASPECT directory
+mkdir astyle && cd astyle
+wget 'https://sourceforge.net/projects/astyle/files/astyle/astyle%202.04/astyle_2.04_linux.tar.gz'
+tar -xvzf astyle_2.04_linux.tar.gz
+cd astyle/build/gcc
+make
+sudo make prefix=/usr/local install
+```
+
+macOS users can install astyle from source with:
+
+```{code-block} bash
+# Do this outside of the ASPECT directory
+mkdir astyle && cd astyle
+curl -LO 'https://sourceforge.net/projects/astyle/files/astyle/astyle%202.04/astyle_2.04_linux.tar.gz'
+tar -xvzf astyle_2.04_linux.tar.gz
+cd astyle/build/gcc
+make
+sudo make INSTALL=install prefix=/usr/local install
+```
+
+This installs astyle to `/usr/local/bin`, which will make astyle available to ASPECT's indentation script.
+
+#### Example astyle usage
+
+To correctly indent the code in the ASPECT source directory, use `make indent` or `ninja indent`
+while in the ASPECT build directory (depending on your build system):
+
+```{code-block} bash
+cd <path to your aspect build dir>
+make indent
+```
+
+If you wish to correctly indent individual files in another directory, you can use:
+
+```{code-block} bash
+cp <path to your aspect source dir>/contrib/utilities/astyle.rc .
+astyle --options=astyle.rc my_plugin.cc my_plugin.h
+```
+
+:::{important}
+You NEED to use astyle version 2.04 for correct results (older versions or 2.05 will not work)!
+:::
+
+### Parameter documentation
+
+We keep documentation about all ASPECT input parameters in our [parameter
+documentation](https://aspect-documentation.readthedocs.io/en/latest/parameters/index.html).
+If your pull request introduces new parameters or updates existing ones, our
+automatic testers will notice and report the difference. You can update the
+parameter documentation by either (i) run `make parameters` in your build
+directory, check the modifications to the documentation and add the changes to
+your pull request, or (ii) download the tester artifact
+`changes-parameters.diff`, apply the changes to your local repository with `git
+apply changes-parameters.diff`, and then add the changes to the pull request.
+We insist on these changes to keep the online documentation always consistent
+with the latest development version of ASPECT.
 
 ### Changelog entries
 
 If your new pull request creates a change that is noticeable to ASPECT users,
 please add an entry to our
-[changelog](http://aspect.geodynamics.org/doc/doxygen/changes_current.html). To
+[changelog](https://aspect.geodynamics.org/doc/doxygen/changes_current.html). To
 add such an entry, make a copy of one of the files in the
 [doc/modules/changes/](https://github.com/geodynamics/aspect/tree/main/doc/modules/changes)
 folder and modify it to explain
@@ -147,7 +271,7 @@ ways in which your contribution will be acknowledged by the ASPECT community:
   and merged pull requests, including an acknowledgment of the author of the
   issue/pull request.
 - For every release the most significant entries of our
-  [changelog](http://aspect.geodynamics.org/doc/doxygen/changes_current.html)
+  [changelog](https://aspect.geodynamics.org/doc/doxygen/changes_current.html)
   are selected to generate our release announcements. Additionally, all entries
   remain available for all previous releases of ASPECT inside the
   [repository](https://github.com/geodynamics/aspect/tree/main/doc/modules)
@@ -156,21 +280,50 @@ ways in which your contribution will be acknowledged by the ASPECT community:
 - If you contributed a significant part of the manual (such as a new cookbook,
   benchmark, or subsection), you will be listed as one of the contributing
   authors of the manual.
-- The Principal Developers of ASPECT come together on a regular basis and discuss
-  whether others should be invited to join the
-  group of *Principal Developers*. Criteria
-  for this decision include:
-
-  - A profound understanding of ASPECT's structure and vision;
-  - A proven willingness to further the project's goals and help other users;
-  - Significant contributions to ASPECT (not necessarily only source code,
-    also forum advice, documentation, benchmarks, tutorials);
-  - Regular and active contributions to ASPECT for more than one year,
-    not restricted to user meetings.
+- The Principal Developers of ASPECT meet regularly to discuss the direction
+  of the project and to consider inviting new members to join the group of
+  Principal Developers.
+  New members are typically invited based on the following criteria:
+  - A deep understanding of ASPECT's structure, design, and long-term vision;
+  - A demonstrated commitment to advancing the project's goals and supporting
+    the ASPECT community;
+  - Meaningful contributions to ASPECT. These contributions may of course be
+    to the source code, but can also include documentation, tutorials,
+    benchmarks, or active engagement on the forum;
+  - Consistent and active involvement in the project for over a year,
+    beyond participation in user meetings;
+  - A collaborative mindset and a constructive, solution-oriented approach
+    to discussions.
 
   The group of current Principal Developers is listed in the
   [AUTHORS.md](https://github.com/geodynamics/aspect/blob/main/AUTHORS.md)
   file in the main repository.
+
+## Policy on usage of AI
+
+ASPECT is a software project that aims to form and educate a community
+of human researchers and further the field of geodynamic
+research. Based on this purpose we formulate the following policy on
+AI contributions:
+
+
+AI assisted contributions to ASPECT are welcome. If AI generated a
+substantial portion of your contribution (e.g. more than a small
+fraction of the source code, or algorithms that are crucial for the
+functionality), describe which parts of the contribution were
+generated by AI in your pull request summary. Before submitting,
+review and verify all AI-generated content. By submitting a
+contribution, you confirm that you understand and accept
+responsibility for the suggested changes.
+
+Our review process is a conversation between human developers and
+human reviewers. You may use AI to improve your language in this
+conversation, but the response to a review comment is fundamentally a
+human responsibility and we reserve the right to not review
+contributions without a human “in the loop”. In return, while we may
+use AI tools to help with the review process, we will always use our
+human time and intellectual effort to understand and review your
+contribution.
 
 ## License
 

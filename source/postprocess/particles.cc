@@ -1,32 +1,31 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
- This file is part of ASPECT.
+  This file is part of ASPECT.
 
- ASPECT is free software; you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation; either version 2, or (at your option)
- any later version.
+  ASPECT is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2, or (at your option)
+  any later version.
 
- ASPECT is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
+  ASPECT is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
- You should have received a copy of the GNU General Public License
- along with ASPECT; see the file LICENSE.  If not see
- <http://www.gnu.org/licenses/>.
+  You should have received a copy of the GNU General Public License
+  along with ASPECT; see the file LICENSE.  If not see
+  <http://www.gnu.org/licenses/>.
  */
 
 #include <aspect/global.h>
 #include <aspect/postprocess/particles.h>
-#include <aspect/particle/world.h>
+#include <aspect/particle/manager.h>
 #include <aspect/utilities.h>
 
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/archive/text_iarchive.hpp>
 
-#include <cstdio>
 #include <unistd.h>
 
 namespace aspect
@@ -35,7 +34,7 @@ namespace aspect
   {
     namespace internal
     {
-      template<int dim>
+      template <int dim>
       void
       ParticleOutput<dim>::build_patches(const dealii::Particles::ParticleHandler<dim> &particle_handler,
                                          const aspect::Particle::Property::ParticlePropertyInformation &property_information,
@@ -117,7 +116,7 @@ namespace aspect
         patches.resize(particle_handler.n_locally_owned_particles());
         typename dealii::Particles::ParticleHandler<dim>::particle_iterator particle = particle_handler.begin();
 
-        for (unsigned int i=0; particle != particle_handler.end(); ++particle, ++i)
+        for (types::particle_index i=0; particle != particle_handler.end(); ++particle, ++i)
           {
             patches[i].vertices[0] = particle->get_location();
             patches[i].patch_index = i;
@@ -167,12 +166,6 @@ namespace aspect
     template <int dim>
     Particles<dim>::Particles ()
       :
-      // the following value is later read from the input file
-      output_interval (0),
-      // initialize this to a nonsensical value; set it to the actual time
-      // the first time around we get to check it
-      last_output_time (std::numeric_limits<double>::quiet_NaN())
-      ,output_file_number (numbers::invalid_unsigned_int),
       group_files(0),
       write_in_background_thread(false)
     {}
@@ -191,9 +184,8 @@ namespace aspect
 
 
     template <int dim>
-    // We need to pass the arguments by value, as this function can be called on a separate thread:
-    void Particles<dim>::writer (const std::string &filename, //NOLINT(performance-unnecessary-value-param)
-                                 const std::string &temporary_output_location, //NOLINT(performance-unnecessary-value-param)
+    void Particles<dim>::writer (const std::string &filename,
+                                 const std::string &temporary_output_location,
                                  const std::string &file_contents)
     {
       std::string tmp_filename = filename;
@@ -247,7 +239,7 @@ namespace aspect
       if (tmp_filename != filename)
         {
           std::string command = std::string("mv ") + tmp_filename + " " + filename;
-          int error = system(command.c_str());
+          int error = std::system(command.c_str());
 
           AssertThrow(error == 0,
                       ExcMessage("Could not move " + tmp_filename + " to "
@@ -258,40 +250,39 @@ namespace aspect
 
     template <int dim>
     void
-    Particles<dim>::write_master_files (const internal::ParticleOutput<dim> &data_out,
-                                        const std::string &solution_file_prefix,
-                                        const std::vector<std::string> &filenames)
+    Particles<dim>::write_description_files (const internal::ParticleOutput<dim> &data_out,
+                                             const std::string &description_file_prefix,
+                                             const std::string &solution_file_directory,
+                                             const std::string &solution_file_prefix,
+                                             const std::vector<std::string> &filenames)
     {
       const double time_in_years_or_seconds = (this->convert_output_to_years() ?
                                                this->get_time() / year_in_seconds :
                                                this->get_time());
-      const std::string
-      pvtu_master_filename = (solution_file_prefix +
-                              ".pvtu");
-      std::ofstream pvtu_master (this->get_output_directory() + "particles/" +
-                                 pvtu_master_filename);
-      data_out.write_pvtu_record (pvtu_master, filenames);
+      const std::string pvtu_filename = (solution_file_prefix +
+                                         ".pvtu");
+      std::ofstream pvtu_file (this->get_output_directory() + solution_file_directory +
+                               pvtu_filename);
+      data_out.write_pvtu_record (pvtu_file, filenames);
 
       // now also generate a .pvd file that matches simulation
       // time and corresponding .pvtu record
-      times_and_pvtu_file_names.emplace_back(time_in_years_or_seconds, "particles/"+pvtu_master_filename);
+      times_and_pvtu_file_names[description_file_prefix].emplace_back(time_in_years_or_seconds, solution_file_directory + pvtu_filename);
 
-      const std::string
-      pvd_master_filename = (this->get_output_directory() + "particles.pvd");
-      std::ofstream pvd_master (pvd_master_filename);
+      const std::string pvd_filename = (this->get_output_directory() + description_file_prefix + ".pvd");
+      std::ofstream pvd_file (pvd_filename);
 
-      DataOutBase::write_pvd_record (pvd_master, times_and_pvtu_file_names);
+      DataOutBase::write_pvd_record (pvd_file, times_and_pvtu_file_names[description_file_prefix]);
 
       // finally, do the same for VisIt via the .visit file for this
       // time step, as well as for all time steps together
-      const std::string
-      visit_master_filename = (this->get_output_directory()
-                               + "particles/"
-                               + solution_file_prefix
-                               + ".visit");
-      std::ofstream visit_master (visit_master_filename);
+      const std::string visit_filename = (this->get_output_directory()
+                                          + solution_file_directory
+                                          + solution_file_prefix
+                                          + ".visit");
+      std::ofstream visit_file (visit_filename);
 
-      DataOutBase::write_visit_record (visit_master, filenames);
+      DataOutBase::write_visit_record (visit_file, filenames);
 
       {
         // the global .visit file needs the relative path because it sits a
@@ -300,238 +291,294 @@ namespace aspect
         filenames_with_path.reserve(filenames.size());
         for (const auto &filename : filenames)
           {
-            filenames_with_path.push_back("particles/" + filename);
+            filenames_with_path.push_back(solution_file_directory + filename);
           }
 
-        output_file_names_by_timestep.push_back (filenames_with_path);
+        output_file_names_by_timestep[description_file_prefix].push_back (filenames_with_path);
       }
 
-      std::ofstream global_visit_master (this->get_output_directory() +
-                                         "particles.visit");
+      std::ofstream global_visit_file (this->get_output_directory() +
+                                       description_file_prefix + ".visit");
 
       std::vector<std::pair<double, std::vector<std::string>>> times_and_output_file_names;
-      for (unsigned int timestep=0; timestep<times_and_pvtu_file_names.size(); ++timestep)
-        times_and_output_file_names.emplace_back(times_and_pvtu_file_names[timestep].first,
-                                                 output_file_names_by_timestep[timestep]);
-      DataOutBase::write_visit_record (global_visit_master, times_and_output_file_names);
+      times_and_output_file_names.reserve(times_and_pvtu_file_names[description_file_prefix].size());
+      for (unsigned int timestep=0; timestep<times_and_pvtu_file_names[description_file_prefix].size(); ++timestep)
+        times_and_output_file_names.emplace_back(times_and_pvtu_file_names[description_file_prefix][timestep].first,
+                                                 output_file_names_by_timestep[description_file_prefix][timestep]);
+      DataOutBase::write_visit_record (global_visit_file, times_and_output_file_names);
     }
 
     template <int dim>
     std::pair<std::string,std::string>
     Particles<dim>::execute (TableHandler &statistics)
     {
-      // if this is the first time we get here, set the last output time
-      // to the current time - output_interval. this makes sure we
-      // always produce data during the first time step
-      if (std::isnan(last_output_time))
-        last_output_time = this->get_time() - output_interval;
+      std::vector<bool> write_output(this->n_particle_managers(),true);
+      std::string number_of_advected_particles = "";
+      std::string screen_output = "";
 
-      const Particle::World<dim> &world = this->get_particle_world();
-
-      statistics.add_value("Number of advected particles",world.n_global_particles());
-
-      // If it's not time to generate an output file
-      // return early with the number of particles that were advected
-      if (this->get_time() < last_output_time + output_interval)
-        return std::make_pair("Number of advected particles:",
-                              Utilities::int_to_string(world.n_global_particles()));
-
-      // If we do not write output
-      // return early with the number of particles that were advected
-      if (output_formats.size() == 0 || output_formats[0] == "none")
+      for (unsigned int particle_manager = 0; particle_manager < this->n_particle_managers(); ++particle_manager)
         {
-          // Up the next time we need output. This is relevant to correctly
-          // write output after a restart if the format is changed.
-          set_last_output_time (this->get_time());
+          // if this is the first time we get here, set the last output time
+          // to the current time - output_interval. this makes sure we
+          // always produce data during the first time step
+          if (last_output_time[particle_manager] < this->get_parameters().start_time - output_interval[particle_manager])
+            last_output_time[particle_manager] = this->get_time() - output_interval[particle_manager];
 
-          return std::make_pair("Number of advected particles:",
-                                Utilities::int_to_string(world.n_global_particles()));
+          const Particle::Manager<dim> &manager = this->get_particle_manager(particle_manager);
+
+          const std::string statistics_column_name = (particle_manager == 0 ?
+                                                      "Number of advected particles" :
+                                                      "Number of advected particles (Particle system " + Utilities::int_to_string(particle_manager+1) + ")");
+
+          statistics.add_value(statistics_column_name,manager.n_global_particles());
+
+          if (particle_manager > 0)
+            {
+              number_of_advected_particles += ", ";
+            }
+          number_of_advected_particles += Utilities::int_to_string(manager.n_global_particles());
+
+          // If it's not time to generate an output file
+          // return early with the number of particles that were advected
+          if (this->get_time() < last_output_time[particle_manager] + output_interval[particle_manager])
+            {
+              write_output[particle_manager] = false;
+            }
+
+          // If we do not write output
+          // return early with the number of particles that were advected
+          if (output_formats[particle_manager].size() == 0 || output_formats[particle_manager][0] == "none")
+            {
+              // Up the next time we need output. This is relevant to correctly
+              // write output after a restart if the format is changed.
+              set_last_output_time (particle_manager, this->get_time());
+
+              write_output[particle_manager] = false;
+            }
+
+          if (write_output[particle_manager] == true)
+            {
+              if (output_file_number[particle_manager] == numbers::invalid_unsigned_int)
+                output_file_number[particle_manager] = 0;
+              else
+                ++output_file_number[particle_manager];
+            }
+
         }
 
-      if (output_file_number == numbers::invalid_unsigned_int)
-        output_file_number = 0;
-      else
-        ++output_file_number;
+      // Only report the number of particles if none of the particle managers
+      // writes output.
+      if (std::find(write_output.begin(), write_output.end(), true) == write_output.end())
+        return std::make_pair("Number of advected particles:", number_of_advected_particles);
 
-      // Create the particle output
-      const bool output_hdf5 = std::find(output_formats.begin(), output_formats.end(),"hdf5") != output_formats.end();
-      internal::ParticleOutput<dim> data_out;
-      data_out.build_patches(world.get_particle_handler(),
-                             world.get_property_manager().get_data_info(),
-                             exclude_output_properties,
-                             output_hdf5);
-
-      // Now prepare everything for writing the output and choose output format
-      std::string particle_file_prefix = "particles-" + Utilities::int_to_string (output_file_number, 5);
-
-      const double time_in_years_or_seconds = (this->convert_output_to_years() ?
-                                               this->get_time() / year_in_seconds :
-                                               this->get_time());
-
-      for (const auto &output_format : output_formats)
+      for (unsigned int particle_manager = 0; particle_manager < this->n_particle_managers(); ++particle_manager)
         {
-          // this case was handled above
-          Assert(output_format != "none", ExcInternalError());
+          if (write_output[particle_manager] == false)
+            continue;
 
-          if (output_format == "hdf5")
+          const Particle::Manager<dim> &manager = this->get_particle_manager(particle_manager);
+          std::string particles_output_base_name = "particles";
+          if (particle_manager > 0)
             {
-              const std::string particle_file_name = "particles/" + particle_file_prefix + ".h5";
-              const std::string xdmf_filename = "particles.xdmf";
-
-              // Do not filter redundant values, there are no duplicate particles
-              DataOutBase::DataOutFilter data_filter(DataOutBase::DataOutFilterFlags(false, true));
-
-              data_out.write_filtered_data(data_filter);
-              data_out.write_hdf5_parallel(data_filter,
-                                           this->get_output_directory()+particle_file_name,
-                                           this->get_mpi_communicator());
-
-              const XDMFEntry new_xdmf_entry = data_out.create_xdmf_entry(data_filter,
-                                                                          particle_file_name,
-                                                                          time_in_years_or_seconds,
-                                                                          this->get_mpi_communicator());
-              xdmf_entries.push_back(new_xdmf_entry);
-              data_out.write_xdmf_file(xdmf_entries, this->get_output_directory() + xdmf_filename,
-                                       this->get_mpi_communicator());
+              particles_output_base_name += "-" + Utilities::int_to_string(particle_manager+1);
             }
-          else if (output_format == "vtu")
+
+          // Create the particle output
+          const bool output_hdf5 = std::find(output_formats[particle_manager].begin(), output_formats[particle_manager].end(),"hdf5") != output_formats[particle_manager].end();
+          internal::ParticleOutput<dim> data_out;
+          data_out.build_patches(manager.get_particle_handler(),
+                                 manager.get_property_manager().get_data_info(),
+                                 exclude_output_properties[particle_manager],
+                                 output_hdf5);
+
+          // Now prepare everything for writing the output and choose output format
+          std::string particle_file_prefix = particles_output_base_name + "-" + Utilities::int_to_string (output_file_number[particle_manager], 5);
+
+          const double time_in_years_or_seconds = (this->convert_output_to_years() ?
+                                                   this->get_time() / year_in_seconds :
+                                                   this->get_time());
+
+          for (const auto &output_format : output_formats[particle_manager])
             {
-              // Write master files (.pvtu,.pvd,.visit) on the master process
-              const int my_id = Utilities::MPI::this_mpi_process(this->get_mpi_communicator());
+              // this case was handled above
+              Assert(output_format != "none", ExcInternalError());
 
-              if (my_id == 0)
+              if (output_format == "hdf5")
                 {
-                  std::vector<std::string> filenames;
-                  const unsigned int n_processes = Utilities::MPI::n_mpi_processes(this->get_mpi_communicator());
-                  const unsigned int n_files = (group_files == 0) ? n_processes : std::min(group_files,n_processes);
-                  for (unsigned int i=0; i<n_files; ++i)
-                    filenames.push_back (particle_file_prefix
-                                         + "." + Utilities::int_to_string(i, 4)
-                                         + ".vtu");
-                  write_master_files (data_out, particle_file_prefix, filenames);
+                  const std::string particle_file_name = particles_output_base_name + "/" + particle_file_prefix + ".h5";
+                  const std::string xdmf_filename = particles_output_base_name + ".xdmf";
+
+                  // Do not filter redundant values, there are no duplicate particles
+                  DataOutBase::DataOutFilter data_filter(DataOutBase::DataOutFilterFlags(false, true));
+
+                  data_out.write_filtered_data(data_filter);
+                  data_out.write_hdf5_parallel(data_filter,
+                                               this->get_output_directory()+particle_file_name,
+                                               this->get_mpi_communicator());
+
+                  const XDMFEntry new_xdmf_entry = data_out.create_xdmf_entry(data_filter,
+                                                                              particle_file_name,
+                                                                              time_in_years_or_seconds,
+                                                                              this->get_mpi_communicator());
+                  xdmf_entries[particles_output_base_name].push_back(new_xdmf_entry);
+                  data_out.write_xdmf_file(xdmf_entries[particles_output_base_name], this->get_output_directory() + xdmf_filename,
+                                           this->get_mpi_communicator());
                 }
-
-              const unsigned int n_processes = Utilities::MPI::n_mpi_processes(this->get_mpi_communicator());
-
-              const unsigned int my_file_id = (group_files == 0
-                                               ?
-                                               my_id
-                                               :
-                                               my_id % group_files);
-              const std::string filename = this->get_output_directory()
-                                           + "particles/"
-                                           + particle_file_prefix
-                                           + "."
-                                           + Utilities::int_to_string (my_file_id, 4)
-                                           + ".vtu";
-
-              // pass time step number and time as metadata into the output file
-              DataOutBase::VtkFlags vtk_flags;
-              vtk_flags.cycle = this->get_timestep_number();
-              vtk_flags.time = time_in_years_or_seconds;
-
-              data_out.set_flags (vtk_flags);
-
-              // Write as many files as processes. For this case we support writing in a
-              // background thread and to a temporary location, so we first write everything
-              // into a string that is written to disk in a writer function
-              if ((group_files == 0) || (group_files >= n_processes))
+              else if (output_format == "vtu")
                 {
-                  // Put the content we want to write into a string object that
-                  // we can then write in the background
-                  std::unique_ptr<std::string> file_contents;
-                  {
-                    std::ostringstream tmp;
+                  // Write descriptive files (.pvtu,.pvd,.visit) on the root process
+                  const int my_id = Utilities::MPI::this_mpi_process(this->get_mpi_communicator());
 
-                    data_out.write (tmp, DataOutBase::parse_output_format(output_format));
-                    file_contents = std::make_unique<std::string>(tmp.str());
-                  }
-
-                  if (write_in_background_thread)
+                  if (my_id == 0)
                     {
-                      // Wait for all previous write operations to finish, should
-                      // any be still active, ...
-                      if (background_thread.joinable())
-                        background_thread.join ();
-
-                      // ...then continue with writing our own data.
-                      background_thread
-                        = std::thread([ my_filename = std::move(filename),
-                                        my_temporary_output_location = temporary_output_location,
-                                        my_file_contents = std::move(file_contents)]()
-                      {
-                        writer (my_filename, my_temporary_output_location, *my_file_contents);
-                      });
+                      std::vector<std::string> filenames;
+                      const unsigned int n_processes = Utilities::MPI::n_mpi_processes(this->get_mpi_communicator());
+                      const unsigned int n_files = (group_files == 0) ? n_processes : std::min(group_files,n_processes);
+                      filenames.reserve(n_files);
+                      for (unsigned int i=0; i<n_files; ++i)
+                        filenames.push_back (particle_file_prefix
+                                             + "." + Utilities::int_to_string(i, 4)
+                                             + ".vtu");
+                      write_description_files (data_out,
+                                               particles_output_base_name,
+                                               particles_output_base_name + "/",
+                                               particle_file_prefix,
+                                               filenames);
                     }
+
+                  const unsigned int n_processes = Utilities::MPI::n_mpi_processes(this->get_mpi_communicator());
+
+                  const unsigned int my_file_id = (group_files == 0
+                                                   ?
+                                                   my_id
+                                                   :
+                                                   my_id % group_files);
+                  const std::string filename = this->get_output_directory()
+                                               + particles_output_base_name
+                                               + "/"
+                                               + particle_file_prefix
+                                               + "."
+                                               + Utilities::int_to_string (my_file_id, 4)
+                                               + ".vtu";
+
+                  // pass time step number and time as metadata into the output file
+                  DataOutBase::VtkFlags vtk_flags;
+                  vtk_flags.cycle = this->get_timestep_number();
+                  vtk_flags.time = time_in_years_or_seconds;
+
+                  data_out.set_flags (vtk_flags);
+
+                  // Write as many files as processes. For this case we support writing in a
+                  // background thread and to a temporary location, so we first write everything
+                  // into a string that is written to disk in a writer function
+                  if ((group_files == 0) || (group_files >= n_processes))
+                    {
+                      // Put the content we want to write into a string object that
+                      // we can then write in the background
+                      std::unique_ptr<std::string> file_contents;
+                      {
+                        std::ostringstream tmp;
+
+                        data_out.write (tmp, DataOutBase::parse_output_format(output_format));
+                        file_contents = std::make_unique<std::string>(tmp.str());
+                      }
+
+                      if (write_in_background_thread)
+                        {
+                          // Wait for all previous write operations to finish, should
+                          // any be still active, ...
+                          if (background_thread.joinable())
+                            background_thread.join ();
+
+                          // ...then continue with writing our own data.
+                          background_thread
+                            = std::thread([ my_filename = filename, // filename is const, so we can not move from it
+                                            my_temporary_output_location = temporary_output_location,
+                                            my_file_contents = std::move(file_contents)]()
+                          {
+                            writer (my_filename, my_temporary_output_location, *my_file_contents);
+                          });
+                        }
+                      else
+                        writer(filename,temporary_output_location,*file_contents);
+                    }
+                  // Just write one data file in parallel
+                  else if (group_files == 1)
+                    {
+                      data_out.write_vtu_in_parallel(filename,
+                                                     this->get_mpi_communicator());
+                    }
+                  // Write as many output files as 'group_files' groups
                   else
-                    writer(filename,temporary_output_location,*file_contents);
+                    {
+                      int color = my_id % group_files;
+
+                      MPI_Comm comm;
+                      int ierr = MPI_Comm_split(this->get_mpi_communicator(), color, my_id, &comm);
+                      AssertThrowMPI(ierr);
+
+                      data_out.write_vtu_in_parallel(filename, comm);
+                      ierr = MPI_Comm_free(&comm);
+                      AssertThrowMPI(ierr);
+                    }
                 }
-              // Just write one data file in parallel
-              else if (group_files == 1)
-                {
-                  data_out.write_vtu_in_parallel(filename,
-                                                 this->get_mpi_communicator());
-                }
-              // Write as many output files as 'group_files' groups
+              // Write in a different format than hdf5 or vtu. This case is supported, but is not
+              // optimized for parallel output in that every process will write one file directly
+              // into the output directory. This may or may not affect performance depending on
+              // the model setup and the network file system type.
               else
                 {
-                  int color = my_id % group_files;
+                  const unsigned int myid = Utilities::MPI::this_mpi_process(this->get_mpi_communicator());
 
-                  MPI_Comm comm;
-                  int ierr = MPI_Comm_split(this->get_mpi_communicator(), color, my_id, &comm);
-                  AssertThrowMPI(ierr);
+                  const std::string filename = this->get_output_directory()
+                                               + particles_output_base_name
+                                               + "/"
+                                               + particle_file_prefix
+                                               + "."
+                                               + Utilities::int_to_string (myid, 4)
+                                               + DataOutBase::default_suffix
+                                               (DataOutBase::parse_output_format(output_format));
 
-                  data_out.write_vtu_in_parallel(filename, comm);
-                  ierr = MPI_Comm_free(&comm);
-                  AssertThrowMPI(ierr);
+                  std::ofstream out (filename);
+
+                  AssertThrow(out,
+                              ExcMessage("Unable to open file for writing: " + filename +"."));
+
+                  data_out.write (out, DataOutBase::parse_output_format(output_format));
                 }
             }
-          // Write in a different format than hdf5 or vtu. This case is supported, but is not
-          // optimized for parallel output in that every process will write one file directly
-          // into the output directory. This may or may not affect performance depending on
-          // the model setup and the network file system type.
-          else
-            {
-              const unsigned int myid = Utilities::MPI::this_mpi_process(this->get_mpi_communicator());
 
-              const std::string filename = this->get_output_directory()
-                                           + "particles/"
-                                           + particle_file_prefix
-                                           + "."
-                                           +  Utilities::int_to_string (myid, 4)
-                                           + DataOutBase::default_suffix
-                                           (DataOutBase::parse_output_format(output_format));
 
-              std::ofstream out (filename);
+          // up the next time we need output
+          set_last_output_time (particle_manager, this->get_time());
 
-              AssertThrow(out,
-                          ExcMessage("Unable to open file for writing: " + filename +"."));
+          const std::string particle_output = this->get_output_directory() + particles_output_base_name + "/" + particle_file_prefix;
 
-              data_out.write (out, DataOutBase::parse_output_format(output_format));
-            }
+          if (screen_output != "")
+            screen_output += ", ";
+          screen_output += particle_output;
+
+          // record the file base file name in the output file
+          const std::string statistics_column_name = (particle_manager == 0 ?
+                                                      "Particle file name" :
+                                                      "Particle file name (" + Utilities::int_to_string(particle_manager+1) + ")");
+          statistics.add_value (statistics_column_name,
+                                particle_output);
         }
 
-
-      // up the next time we need output
-      set_last_output_time (this->get_time());
-
-      const std::string particle_output = this->get_output_directory() + "particles/" + particle_file_prefix;
-
-      // record the file base file name in the output file
-      statistics.add_value ("Particle file name",
-                            particle_output);
-      return std::make_pair("Writing particle output:", particle_output);
+      return std::make_pair("Writing particle output:", screen_output);
     }
 
 
 
     template <int dim>
     void
-    Particles<dim>::set_last_output_time (const double current_time)
+    Particles<dim>::set_last_output_time (const unsigned int particle_manager,
+                                          const double current_time)
     {
       // if output_interval is positive, then update the last supposed output
-      // time
-      if (output_interval > 0)
+      // time for this particle manager
+      if (output_interval[particle_manager] > 0)
         {
           // We need to find the last time output was supposed to be written.
           // this is the last_output_time plus the largest positive multiple
@@ -540,7 +587,7 @@ namespace aspect
           // we did an output and std::floor sadly rounds to zero. This is done
           // by forcing std::floor to round 1.0-eps to 1.0.
           const double magic = 1.0+2.0*std::numeric_limits<double>::epsilon();
-          last_output_time = last_output_time + std::floor((current_time-last_output_time)/output_interval*magic) * output_interval/magic;
+          last_output_time[particle_manager] = last_output_time[particle_manager] + std::floor((current_time-last_output_time[particle_manager])/output_interval[particle_manager]*magic) * output_interval[particle_manager]/magic;
         }
     }
 
@@ -553,8 +600,7 @@ namespace aspect
       & output_file_number
       & times_and_pvtu_file_names
       & output_file_names_by_timestep
-      & xdmf_entries
-      ;
+      & xdmf_entries;
     }
 
 
@@ -562,11 +608,15 @@ namespace aspect
     void
     Particles<dim>::save (std::map<std::string, std::string> &status_strings) const
     {
+      // Serialize into a stringstream. Put the following into a code
+      // block of its own to ensure the destruction of the 'oa'
+      // archive triggers a flush() on the stringstream so we can
+      // query the completed string below.
       std::ostringstream os;
-      aspect::oarchive oa (os);
-
-      this->get_particle_world().save(os);
-      oa << (*this);
+      {
+        aspect::oarchive oa (os);
+        oa << (*this);
+      }
 
       status_strings["Particles"] = os.str();
     }
@@ -576,15 +626,12 @@ namespace aspect
     void
     Particles<dim>::load (const std::map<std::string, std::string> &status_strings)
     {
-      // see if something was saved
-      if (status_strings.find("Particles") != status_strings.end())
+      // See if something was saved.
+      const auto status = status_strings.find("Particles");
+      if (status != status_strings.end())
         {
-          std::istringstream is (status_strings.find("Particles")->second);
+          std::istringstream is (status->second);
           aspect::iarchive ia (is);
-
-          // Load the particle world
-          this->get_particle_world().load(is);
-
           ia >> (*this);
         }
     }
@@ -598,26 +645,6 @@ namespace aspect
       {
         prm.enter_subsection("Particles");
         {
-          prm.declare_entry ("Time between data output", "1e8",
-                             Patterns::Double (0.),
-                             "The time interval between each generation of "
-                             "output files. A value of zero indicates that "
-                             "output should be generated every time step.\n\n"
-                             "Units: years if the "
-                             "'Use years in output instead of seconds' parameter is set; "
-                             "seconds otherwise.");
-
-          // now also see about the file format we're supposed to write in
-          // Note: "ascii" is a legacy format used by ASPECT before particle output
-          // in deal.II was implemented. It is nearly identical to the gnuplot format, thus
-          // we now simply replace "ascii" by "gnuplot" should it be selected.
-          prm.declare_entry ("Data output format", "vtu",
-                             Patterns::MultipleSelection (DataOutBase::get_output_format_names ()+"|ascii"),
-                             "A comma separated list of file formats to be used for graphical "
-                             "output. The list of possible output formats that can be given "
-                             "here is documented in the appendix of the manual where the current "
-                             "parameter is described.");
-
           prm.declare_entry ("Number of grouped files", "16",
                              Patterns::Integer(0),
                              "VTU file output supports grouping files from several CPUs "
@@ -642,19 +669,53 @@ namespace aspect
                              "move this file to a network file system. If this variable is "
                              "set to a non-empty string it will be interpreted as a "
                              "temporary storage location.");
-
-          prm.declare_entry ("Exclude output properties", "",
-                             Patterns::Anything(),
-                             "A comma separated list of particle properties that should "
-                             "\\textit{not} be output. If this list contains the "
-                             "entry `all', only the id of particles will be provided in "
-                             "graphical output files.");
         }
         prm.leave_subsection ();
+        constexpr unsigned int number_of_particle_managers = ASPECT_MAX_NUM_PARTICLE_SYSTEMS;
+        for (unsigned int particle_manager = 0; particle_manager < number_of_particle_managers; ++particle_manager)
+          {
+            if (particle_manager == 0)
+              {
+                prm.enter_subsection("Particles");
+              }
+            else
+              {
+                prm.enter_subsection("Particles " + std::to_string(particle_manager+1));
+              }
+            {
+              prm.declare_entry ("Time between data output", "1e8",
+                                 Patterns::Double (0.),
+                                 "The time interval between each generation of "
+                                 "output files. A value of zero indicates that "
+                                 "output should be generated every time step.\n\n"
+                                 "Units: \\si{\\year} if the "
+                                 "'Use years instead of seconds' parameter is set; "
+                                 "\\si{\\second} otherwise.");
+
+              // now also see about the file format we're supposed to write in
+              // Note: "ascii" is a legacy format used by ASPECT before particle output
+              // in deal.II was implemented. It is nearly identical to the gnuplot format, thus
+              // we now simply replace "ascii" by "gnuplot" should it be selected.
+              prm.declare_entry ("Data output format", "vtu",
+                                 Patterns::MultipleSelection (DataOutBase::get_output_format_names ()+"|ascii"),
+                                 "A comma separated list of file formats to be used for graphical "
+                                 "output. The list of possible output formats that can be given "
+                                 "here is documented in the appendix of the manual where the current "
+                                 "parameter is described.");
+
+              prm.declare_entry ("Exclude output properties", "",
+                                 Patterns::Anything(),
+                                 "A comma separated list of particle properties that should "
+                                 "\\textit{not} be output. If this list contains the "
+                                 "entry `all', only the id of particles will be provided in "
+                                 "graphical output files.");
+            }
+            prm.leave_subsection ();
+          }
       }
       prm.leave_subsection ();
 
-      Particle::World<dim>::declare_parameters(prm);
+      Particle::Manager<dim>::declare_parameters(prm);
     }
 
 
@@ -666,43 +727,9 @@ namespace aspect
       {
         prm.enter_subsection("Particles");
         {
-          output_interval = prm.get_double ("Time between data output");
-          if (this->convert_output_to_years())
-            output_interval *= year_in_seconds;
-
           AssertThrow(this->get_parameters().run_postprocessors_on_nonlinear_iterations == false,
                       ExcMessage("Postprocessing nonlinear iterations in models with "
                                  "particles is currently not supported."));
-
-          output_formats   = Utilities::split_string_list(prm.get ("Data output format"));
-          AssertThrow(Utilities::has_unique_entries(output_formats),
-                      ExcMessage("The list of strings for the parameter "
-                                 "'Particles/Data output format' contains entries more than once. "
-                                 "This is not allowed. Please check your parameter file."));
-
-          AssertThrow ((std::find (output_formats.begin(),
-                                   output_formats.end(),
-                                   "none") == output_formats.end())
-                       ||
-                       (output_formats.size() == 1),
-                       ExcMessage ("If you specify 'none' for the parameter \"Data output format\", "
-                                   "then this needs to be the only value given."));
-
-          if (std::find (output_formats.begin(),
-                         output_formats.end(),
-                         "none") == output_formats.end())
-            aspect::Utilities::create_directory (this->get_output_directory() + "particles/",
-                                                 this->get_mpi_communicator(),
-                                                 true);
-
-          // Note: "ascii" is a legacy format used by ASPECT before particle output
-          // in deal.II was implemented. It is nearly identical to the gnuplot format, thus
-          // we simply replace "ascii" by "gnuplot" should it be selected.
-          std::vector<std::string>::iterator output_format =  std::find (output_formats.begin(),
-                                                                         output_formats.end(),
-                                                                         "ascii");
-          if (output_format != output_formats.end())
-            *output_format = "gnuplot";
 
           group_files     = prm.get_integer("Number of grouped files");
           write_in_background_thread = prm.get_bool("Write in background thread");
@@ -714,18 +741,85 @@ namespace aspect
               // null pointer. System is guaranteed to return non-zero if it finds
               // a terminal and zero if there is none (like on the compute nodes of
               // some cluster architectures, e.g. IBM BlueGene/Q)
-              AssertThrow(system((char *)nullptr) != 0,
+              AssertThrow(std::system((char *)nullptr) != 0,
                           ExcMessage("Usage of a temporary storage location is only supported if "
                                      "there is a terminal available to move the files to their final location "
                                      "after writing. The system() command did not succeed in finding such a terminal."));
             }
 
-          exclude_output_properties = Utilities::split_string_list(prm.get("Exclude output properties"));
-
-          // Never output the integrator properties that are for internal use only
-          exclude_output_properties.emplace_back("internal: integrator properties");
         }
         prm.leave_subsection ();
+
+        // Note that we iterate until the value of parameters.n_particle_managers and not
+        // this->particle_managers, because at this point in the program execution the
+        // particle managers have not been created yet.
+        for (unsigned int particle_manager = 0; particle_manager < this->get_parameters().n_particle_managers; ++particle_manager)
+          {
+            if (particle_manager == 0)
+              {
+                prm.enter_subsection("Particles");
+              }
+            else
+              {
+                prm.enter_subsection("Particles " + std::to_string(particle_manager+1));
+              }
+            {
+              output_interval.emplace_back(prm.get_double ("Time between data output"));
+
+              if (this->convert_output_to_years())
+                output_interval[particle_manager] *= year_in_seconds;
+
+              std::vector<std::string> tmp_output_formats   = Utilities::split_string_list(prm.get ("Data output format"));
+              AssertThrow(Utilities::has_unique_entries(tmp_output_formats),
+                          ExcMessage("The list of strings for the parameter "
+                                     "'Postprocess/Particles/Data output format' contains entries more than once. "
+                                     "This is not allowed. Please check your parameter file."));
+
+              AssertThrow ((std::find (tmp_output_formats.begin(),
+                                       tmp_output_formats.end(),
+                                       "none") == tmp_output_formats.end())
+                           ||
+                           (tmp_output_formats.size() == 1),
+                           ExcMessage ("If you specify 'none' for the parameter \"Data output format\", "
+                                       "then this needs to be the only value given."));
+
+              if (std::find (tmp_output_formats.begin(),
+                             tmp_output_formats.end(),
+                             "none") == tmp_output_formats.end())
+                {
+                  // We want to prepare as many directories
+                  // as there will be particle managers, once they are created.
+                  std::string particles_directory_base_name = "particles";
+                  if (particle_manager > 0)
+                    particles_directory_base_name += "-" + Utilities::int_to_string(particle_manager+1);
+
+                  aspect::Utilities::create_directory (this->get_output_directory() + particles_directory_base_name + "/",
+                                                       this->get_mpi_communicator(),
+                                                       true);
+                }
+
+              // Note: "ascii" is a legacy format used by ASPECT before particle output
+              // in deal.II was implemented. It is nearly identical to the gnuplot format, thus
+              // we simply replace "ascii" by "gnuplot" should it be selected.
+              std::vector<std::string>::iterator output_format =  std::find (tmp_output_formats.begin(),
+                                                                             tmp_output_formats.end(),
+                                                                             "ascii");
+              if (output_format != tmp_output_formats.end())
+                *output_format = "gnuplot";
+
+              output_formats.push_back(tmp_output_formats);
+
+              exclude_output_properties.emplace_back(Utilities::split_string_list(prm.get("Exclude output properties")));
+
+              // Never output the integrator properties that are for internal use only
+              exclude_output_properties[particle_manager].emplace_back("internal: integrator properties");
+
+              // Add a non-sensical value for each particle manager.
+              last_output_time.emplace_back(std::numeric_limits<double>::lowest());
+              output_file_number.emplace_back(numbers::invalid_unsigned_int);
+            }
+            prm.leave_subsection ();
+          }
       }
       prm.leave_subsection ();
     }

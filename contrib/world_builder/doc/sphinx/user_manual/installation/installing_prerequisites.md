@@ -4,7 +4,7 @@ Installing the prerequisites
 
 When installing the World Builder on a system, make sure CMake is installed.
 If you want a Fortran wrapper, then also make sure a Fortran compiler is installed (GFortran is the preferred option, but other Fortran compilers should work as well).
-If you want a Python interface, make sure you have Python 3 installed.
+If you want a Python interface, make sure you have Python 3 installed. Some World Builder apps can make use of MPI parallelization, although the main library generally makes no use of it. If you want to use MPI parallelization in the apps make sure that a MPI library *including its development header files* is installed on your system.
 
 There are many ways to install the prerequisites of the World Builder per operating system.
 For each system, we show some options which we know work.
@@ -12,10 +12,12 @@ If it doesn't work for your system, please let us know through GitHub issues (<h
 
 ::::::{tab-set}
 :::::{tab-item} Linux (Debian based)
-
-1. Run in a terminal `sudo apt install cmake`
-2. For a Fortran wrapper, also run in a terminal `sudo apt install gFortran`
-3. For a Python wrapper, also run in a terminal `sudo apt install swig python3-setuptools`
+1. Ensure that all modules are up-to-date by running `sudo apt update` and `sudo apt upgrade`.
+2. Run in a terminal `sudo apt install [module]` to install all the required modules. These include `cmake`, `gcc`, `g++`, and `libopenmpi-dev`. Use `which [module]` to locate their installation path.
+3. Set the environment variables using `export CC=gcc; export CXX=g++;`.
+4. (Optional) For a Fortran wrapper, run `sudo apt install gFortran`.
+5. (Optional) For a Python wrapper, run `sudo apt install swig python3-setuptools`.
+6. (Optional) For MPI parallelization, run `sudo apt install libopenmpi-dev`.
 
 :::::
 
@@ -71,23 +73,9 @@ There are three main ways to install on Windows.
 The recommended way is to use Linux subsystems for Windows (see <https://docs.microsoft.com/en-us/windows/wsl/install-win10>).
 In this case, start Linux in the Windows terminal and follow the Linux installation description.
 
-If you want to have a native installation, the two main options are using MinGW or Visual Studio.
-In both cases, it might be possible to install both the Fortran wrapper and the Python wrapper, but we have not gotten it to work on our tester setup.
-Currently we know that with MinGW you can create a successful Fortran wrapper, and with Visual Studio you can create a successful Python wrapper.
-The problem with Python in MinGW is not entirely clear, but it seems that only Visual Studio compilers are supported.
-So it may or may not be able to find the GWB Python module when it is compiled and installed.
-The problem with Fortran with Visual Studio is that you need to install a Fortran compiler somehow, so if you know how to do that, please contribute.
+If you want to have a native installation we recommend using  Visual Studio to compile the world builder. The only problem that we are aware of is using Fortran with Visual Studio. The problem here is that you need to install a Fortran compiler somehow, so if you know how to do that, please contribute.
 
 ::::{tab-set}
-
-:::{tab-item} MinGW
-1. If not already installed, install Chocolatey (<https://chocolatey.org>). In a PowerShell, you can install it with the following command (in one line): `Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString(’https://chocolatey.org/install.ps1’))`
-2. Run in a terminal `choco install msys2`
-3. Open a mingw64 terminal
-4. Run in a mingw64 terminal `pacman –noconfirm -Syu`
-5. Run in a mingw64 terminal `pacman -S mingw-w64-x86_64-toolchain`
-6. Run in a mingw64 terminal `pacman –noconfirm -S dos2unix`
-:::
 
 :::{tab-item} Visual Studio
 1. If not already installed, install Chocolatey (<https://chocolatey.org>). In a PowerShell, you can install it with the following command (in one line): `Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString(’https://chocolatey.org/install.ps1’))`
@@ -95,7 +83,6 @@ The problem with Fortran with Visual Studio is that you need to install a Fortra
 3. For a Python wrapper, run in a terminal `choco install python`
 4. For a Python wrapper, run in a terminal `choco install swig` 
 :::
-
 ::::
 :::::
 ::::::

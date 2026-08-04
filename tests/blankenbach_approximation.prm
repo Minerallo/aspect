@@ -2,13 +2,12 @@
 # parameters however we want.
 
 set End time                               = 0.002 # 1.0 for full benchmark
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 
 subsection Adiabatic conditions model
   set Model name = function
 
   subsection Function
-    set Function constants  =
     set Function expression = 0; 0; 1
     set Variable names      = depth
   end
@@ -47,7 +46,7 @@ subsection Initial temperature model
   set Model name = function
 
   subsection Function
-    set Function constants  = z1=0.102367, z2=0.897633, pi=3.14159265359
+    set Function constants  = z1=0.102367, z2=0.897633
     set Function expression = if(z<z1,0.5+0.5*(z1-z)/z1,if(z>z2,0.5*(1-z)/(1-z2),0.5)) + 0.1 * cos(x*pi) * sin(z*pi)
     set Variable names      = x,z
   end
@@ -88,6 +87,10 @@ subsection Postprocess
   subsection Visualization
     set Interpolate output = false
     set Time between graphical output = 1e-10
-    set List of output variables      = material properties, adiabat, thermal conductivity, heating, artificial viscosity
+    set List of output variables      = material properties, adiabat, heating, artificial viscosity
+
+    subsection Material properties
+      set List of material properties = density, thermal expansivity, specific heat, viscosity, thermal conductivity
+    end
   end
 end

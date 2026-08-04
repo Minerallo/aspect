@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2019 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -28,8 +28,6 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
   namespace MaterialModel
   {
     /**
@@ -66,7 +64,7 @@ namespace aspect
         create_additional_material_model_outputs (const unsigned int n_points,
                                                   MaterialModel::MaterialModelOutputs<dim> &outputs) const override
         {
-          if (outputs.template get_additional_output<MaterialModel::UnscaledViscosityAdditionalOutputs<dim>>() == nullptr)
+          if (outputs.template has_additional_output_object<MaterialModel::UnscaledViscosityAdditionalOutputs<dim>>() == false)
             {
               outputs.additional_outputs.push_back(
                 std::make_unique<MaterialModel::UnscaledViscosityAdditionalOutputs<dim>> (n_points));
@@ -79,8 +77,8 @@ namespace aspect
                         const LinearAlgebra::BlockVector &,
                         std::vector<double> &output) override
         {
-          const MaterialModel::UnscaledViscosityAdditionalOutputs<dim> *unscaled_viscosity_outputs
-            = out.template get_additional_output<const MaterialModel::UnscaledViscosityAdditionalOutputs<dim>>();
+          const std::shared_ptr<const MaterialModel::UnscaledViscosityAdditionalOutputs<dim>> unscaled_viscosity_outputs
+            = out.template get_additional_output_object<const MaterialModel::UnscaledViscosityAdditionalOutputs<dim>>();
 
           Assert(unscaled_viscosity_outputs != nullptr,ExcInternalError());
 
@@ -98,7 +96,7 @@ namespace aspect
      * an unscaled (constant) viscosity profile, which is then scaled by the quotient between reference
      * profile and unscaled viscosity.
      */
-    template<int dim>
+    template <int dim>
     class ScaledViscosityProfileMaterial : public MaterialModel::Interface<dim>, public aspect::SimulatorAccess<dim>
     {
       public:
@@ -178,8 +176,8 @@ namespace aspect
         void evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
                       MaterialModel::MaterialModelOutputs<dim> &out) const override
         {
-          UnscaledViscosityAdditionalOutputs<dim> *unscaled_viscosity_out =
-            out.template get_additional_output<MaterialModel::UnscaledViscosityAdditionalOutputs<dim>>();
+          const std::shared_ptr<UnscaledViscosityAdditionalOutputs<dim>> unscaled_viscosity_out =
+            out.template get_additional_output_object<MaterialModel::UnscaledViscosityAdditionalOutputs<dim>>();
 
           for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
             {
@@ -215,7 +213,7 @@ namespace aspect
         void
         create_additional_named_outputs (MaterialModelOutputs<dim> &outputs) const override
         {
-          if (outputs.template get_additional_output<UnscaledViscosityAdditionalOutputs<dim>>() == nullptr)
+          if (outputs.template has_additional_output_object<UnscaledViscosityAdditionalOutputs<dim>>() == false)
             {
               const unsigned int n_points = outputs.n_evaluation_points();
               outputs.additional_outputs.push_back(

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -86,6 +86,8 @@ namespace aspect
            * Number of depth slices used to define average
            * seismic shear wave velocities from which anomalies
            * are calculated.
+           *
+           * This variable is read from the parameter file through a parameter called 'Number of depth slices'.
            */
           unsigned int n_slices;
       };
@@ -146,6 +148,8 @@ namespace aspect
            * Number of depth slices used to define average
            * seismic compressional wave velocities from which anomalies
            * are calculated.
+           *
+           * This variable is read from the parameter file through a parameter called 'Number of depth slices'.
            */
           unsigned int n_slices;
       };

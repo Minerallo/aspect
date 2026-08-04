@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2023 by the authors of the ASPECT code.
+ Copyright (C) 2023 - 2024 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -24,7 +24,6 @@
 #include <aspect/particle/property/interface.h>
 #include <aspect/particle/property/crystal_preferred_orientation.h>
 #include <aspect/simulator_access.h>
-#include <array>
 
 namespace aspect
 {
@@ -90,32 +89,11 @@ namespace aspect
                                             std::vector<double> &particle_properties) const override;
 
           /**
-           * Update function. This function is called every time an update is
-           * requested by need_update() for every particle for every property.
-           *
-           * @param [in] data_position An unsigned integer that denotes which
-           * component of the particle property vector is associated with the
-           * current property. For properties that own several components it
-           * denotes the first component of this property, all other components
-           * fill consecutive entries in the @p particle_properties vector.
-           *
-           * @param [in] position The current particle position.
-           *
-           * @param [in] solution The values of the solution variables at the
-           * current particle position.
-           *
-           * @param [in] gradients The gradients of the solution variables at
-           * the current particle position.
-           *
-           * @param [in,out] particle_properties The properties of the particle
-           * that is updated within the call of this function.
+           * @copydoc aspect::Particle::Property::Interface::update_particle_properties()
            */
           void
-          update_one_particle_property (const unsigned int data_position,
-                                        const Point<dim> &position,
-                                        const Vector<double> &solution,
-                                        const std::vector<Tensor<1,dim>> &gradients,
-                                        const ArrayView<double> &particle_properties) const override;
+          update_particle_properties (const ParticleUpdateInputs<dim> &inputs,
+                                      typename ParticleHandler<dim>::particle_iterator_range &particles) const override;
 
           /**
            * This function tells the particle manager that
@@ -125,11 +103,10 @@ namespace aspect
           need_update () const override;
 
           /**
-           * Return which data has to be provided to update the property.
-           * For example, the strains needs the gradients of the velocity.
+           * @copydoc aspect::Particle::Property::Interface::get_update_flags()
            */
           UpdateFlags
-          get_needed_update_flags () const override;
+          get_update_flags (const unsigned int component) const override;
 
           /**
            * Set up the information about the names and number of components
@@ -183,14 +160,21 @@ namespace aspect
            */
           SymmetricTensor<2,6> stiffness_matrix_olivine;
           SymmetricTensor<2,6> stiffness_matrix_enstatite;
+          SymmetricTensor<2,6> stiffness_matrix_clinopyroxene;
 
           /**
            * The number of grains per particle.
+           *
+           * This variable is read from the parameter file through a parameter
+           * called 'Number of grains per particle'.
            */
           unsigned int n_grains;
 
           /**
            * The number of minerals per particle.
+           *
+           * This variable is read from the parameter file through a parameter
+           * called 'Minerals'.
            */
           unsigned int n_minerals;
 

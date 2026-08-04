@@ -2,7 +2,7 @@
 # dislocation, peierls) viscosity calculation for the visco_plastic
 # material model. For example, the adiabatic pressure is 3.3e9 Pa
 # (= rho * g * depth = 3300 * 10 * 100e3) at the bottom. So, the
-# predicted diffusion viscosisty ‘eta_diff’ can be calculated by the
+# predicted diffusion viscosity ‘eta_diff’ can be calculated by the
 # following equation:
 #
 #   eta_diff = 0.5 * A^(-1/n) * d^(m/n) * exp((E + P_ad*V)/(nRT))
@@ -30,7 +30,7 @@
 set Dimension                              = 2
 set Start time                             = 0
 set End time                               = 0
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set Nonlinear solver scheme                = single Advection, iterated Stokes
 set Max nonlinear iterations               = 1
 set Output directory                       = visco_plastic_adiabatic_pressure_in_viscous_creep
@@ -137,8 +137,12 @@ subsection Postprocess
 
   subsection Visualization
     set Interpolate output = false
-    set List of output variables = viscosity, strain rate
+    set List of output variables = material properties, strain rate
     set Output format            = gnuplot
+
+    subsection Material properties
+      set List of material properties = viscosity
+    end
   end
 end
 

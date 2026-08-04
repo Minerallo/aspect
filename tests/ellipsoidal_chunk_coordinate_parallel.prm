@@ -8,7 +8,7 @@
 # step before the program terminates.
 
 set Dimension                              = 3
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set End time                               = 0
 
 ############### Parameters describing the model
@@ -80,7 +80,11 @@ subsection Postprocess
 
   subsection Visualization
     set Interpolate output = false
-    set List of output variables          = density
+    set List of output variables          = material properties
     set Output format                     = gnuplot
+
+    subsection Material properties
+      set List of material properties = density
+    end
   end
 end

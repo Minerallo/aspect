@@ -30,8 +30,6 @@ namespace aspect
 {
   namespace BoundaryTraction
   {
-    using namespace dealii;
-
     /**
      * A class that implements traction boundary conditions by prescribing
      * the lithostatic pressure as the normal traction component.
@@ -81,6 +79,8 @@ namespace aspect
 
         /**
          * The number of integration points.
+         *
+         * This variable is read from the parameter file through a parameter called 'Number of integration points'.
          */
         unsigned int n_points;
 

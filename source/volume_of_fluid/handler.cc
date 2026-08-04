@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2016 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2016 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -20,6 +20,7 @@
 
 #include <aspect/global.h>
 #include <aspect/parameters.h>
+#include <aspect/advection_field.h>
 #include <aspect/volume_of_fluid/handler.h>
 #include <aspect/mesh_refinement/volume_of_fluid_interface.h>
 #include <aspect/simulator/assemblers/interface.h>
@@ -30,8 +31,6 @@
 #include <deal.II/grid/filtered_iterator.h>
 #include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/mapping_cartesian.h>
-
-using namespace dealii;
 
 namespace aspect
 {
@@ -139,37 +138,34 @@ namespace aspect
           local_matrix (finite_element.dofs_per_cell,
                         finite_element.dofs_per_cell),
           local_rhs (finite_element.dofs_per_cell),
-          local_face_rhs (Assemblers::n_interface_matrices(finite_element.reference_cell()),
+          local_face_rhs (Assemblers::n_interface_matrices<dim>(finite_element.reference_cell()),
                           Vector<double>(finite_element.dofs_per_cell)),
-          local_face_matrices_ext_ext(Assemblers::n_interface_matrices(finite_element.reference_cell()),
+          local_face_matrices_ext_ext(Assemblers::n_interface_matrices<dim>(finite_element.reference_cell()),
                                       FullMatrix<double>(finite_element.dofs_per_cell,
                                                          finite_element.dofs_per_cell)),
-          face_contributions_mask(Assemblers::n_interface_matrices(finite_element.reference_cell()),
+          face_contributions_mask(Assemblers::n_interface_matrices<dim>(finite_element.reference_cell()),
                                   false),
 
           local_dof_indices (finite_element.dofs_per_cell),
-          neighbor_dof_indices(Assemblers::n_interface_matrices(finite_element.reference_cell()),
+          neighbor_dof_indices(Assemblers::n_interface_matrices<dim>(finite_element.reference_cell()),
                                std::vector<types::global_dof_index>(finite_element.dofs_per_cell))
         {}
 
 
 
-        template<int dim>
+        template <int dim>
         VolumeOfFluidSystem<dim>::VolumeOfFluidSystem(const VolumeOfFluidSystem &data)
           :
           local_matrix (data.local_matrix),
           local_rhs (data.local_rhs),
           local_face_rhs (data.local_face_rhs),
           local_face_matrices_ext_ext (data.local_face_matrices_ext_ext),
-          face_contributions_mask(data.face_contributions_mask),
+          // clear the flag that indicates that we have valid data in any
+          // of the matrices:
+          face_contributions_mask(data.face_contributions_mask.size(), false),
           local_dof_indices (data.local_dof_indices),
           neighbor_dof_indices (data.neighbor_dof_indices)
-        {
-          // clear the flag that indicates that we have valid data in any
-          // of the matrices
-          for (unsigned int i=0; i < face_contributions_mask.size(); ++i)
-            face_contributions_mask[i] = false;
-        }
+        {}
       }
     }
   }
@@ -260,7 +256,7 @@ namespace aspect
 
       prm.declare_entry ("Number initialization samples", "3",
                          Patterns::Integer (1),
-                         "Number of divisions per dimension when computing the initial volume fractions."
+                         "Number of divisions per dimension when computing the initial volume fractions. "
                          "If set to the default of 3 for a 2d model, then initialization will be based on "
                          "the initialization criterion at $3^2=9$ points within each cell. If the initialization "
                          "based on a composition style initial condition, a larger value may be desired for better "
@@ -357,7 +353,7 @@ namespace aspect
                                    "entry <" + p + ">."));
 
           // get the name of the compositional field
-          const std::string key = split_parts[0];
+          const std::string &key = split_parts[0];
 
           // check that the names used are actually names of fields,
           // are solved by volume of fluid fields, and are unique in this list
@@ -386,7 +382,7 @@ namespace aspect
                                    "<Initial composition model/Volume of fluid initialization type>."));
 
           // Get specification for how to treat initializing data
-          const std::string value = split_parts[1];
+          const std::string &value = split_parts[1];
 
           if (value == "composition")
             initialization_data_type[volume_of_fluid_composition_map_index[compositional_field_index+1]]
@@ -430,7 +426,7 @@ namespace aspect
     if ( this->get_parameters().initial_adaptive_refinement > 0 ||
          this->get_parameters().adaptive_refinement_interval > 0 )
       {
-        AssertThrow(this->get_mesh_refinement_manager().template has_matching_mesh_refinement_strategy<MeshRefinement::VolumeOfFluidInterface<dim>>(),
+        AssertThrow(this->get_mesh_refinement_manager().template has_matching_active_plugin<MeshRefinement::VolumeOfFluidInterface<dim>>(),
                     ExcMessage("Volume of Fluid Interface Tracking requires that the 'volume of fluid interface' strategy be used for AMR"));
 
         AssertThrow(this->get_parameters().adaptive_refinement_interval <(1/this->get_parameters().CFL_number),
@@ -500,7 +496,7 @@ namespace aspect
 
 
   template <int dim>
-  void VolumeOfFluidHandler<dim>::do_volume_of_fluid_update (const typename Simulator<dim>::AdvectionField &advection_field)
+  void VolumeOfFluidHandler<dim>::do_volume_of_fluid_update (const AdvectionField &advection_field)
   {
     const bool direction_order_descending = (this->get_timestep_number() % 2) == 1;
     const VolumeOfFluidField<dim> volume_of_fluid_field = data[volume_of_fluid_composition_map_index[advection_field.field_index()]];
@@ -542,17 +538,17 @@ namespace aspect
                                                                    const unsigned int dir,
                                                                    const bool update_from_old)
   {
-    TimerOutput::Scope timer (sim.computing_timer, "Assemble volume of fluid system");
+    this->get_computing_timer().enter_subsection("Assemble volume of fluid system");
 
     const unsigned int block0_idx = field_struct_for_field_index(0).volume_fraction.block_index;
     const unsigned int block_idx = field.volume_fraction.block_index;
 
-    if (block0_idx!=block_idx)
+    if (block0_idx != block_idx)
       {
         // Allocate the system matrix for the current VoF field by
         // reusing the Trilinos sparsity pattern from the matrix stored for
         // composition 0 (this is the place we allocate the matrix at).
-        sim.system_matrix.block(block_idx, block_idx).reinit(sim.system_matrix.block(block0_idx, block0_idx));
+        sim.system_matrix.block(block_idx, block_idx).copy_from(sim.system_matrix.block(block0_idx, block0_idx));
       }
 
     sim.system_matrix.block(block_idx, block_idx) = 0;
@@ -601,6 +597,8 @@ namespace aspect
 
     sim.system_matrix.compress(VectorOperation::add);
     sim.system_rhs.compress(VectorOperation::add);
+
+    this->get_computing_timer().leave_subsection("Assemble volume of fluid system");
   }
 
 

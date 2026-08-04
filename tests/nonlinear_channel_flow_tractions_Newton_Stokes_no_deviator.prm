@@ -9,7 +9,7 @@ set End time                               = 4
 set Start time                             = 0
 set Adiabatic surface temperature          = 0
 set Surface pressure                       = 0
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set Nonlinear solver scheme = iterated Advection and Newton Stokes
 set Max nonlinear iterations = 45
 set Nonlinear solver tolerance = 5e-10
@@ -25,6 +25,7 @@ subsection Solver parameters
 
   subsection Stokes solver parameters
     set Linear solver tolerance = 1e-8
+    set Stokes solver type =  block AMG
   end
 end
 
@@ -65,6 +66,7 @@ end
 
 subsection Material model
   set Model name = simple nonlinear
+  set Material averaging = none
 
   subsection Simple nonlinear
     set Minimum viscosity = 1e19

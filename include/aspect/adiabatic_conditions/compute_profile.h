@@ -31,8 +31,6 @@ namespace aspect
 {
   namespace AdiabaticConditions
   {
-    using namespace dealii;
-
     /**
      * A model in which the adiabatic profile is calculated by solving the
      * hydrostatic equations for pressure and temperature in depth. The
@@ -125,6 +123,8 @@ namespace aspect
 
         /**
          * Number of points at which we compute the adiabatic values.
+         *
+         * This variable is read from the parameter file through a parameter called 'Number of points'.
          */
         unsigned int n_points;
 
@@ -169,6 +169,8 @@ namespace aspect
          * conditions, or the adiabatic_surface_temperature and surface_pressure
          * parameters. If this is set to true the reference profile is updated
          * every timestep.
+         *
+         * This variable is read from the parameter file through a parameter called 'Use surface condition function'.
          */
         bool use_surface_condition_function;
 

@@ -1,3 +1,10 @@
+```{tags}
+category:cookbook
+feature:3d
+feature:cartesian
+feature:compositional-fields
+```
+
 (sec:cookbooks:lower-crustal-flow)=
 # Lower crust flow with an obstacle
 
@@ -43,7 +50,7 @@ is driven by horizontal pressure gradients, due to topographic gradients
 and variations in crustal thickness or density. In reality,
 flowing lower crustal material is likely not to have sharp, well-defined
 channel boundaries, but most geodynamic models approximate flow
-behaviour as Poiseuille flow*.
+behavior as Poiseuille flow*.
 
 Temperature plays no role here and fluids are assumed to be Newtonian.
 Because of the symmetry of the problem, we only model half of it, and

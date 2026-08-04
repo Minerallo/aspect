@@ -29,8 +29,6 @@ namespace aspect
 {
   namespace GravityModel
   {
-    using namespace dealii;
-
     /**
      * A class that describes gravity as a vector of constant magnitude
      * pointing vertically down.
@@ -62,6 +60,8 @@ namespace aspect
       private:
         /**
          * Magnitude of the gravity vector.
+         *
+         * This variable is read from the parameter file through a parameter called 'Magnitude'.
          */
         double gravity_magnitude;
 

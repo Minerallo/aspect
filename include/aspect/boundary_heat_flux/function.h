@@ -32,8 +32,6 @@ namespace aspect
 {
   namespace BoundaryHeatFlux
   {
-    using namespace dealii;
-
     /**
      * A class that implements heat flux boundary conditions based on a
      * functional description provided in the input file.
@@ -62,10 +60,7 @@ namespace aspect
         void update () override;
 
         /**
-         * Declare the parameters this class takes through input files. The
-         * default implementation of this function does not describe any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
+         * Declare the parameters this class takes through input files.
          */
         static
         void
@@ -73,9 +68,6 @@ namespace aspect
 
         /**
          * Read the parameters this class declares from the parameter file.
-         * The default implementation of this function does not read any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
          */
         void
         parse_parameters (ParameterHandler &prm) override;
@@ -89,6 +81,8 @@ namespace aspect
         /**
          * The coordinate representation to evaluate the function. Possible
          * choices are depth, cartesian and spherical.
+         *
+         * This variable is read from the parameter file through a parameter called 'Coordinate system'.
          */
         Utilities::Coordinates::CoordinateSystem coordinate_system;
     };

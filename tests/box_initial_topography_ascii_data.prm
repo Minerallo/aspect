@@ -8,7 +8,7 @@ set End time                               = 0
 set Start time                             = 0
 set Adiabatic surface temperature          = 1613.0
 set Surface pressure                       = 0
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set Nonlinear solver scheme                = single Advection, single Stokes
 
 subsection Gravity model
@@ -86,7 +86,7 @@ subsection Boundary velocity model
   set Zero velocity boundary indicators       = 0,1,2,3,4,5
 end
 
-# The maximum topography in the ascii file is 350 km and the minimum is 20 km.
+# The maximum topography in the ascii file is 55 km and the minimum is 20 km.
 # The topography statistics should not exceed these bounds.
 subsection Postprocess
   set List of postprocessors = visualization, velocity statistics, topography

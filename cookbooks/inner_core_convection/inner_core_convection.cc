@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -20,15 +20,13 @@
 
 #include <aspect/material_model/simple.h>
 #include <aspect/heating_model/interface.h>
-#include <aspect/gravity_model/radial.h>
+#include <aspect/gravity_model/radial_linear.h>
 #include <deal.II/base/parsed_function.h>
 
 namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     template <int dim>
     class InnerCore : public MaterialModel::Simple<dim>
     {
@@ -175,7 +173,7 @@ namespace aspect
 
           // The gravity is zero in the center of the Earth, and we assume the density to be constant and equal to 1.
           // We fix the surface pressure to 0 (and we are only interested in pressure differences anyway).
-          return gravity_magnitude * 0.5 * (1.0 - std::pow(radius/max_radius,2));
+          return gravity_magnitude * 0.5 * (1.0 - Utilities::fixed_power<2>(radius/max_radius));
         }
       else
         return hydrostatic_pressure_profile.value(Point<1>(radius));
@@ -263,7 +261,7 @@ namespace aspect
                              "temperatures lead to phase transition occurring in shallower or greater "
                              "depths, depending on the Clapeyron slope given in 'Phase transition "
                              "Clapeyron slope'. "
-                             "Units: \\si{\\kelvin}.");
+                             "Units: $\\text{K}$.");
           prm.declare_entry ("Phase transition Clapeyron slope", "0.0",
                              Patterns::Double (),
                              "The Clapeyron slope of the phase transition. A positive "
@@ -277,7 +275,7 @@ namespace aspect
                              Patterns::Double (),
                              "The density change that occurs across the phase transition. "
                              "A positive value means that the density increases with depth. "
-                             "Units: \\si{\\kilogram\\per\\meter\\cubed}.");
+                             "Units: $\\frac{\\text{kg}}{\\text{m}^3}$.");
           prm.declare_entry ("Compute quadratic pressure profile from gravity", "true",
                              Patterns::Bool (),
                              "Whether to automatically compute the hydrostatic pressure profile "
@@ -357,8 +355,6 @@ namespace aspect
 {
   namespace HeatingModel
   {
-    using namespace dealii;
-
     /**
      * A class that implements a constant radiogenic heating rate.
      *
@@ -437,7 +433,7 @@ namespace aspect
                              "The specific rate of heating due to radioactive decay (or other bulk sources "
                              "you may want to describe). This parameter corresponds to the variable "
                              "$H$ in the temperature equation stated in the manual, and the heating "
-                             "term is $\rho H$. Units: W/kg.");
+                             "term is $\\rho H$. Units: W/kg.");
         }
         prm.leave_subsection();
       }

@@ -4,9 +4,8 @@ Number of degrees of freedom: 31 (18+4+9)
 
 *** Timestep 0:  t=0 years, dt=0 years
    Solving temperature system... 0 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 2+0 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 1: 1
+   Solving Stokes system (GMG)... 3+0 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 1: 2.02653e-14
 
 
    Postprocessing:

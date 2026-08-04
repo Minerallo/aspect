@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -23,9 +23,7 @@
 #include <aspect/gravity_model/interface.h>
 #include <aspect/simulator_access.h>
 
-#include <deal.II/base/exceptions.h>
 #include <tuple>
-
 #include <list>
 
 
@@ -33,37 +31,14 @@ namespace aspect
 {
   namespace GravityModel
   {
-    template <int dim>
-    void
-    Interface<dim>::initialize ()
-    {}
-
-    template <int dim>
-    void
-    Interface<dim>::update ()
-    {}
-
-    template <int dim>
-    void
-    Interface<dim>::
-    declare_parameters (dealii::ParameterHandler &)
-    {}
-
-
-    template <int dim>
-    void
-    Interface<dim>::parse_parameters (dealii::ParameterHandler &)
-    {}
-
-
 // -------------------------------- Deal with registering gravity models and automating
 // -------------------------------- their setup and selection at run time
 
     namespace
     {
       std::tuple
-      <void *,
-      void *,
+      <aspect::internal::Plugins::UnusablePluginList,
+      aspect::internal::Plugins::UnusablePluginList,
       aspect::internal::Plugins::PluginList<Interface<2>>,
       aspect::internal::Plugins::PluginList<Interface<3>>> registered_plugins;
     }
@@ -146,19 +121,6 @@ namespace aspect
 // explicit instantiations
 namespace aspect
 {
-  namespace internal
-  {
-    namespace Plugins
-    {
-      template <>
-      std::list<internal::Plugins::PluginList<GravityModel::Interface<2>>::PluginInfo> *
-      internal::Plugins::PluginList<GravityModel::Interface<2>>::plugins = nullptr;
-      template <>
-      std::list<internal::Plugins::PluginList<GravityModel::Interface<3>>::PluginInfo> *
-      internal::Plugins::PluginList<GravityModel::Interface<3>>::plugins = nullptr;
-    }
-  }
-
   namespace GravityModel
   {
 #define INSTANTIATE(dim) \

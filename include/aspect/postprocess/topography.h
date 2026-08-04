@@ -41,6 +41,11 @@ namespace aspect
     {
       public:
         /**
+         * Constructor.
+         */
+        Topography();
+
+        /**
          * Output topography [m] to file
          */
         std::pair<std::string,std::string> execute (TableHandler &statistics) override;
@@ -65,9 +70,28 @@ namespace aspect
          * @}
          */
 
+        /**
+         * Serialize the contents of this class as far as they are not read
+         * from input parameter files.
+         */
+        template <class Archive>
+        void serialize (Archive &ar, const unsigned int version);
+
+        /**
+         * Save the state of this object.
+         */
+        void save (std::map<std::string, std::string> &status_strings) const override;
+
+        /**
+         * Restore the state of the object.
+         */
+        void load (const std::map<std::string, std::string> &status_strings) override;
+
       private:
         /**
          * Whether or not to produce text files with topography values
+         *
+         * This variable is read from the parameter file through a parameter called 'Output to file'.
          */
         bool write_to_file;
 
@@ -75,6 +99,8 @@ namespace aspect
          * Interval between the generation of text output. This parameter
          * is read from the input file and consequently is not part of the
          * state that needs to be saved and restored.
+         *
+         * This variable is read from the parameter file through a parameter called 'Time between text output'.
          */
         double output_interval;
 

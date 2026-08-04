@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2018 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,6 +18,7 @@
   <http://www.gnu.org/licenses/>.
  */
 
+#include <algorithm>
 #include <aspect/geometry_model/interface.h>
 #include <aspect/global.h>
 #include <aspect/geometry_model/box.h>
@@ -60,9 +61,6 @@ namespace aspect
    */
   namespace TosiBenchmark
   {
-    using namespace dealii;
-
-
     /**
      * @ingroup MaterialModels
      */
@@ -85,8 +83,8 @@ namespace aspect
            */
 
           //set up additional output for the derivatives
-          MaterialModel::MaterialModelDerivatives<dim> *derivatives;
-          derivatives = out.template get_additional_output<MaterialModel::MaterialModelDerivatives<dim>>();
+          const std::shared_ptr<MaterialModel::MaterialModelDerivatives<dim>> derivatives
+            = out.template get_additional_output_object<MaterialModel::MaterialModelDerivatives<dim>>();
 
           for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
             {
@@ -116,7 +114,7 @@ namespace aspect
 
               // If requested compute viscosity derivatives. This is only important
               // if using the Newton solver.
-              if (derivatives != NULL && in.requests_property(MaterialModel::MaterialProperties::viscosity))
+              if (derivatives != nullptr && in.requests_property(MaterialModel::MaterialProperties::viscosity))
                 {
                   if (use_analytical_derivative)
                     {
@@ -355,7 +353,7 @@ namespace aspect
         }
 
       // Cut-off the viscosity by user-defined values to avoid possible very large viscosity ratios
-      viscosity = std::max(std::min(viscosity,eta_maximum),eta_minimum);
+      viscosity = std::clamp(viscosity, eta_minimum, eta_maximum);
 
       return viscosity;
     }
@@ -561,10 +559,7 @@ namespace aspect
 
       // loop over active, locally owned cells and
       // extract material model input and compute integrals
-      typename DoFHandler<dim>::active_cell_iterator
-      cell = this->get_dof_handler().begin_active(),
-      endc = this->get_dof_handler().end();
-      for (; cell!=endc; ++cell)
+      for (const auto &cell : this->get_dof_handler().active_cell_iterators())
         if (cell->is_locally_owned())
           {
             fe_values.reinit (cell);
@@ -710,7 +705,7 @@ namespace aspect
                                    "$\\rho(T)=\\rho_0(1-\\alpha(T-T_0))$. ")
     ASPECT_REGISTER_POSTPROCESSOR(TosiPostprocessor,
                                   "TosiPostprocessor",
-                                  "A postprocessor that computes the viscous dissipation"
+                                  "A postprocessor that computes the viscous dissipation "
                                   "for the whole domain as: "
                                   "$\\left<\\Phi\\right>=\\int_{V} \\tau : \\dot{\\epsilon}dV$ "
                                   "= $\\int_{V} 2\\mu\\dot{\\epsilon}:\\dot{\\epsilon} dV$. "

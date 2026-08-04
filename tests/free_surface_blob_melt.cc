@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,6 +18,7 @@
   <http://www.gnu.org/licenses/>.
 */
 
+#include <algorithm>
 #include <aspect/global.h>
 #include <aspect/melt.h>
 
@@ -25,8 +26,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     template <int dim>
     class MeltFreeSurface : public MaterialModel::MeltFractionModel<dim>, public MaterialModel::MeltInterface<dim>, public ::aspect::SimulatorAccess<dim>
     {
@@ -35,7 +34,8 @@ namespace aspect
         virtual void evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
                               MaterialModel::MaterialModelOutputs<dim> &out) const;
         virtual void melt_fractions (const MaterialModel::MaterialModelInputs<dim> &in,
-                                     std::vector<double> &melt_fractions) const;
+                                     std::vector<double> &melt_fractions,
+                                     const MaterialModel::MaterialModelOutputs<dim> *out = nullptr) const override;
         virtual bool is_compressible () const;
         /**
          * @}
@@ -102,17 +102,17 @@ namespace aspect
           const double delta_temp = in.temperature[i]-reference_T;
           const double temperature_dependence = (reference_T > 0
                                                  ?
-                                                 std::max(std::min(std::exp(-thermal_viscosity_exponent*delta_temp/reference_T),
-                                                                   maximum_thermal_prefactor),
-                                                          minimum_thermal_prefactor)
+                                                 std::clamp(std::exp(-thermal_viscosity_exponent*delta_temp/reference_T),
+                                                            minimum_thermal_prefactor,
+                                                            maximum_thermal_prefactor)
                                                  :
                                                  1.0);
 
           out.viscosities[i] = ((composition_viscosity_prefactor != 1.0) && (in.composition[i].size()>0))
                                ?
                                // Geometric interpolation
-                               pow(10.0, ((1-in.composition[i][0]) * log10(eta*temperature_dependence)
-                                          + in.composition[i][0] * log10(eta*composition_viscosity_prefactor*temperature_dependence)))
+                               std::pow(10.0, ((1-in.composition[i][0]) * std::log10(eta*temperature_dependence)
+                                               + in.composition[i][0] * std::log10(eta*composition_viscosity_prefactor*temperature_dependence)))
                                :
                                temperature_dependence * eta;
 
@@ -141,7 +141,8 @@ namespace aspect
         }
 
       // fill melt outputs if they exist
-      MeltOutputs<dim> *melt_out = out.template get_additional_output<MeltOutputs<dim>>();
+      const std::shared_ptr<MeltOutputs<dim>> melt_out
+        = out.template get_additional_output_object<MeltOutputs<dim>>();
 
       if (melt_out != nullptr)
         {
@@ -151,7 +152,7 @@ namespace aspect
             {
               const double porosity = std::max(in.composition[i][porosity_idx],0.0);
               melt_out->fluid_densities[i] = 300.;
-              melt_out->permeabilities[i] = 1e-8 * std::pow(porosity, 3);
+              melt_out->permeabilities[i] = 1e-8 * Utilities::fixed_power<3>(porosity);
               melt_out->compaction_viscosities[i] = eta;
               melt_out->fluid_viscosities[i] = 10.;
               melt_out->fluid_density_gradients[i] = 0.0;
@@ -163,7 +164,8 @@ namespace aspect
     void
     MeltFreeSurface<dim>::
     melt_fractions (const MaterialModel::MaterialModelInputs<dim> &in,
-                    std::vector<double> &melt_fractions) const
+                    std::vector<double> &melt_fractions,
+                    const MaterialModel::MaterialModelOutputs<dim> *) const
     {
       for (unsigned int q=0; q<in.n_evaluation_points(); ++q)
         melt_fractions[q] = 0.0;
@@ -199,16 +201,16 @@ namespace aspect
           prm.declare_entry ("Reference density", "3300",
                              Patterns::Double (0),
                              "Reference density $\\rho_0$. "
-                             "Units: \\si{\\kilogram\\per\\meter\\cubed}.");
+                             "Units: $\\frac{\\text{kg}}{\\text{m}^3}$.");
           prm.declare_entry ("Reference temperature", "293",
                              Patterns::Double (0),
                              "The reference temperature $T_0$. The reference temperature is used "
-                             "in both the density and viscosity formulas. Units: \\si{\\kelvin}.");
+                             "in both the density and viscosity formulas. Units: $\\text{K}$.");
           prm.declare_entry ("Viscosity", "5e24",
                              Patterns::Double (0),
                              "The value of the constant viscosity $\\eta_0$. This viscosity may be "
                              "modified by both temperature and compositional dependencies. "
-                             "Units: \\si{\\pascal\\second}.");
+                             "Units: $\\text{Pa}\\text{s}$.");
           prm.declare_entry ("Composition viscosity prefactor", "1.0",
                              Patterns::Double (0),
                              "A linear dependency of viscosity on the first compositional field. "
@@ -233,15 +235,15 @@ namespace aspect
           prm.declare_entry ("Thermal conductivity", "4.7",
                              Patterns::Double (0),
                              "The value of the thermal conductivity $k$. "
-                             "Units: \\si{\\watt\\per\\meter\\per\\kelvin}.");
+                             "Units: $\\frac{\\text{W}{\\text{m}\\text{K}}$.");
           prm.declare_entry ("Reference specific heat", "1250",
                              Patterns::Double (0),
                              "The value of the specific heat $C_p$. "
-                             "Units: \\si{\\joule\\per\\kelvin\\per\\kilogram}.");
+                             "Units: $\\frac{\\text{J}}{\\text{K}\\text{kg}}$.");
           prm.declare_entry ("Thermal expansion coefficient", "2e-5",
                              Patterns::Double (0),
                              "The value of the thermal expansion coefficient $\\alpha$. "
-                             "Units: \\si{\\per\\kelvin}.");
+                             "Units: $\\frac{1}{\\text{K}}$.");
           prm.declare_entry ("Density differential for compositional field 1", "0",
                              Patterns::Double(),
                              "If compositional fields are used, then one would frequently want "
@@ -252,7 +254,7 @@ namespace aspect
                              "fields, then the density only depends on the first one in such a way that "
                              "the density has an additional term of the kind $+\\Delta \\rho \\; c_1(\\mathbf x)$. "
                              "This parameter describes the value of $\\Delta \\rho$. "
-                             "Units: \\si{\\kilogram\\per\\meter\\cubed}/unit change in composition.");
+                             "Units: $\\frac{\\text{kg}}{\\text{m}^3}$/unit change in composition.");
         }
         prm.leave_subsection();
       }

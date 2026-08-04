@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2019 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -33,6 +33,16 @@ namespace aspect
   {
     namespace Rheology
     {
+      DiffusionCreepParameters::DiffusionCreepParameters()
+        : prefactor (numbers::signaling_nan<double>()),
+          activation_energy (numbers::signaling_nan<double>()),
+          activation_volume (numbers::signaling_nan<double>()),
+          stress_exponent (numbers::signaling_nan<double>()),
+          grain_size_exponent (numbers::signaling_nan<double>())
+      {}
+
+
+
       template <int dim>
       DiffusionCreep<dim>::DiffusionCreep ()
         = default;
@@ -49,25 +59,25 @@ namespace aspect
         if (phase_function_values == std::vector<double>())
           {
             // no phases
-            creep_parameters.prefactor = prefactors_diffusion[composition];
-            creep_parameters.activation_energy = activation_energies_diffusion[composition];
-            creep_parameters.activation_volume = activation_volumes_diffusion[composition];
-            creep_parameters.stress_exponent = stress_exponents_diffusion[composition];
-            creep_parameters.grain_size_exponent = grain_size_exponents_diffusion[composition];
+            creep_parameters.prefactor = prefactors[composition];
+            creep_parameters.activation_energy = activation_energies[composition];
+            creep_parameters.activation_volume = activation_volumes[composition];
+            creep_parameters.stress_exponent = stress_exponents[composition];
+            creep_parameters.grain_size_exponent = grain_size_exponents[composition];
           }
         else
           {
             // Average among phases
             creep_parameters.prefactor = MaterialModel::MaterialUtilities::phase_average_value(phase_function_values, n_phase_transitions_per_composition,
-                                         prefactors_diffusion, composition,  MaterialModel::MaterialUtilities::PhaseUtilities::logarithmic);
+                                         prefactors, composition,  MaterialModel::MaterialUtilities::PhaseUtilities::logarithmic);
             creep_parameters.activation_energy = MaterialModel::MaterialUtilities::phase_average_value(phase_function_values, n_phase_transitions_per_composition,
-                                                 activation_energies_diffusion, composition);
+                                                 activation_energies, composition);
             creep_parameters.activation_volume = MaterialModel::MaterialUtilities::phase_average_value(phase_function_values, n_phase_transitions_per_composition,
-                                                 activation_volumes_diffusion, composition);
+                                                 activation_volumes, composition);
             creep_parameters.stress_exponent = MaterialModel::MaterialUtilities::phase_average_value(phase_function_values, n_phase_transitions_per_composition,
-                                               stress_exponents_diffusion, composition);
+                                               stress_exponents, composition);
             creep_parameters.grain_size_exponent = MaterialModel::MaterialUtilities::phase_average_value(phase_function_values, n_phase_transitions_per_composition,
-                                                   grain_size_exponents_diffusion, composition);
+                                                   grain_size_exponents, composition);
           }
         return creep_parameters;
       }
@@ -82,6 +92,20 @@ namespace aspect
                                               const std::vector<double> &phase_function_values,
                                               const std::vector<unsigned int> &n_phase_transitions_per_composition) const
       {
+        return compute_viscosity(pressure, temperature, fixed_grain_size, composition, phase_function_values, n_phase_transitions_per_composition);
+      }
+
+
+
+      template <int dim>
+      double
+      DiffusionCreep<dim>::compute_viscosity (const double pressure,
+                                              const double temperature,
+                                              const double grain_size,
+                                              const unsigned int composition,
+                                              const std::vector<double> &phase_function_values,
+                                              const std::vector<unsigned int> &n_phase_transitions_per_composition) const
+      {
         const DiffusionCreepParameters p = compute_creep_parameters(composition,
                                                                     phase_function_values,
                                                                     n_phase_transitions_per_composition);
@@ -91,13 +115,13 @@ namespace aspect
         // A: prefactor,
         // d: grain size, m: grain size exponent, E: activation energy, P: pressure,
         // V; activation volume, R: gas constant, T: temperature.
-        double viscosity_diffusion = 0.5 / p.prefactor *
-                                     std::exp((p.activation_energy +
-                                               pressure*p.activation_volume)/
-                                              (constants::gas_constant*temperature)) *
-                                     std::pow(grain_size, p.grain_size_exponent);
+        double viscosity = 0.5 / p.prefactor *
+                           std::exp((p.activation_energy +
+                                     pressure*p.activation_volume)/
+                                    (constants::gas_constant*temperature)) *
+                           std::pow(grain_size, p.grain_size_exponent);
 
-        Assert (viscosity_diffusion > 0.0,
+        Assert (viscosity > 0.0,
                 ExcMessage ("Negative diffusion viscosity detected. This is unphysical and should not happen. "
                             "Check for negative parameters. Temperature and pressure are "
                             + Utilities::to_string(temperature) + " K, " + Utilities::to_string(pressure) + " Pa. "));
@@ -108,10 +132,11 @@ namespace aspect
         // so these high viscosities are never achieved. It is therefore both reasonable
         // and desirable to require the single-mechanism viscosity to be smaller than
         // std::sqrt(max_double).
-        viscosity_diffusion = std::min(viscosity_diffusion, std::sqrt(std::numeric_limits<double>::max()));
+        viscosity = std::min(viscosity, std::sqrt(std::numeric_limits<double>::max()));
 
-        return viscosity_diffusion;
+        return viscosity;
       }
+
 
 
       template <int dim>
@@ -121,6 +146,19 @@ namespace aspect
                                                                const double temperature,
                                                                const DiffusionCreepParameters creep_parameters) const
       {
+        return compute_strain_rate_and_derivative(stress, pressure, temperature, fixed_grain_size, creep_parameters);
+      }
+
+
+
+      template <int dim>
+      std::pair<double, double>
+      DiffusionCreep<dim>::compute_strain_rate_and_derivative(const double stress,
+                                                              const double pressure,
+                                                              const double temperature,
+                                                              const double grain_size,
+                                                              const DiffusionCreepParameters creep_parameters) const
+      {
         // Power law creep equation
         //   edot_ii_partial = A * stress^n * d^-m * exp(-(E + P*V)/(RT))
         //   d(edot_ii_partial)/d(stress) = A * n * stress^(n-1) * d^-m * exp(-(E + P*V)/(RT))
@@ -128,15 +166,16 @@ namespace aspect
         // d: grain size, m: grain size exponent, E: activation energy, P: pressure,
         // V; activation volume, R: gas constant, T: temperature.
         // For diffusion creep, n = 1 (strain rate is linearly dependent on stress).
-        const double dstrain_rate_dstress_diffusion = creep_parameters.prefactor *
-                                                      std::pow(grain_size, -creep_parameters.grain_size_exponent) *
-                                                      std::exp(-(creep_parameters.activation_energy + pressure*creep_parameters.activation_volume)/
-                                                               (constants::gas_constant*temperature));
+        const double dstrain_rate_dstress = creep_parameters.prefactor *
+                                            std::pow(grain_size, -creep_parameters.grain_size_exponent) *
+                                            std::exp(-(creep_parameters.activation_energy + pressure * creep_parameters.activation_volume) /
+                                                     (constants::gas_constant * temperature));
 
-        const double strain_rate_diffusion = stress * dstrain_rate_dstress_diffusion;
+        const double strain_rate = stress * dstrain_rate_dstress;
 
-        return std::make_pair(strain_rate_diffusion, dstrain_rate_dstress_diffusion);
+        return std::make_pair(strain_rate, dstrain_rate_dstress);
       }
+
 
 
       template <int dim>
@@ -146,6 +185,19 @@ namespace aspect
                                                                    const double temperature,
                                                                    const DiffusionCreepParameters creep_parameters) const
       {
+        return compute_log_strain_rate_and_derivative (log_stress, pressure, temperature, fixed_grain_size, creep_parameters);
+      }
+
+
+
+      template <int dim>
+      std::pair<double, double>
+      DiffusionCreep<dim>::compute_log_strain_rate_and_derivative (const double log_stress,
+                                                                   const double pressure,
+                                                                   const double temperature,
+                                                                   const double grain_size,
+                                                                   const DiffusionCreepParameters creep_parameters) const
+      {
         // Power law creep equation
         // log(edot_ii_partial) = std::log(A) + n*std::log(stress) - m*std::log(d) - (E + P*V)/(RT)
         //   d(log_edot_ii_partial)/d(log_stress) = n
@@ -153,17 +205,16 @@ namespace aspect
         // d: grain size, m: grain size exponent, E: activation energy, P: pressure,
         // V; activation volume, R: gas constant, T: temperature.
         // For diffusion creep, n = 1 (strain rate is linearly dependent on stress).
-        const double log_strain_rate_diffusion = std::log(creep_parameters.prefactor) +
-                                                 log_stress -
-                                                 creep_parameters.grain_size_exponent * std::log(grain_size) -
-                                                 (creep_parameters.activation_energy + pressure*creep_parameters.activation_volume)/
-                                                 (constants::gas_constant*temperature);
+        const double log_strain_rate = std::log(creep_parameters.prefactor) +
+                                       log_stress -
+                                       creep_parameters.grain_size_exponent * std::log(grain_size) -
+                                       (creep_parameters.activation_energy + pressure*creep_parameters.activation_volume)/
+                                       (constants::gas_constant*temperature);
 
-        const double dlog_strain_rate_dlog_stress_diffusion = 1.0;
+        const double dlog_strain_rate_dlog_stress = 1.0;
 
-        return std::make_pair(log_strain_rate_diffusion, dlog_strain_rate_dlog_stress_diffusion);
+        return std::make_pair(log_strain_rate, dlog_strain_rate_dlog_stress);
       }
-
 
 
 
@@ -206,6 +257,11 @@ namespace aspect
                            "If only one value is given, then all use the same value. "
                            "Units: \\si{\\meter\\cubed\\per\\mole}.");
         prm.declare_entry ("Grain size", "1e-3", Patterns::Double (0.),
+                           "The fixed grain size of the material. "
+                           "This grain size is only used if the parent "
+                           "material model does not provide its own "
+                           "(possibly variable) grain size when "
+                           "calling this rheology."
                            "Units: \\si{\\meter}.");
       }
 
@@ -241,33 +297,33 @@ namespace aspect
           }
 
         // Read parameters, each of size of number of composition + number of phases + 1
-        prefactors_diffusion = Utilities::MapParsing::parse_map_to_double_array(prm.get("Prefactors for diffusion creep"),
-                                                                                options);
+        prefactors = Utilities::MapParsing::parse_map_to_double_array(prm.get("Prefactors for diffusion creep"),
+                                                                      options);
 
         options.property_name = "Stress exponents for diffusion creep";
-        stress_exponents_diffusion = Utilities::MapParsing::parse_map_to_double_array(prm.get("Stress exponents for diffusion creep"),
-                                                                                      options);
+        stress_exponents = Utilities::MapParsing::parse_map_to_double_array(prm.get("Stress exponents for diffusion creep"),
+                                                                            options);
 
         options.property_name = "Grain size exponents for diffusion creep";
-        grain_size_exponents_diffusion = Utilities::MapParsing::parse_map_to_double_array(prm.get("Grain size exponents for diffusion creep"),
-                                         options);
+        grain_size_exponents = Utilities::MapParsing::parse_map_to_double_array(prm.get("Grain size exponents for diffusion creep"),
+                                                                                options);
 
         options.property_name = "Activation energies for diffusion creep";
-        activation_energies_diffusion = Utilities::MapParsing::parse_map_to_double_array(prm.get("Activation energies for diffusion creep"),
-                                        options);
+        activation_energies = Utilities::MapParsing::parse_map_to_double_array(prm.get("Activation energies for diffusion creep"),
+                                                                               options);
 
         options.property_name = "Activation volumes for diffusion creep";
-        activation_volumes_diffusion = Utilities::MapParsing::parse_map_to_double_array(prm.get("Activation volumes for diffusion creep"),
-                                                                                        options);
+        activation_volumes = Utilities::MapParsing::parse_map_to_double_array(prm.get("Activation volumes for diffusion creep"),
+                                                                              options);
 
-        grain_size = prm.get_double("Grain size");
+        fixed_grain_size = prm.get_double("Grain size");
 
         // Check that there are no entries set to zero,
         // for example because the entry is for a field
         // that is masked anyway, like strain. Despite
         // these compositions being masked, their viscosities
         // are computed anyway and this will lead to division by zero.
-        for (const double prefactor : prefactors_diffusion)
+        for (const double prefactor : prefactors)
           AssertThrow(prefactor > 0.,
                       ExcMessage("The diffusion prefactor should be larger than zero."));
       }
@@ -280,14 +336,14 @@ namespace aspect
 {
   namespace MaterialModel
   {
+    namespace Rheology
+    {
 #define INSTANTIATE(dim) \
-  namespace Rheology \
-  { \
-    template class DiffusionCreep<dim>; \
-  }
+  template class DiffusionCreep<dim>;
 
-    ASPECT_INSTANTIATE(INSTANTIATE)
+      ASPECT_INSTANTIATE(INSTANTIATE)
 
 #undef INSTANTIATE
+    }
   }
 }

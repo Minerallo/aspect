@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2016 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2016 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -49,13 +49,15 @@ namespace aspect
       // Ensure the initial lithostatic pressure traction boundary conditions are used,
       // and register for which boundary indicators these conditions are set.
       std::set<types::boundary_id> traction_bi;
-      for (const auto &p : this->get_boundary_traction_manager().get_active_boundary_traction_conditions())
+      unsigned int i=0;
+      for (const auto &plugin : this->get_boundary_traction_manager().get_active_plugins())
         {
-          for (const auto &plugin : p.second)
-            if (plugin.get() == this)
-              traction_bi.insert(p.first);
+          if (plugin.get() == this)
+            traction_bi.insert(this->get_boundary_traction_manager().get_active_plugin_boundary_indicators()[i]);
+
+          ++i;
         }
-      AssertThrow(*(traction_bi.begin()) != numbers::invalid_boundary_id,
+      AssertThrow(traction_bi.empty() == false,
                   ExcMessage("Did not find any boundary indicators for the initial lithostatic pressure plugin."));
 
       // Determine whether traction boundary conditions are only set on the bottom
@@ -174,8 +176,7 @@ namespace aspect
                 surface_point[d] = spherical_representative_point[d];
 
             }
-          const InitialTopographyModel::Interface<dim> *topo_model = const_cast<InitialTopographyModel::Interface<dim>*>(&this->get_initial_topography_model());
-          topo = topo_model->value(surface_point);
+          topo = this->get_initial_topography_model().value(surface_point);
         }
 
       // The spacing of the depth profile at the location of the representative point.
@@ -392,7 +393,7 @@ namespace aspect
       prm.leave_subsection();
 
       // Check that we have enough integration points for this mesh.
-      AssertThrow(std::pow(2.0,refinement) <= n_points, ExcMessage("Not enough integration points for this resolution."));
+      AssertThrow(Utilities::pow(2u,refinement) <= n_points, ExcMessage("Not enough integration points for this resolution."));
 
       pressure.resize(n_points,-1);
     }

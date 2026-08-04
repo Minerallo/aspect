@@ -1,7 +1,14 @@
+```{tags}
+category:cookbook
+feature:2d
+feature:cartesian
+feature:compositional-fields
+```
+
 (sec:cookbooks:finite_strain)=
 # Tracking finite strain
 
-*This section was contributed by Juliane Dannberg and Rene Gassm&ouml;ller*
+*This section was contributed by Juliane Dannberg and Rene Gassm&ouml;ller.*
 
 :::{note}
 In this section, following {cite:t}`becker:etal:2003,dahlen:tromp:1998`, we denote the velocity gradient tensor as $\mathbf G$, where $\mathbf G = \nabla \mathbf u^T$,

@@ -9,7 +9,7 @@ set End time                               = 1e7
 set Start time                             = 0
 set Adiabatic surface temperature          = 0
 set Surface pressure                       = 0
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set Nonlinear solver scheme                = single Advection, single Stokes
 
 subsection Gravity model
@@ -62,7 +62,7 @@ subsection Termination criteria
   set Termination criteria      = user request
 
   subsection User request
-    set File name = restart.mesh
+    set File name = restart/last_good_checkpoint.txt
   end
 end
 

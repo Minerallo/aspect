@@ -8,7 +8,7 @@ set Additional shared libraries            = ./libhollow_sphere.so
 set Dimension                              = 3
 set Start time                             = 0
 set End time                               = 0
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set Nonlinear solver scheme                = no Advection, iterated Stokes
 set Output directory                       = output
 set Pressure normalization                 = surface
@@ -91,7 +91,11 @@ subsection Postprocess
   set List of postprocessors = visualization, velocity statistics, HollowSpherePostprocessor, memory statistics, dynamic topography
 
   subsection Visualization
-    set List of output variables = density, viscosity, strain rate, dynamic topography, gravity
+    set List of output variables = material properties, strain rate, dynamic topography, gravity
+
+    subsection Material properties
+      set List of material properties = density, viscosity
+    end
   end
 end
 

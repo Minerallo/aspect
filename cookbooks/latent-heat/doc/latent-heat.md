@@ -1,3 +1,12 @@
+```{tags}
+category:cookbook
+category:benchmark
+feature:2d
+feature:cartesian
+feature:modular-equations
+```
+
+(sec:cookbooks:latent-heat)=
 # Latent heat benchmark
 
 *This section was contributed by Juliane Dannberg.*

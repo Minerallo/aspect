@@ -1,3 +1,11 @@
+```{tags}
+category:benchmark
+feature:2d
+feature:cartesian
+feature:analytical-solution
+```
+
+(sec:benchmarks:viscosity_grooves)=
 # Viscosity grooves benchmark
 
 *This benchmark was designed by Dave May and this section was contributed by
@@ -22,7 +30,7 @@ where $\epsilon$ controls the viscosity contrast. It is easy to verify that
 the flow is incompressible as the velocity field satisfies
 $\nabla\cdot \mathbf u = 0$. The right hand side term of the Stokes equation
 is obtained by inserting the expressions for velocity, pressure and viscosity
-in the momentum conservation equation, see {cite:t}`thieulot:2019` for details. The
+in the momentum conservation equation, see {cite:t}`fieldstone` for details. The
 velocity, pressure and right hand side magnitude are shown in {numref}`fig:benchmark-grooves-3x3`
 for $L=3$ and $\epsilon=0.1$.
 

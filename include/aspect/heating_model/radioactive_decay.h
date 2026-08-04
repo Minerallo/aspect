@@ -32,8 +32,6 @@ namespace aspect
 {
   namespace HeatingModel
   {
-    using namespace dealii;
-
     /**
      * A class that implements a heating model based on radioactive decay.
      *
@@ -58,6 +56,13 @@ namespace aspect
                   HeatingModel::HeatingModelOutputs &heating_model_outputs) const override;
 
         /**
+         * Specify which material model outputs the heating model requires
+         * for computing the heating terms.
+         */
+        MaterialModel::MaterialProperties::Property
+        get_required_properties () const override;
+
+        /**
          * Declare the parameters this class takes through input files.
          */
         static
@@ -73,42 +78,51 @@ namespace aspect
       private:
 
         /**
-         * Number of radio active heating elements.
+         * Number of radioactive heating elements. This variable is read from
+         * the parameter file through the 'Number of elements' parameter.
          */
         unsigned int                   n_radio_heating_elements;
 
         /**
-         * Store the half life of different elements.
+         * Half-lives of different elements. This variable is read from the
+         * parameter file through the 'Half decay times' parameter.
          */
         std::vector<double>            half_decay_times;
 
         /**
-         * Store the unit heating rate of different elements.
+         * Unit heating rates of different elements. This variable is read from
+         * the parameter file through the 'Heating rates' parameter.
          */
         std::vector<double>            radioactive_heating_rates;
 
         /**
-         * Store the initial concentration in the crust.
+         * Initial concentrations in the crust. This variable is read from the
+         * parameter file through the 'Initial concentrations crust' parameter.
          */
         std::vector<double>            radioactive_initial_concentrations_crust;
 
         /**
-         * Store the initial concentration in the mantle.
+         * Initial concentrations in the mantle. This variable is read from the
+         * parameter file through the 'Initial concentrations mantle' parameter.
          */
         std::vector<double>            radioactive_initial_concentrations_mantle;
 
         /**
-         * Whether crust defined by composition or depth
+         * Whether the crust is defined by composition or depth. This variable
+         * is read from the parameter file through the 'Crust defined by
+         * composition' parameter.
          */
         bool                           is_crust_defined_by_composition;
 
         /**
-         * Depth of the crust.
+         * Depth of the crust. This variable is read from the parameter file
+         * through the 'Crust depth' parameter.
          */
         double                         crust_depth;
 
         /**
-         * Composition number of crust.
+         * Composition number of the crust. This variable is read from the
+         * parameter file through the 'Crust composition number' parameter.
          */
         unsigned int                   crust_composition_num;
     };

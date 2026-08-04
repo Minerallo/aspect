@@ -26,8 +26,6 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
   template <int dim>
   void modify_constraints (const SimulatorAccess<dim> &simulator_access,
                            AffineConstraints<double> &current_constraints)
@@ -40,12 +38,15 @@ namespace aspect
 
     const double value = 100;
 
-    current_constraints.add_line(first_pressure_dof);
-    current_constraints.set_inhomogeneity (first_pressure_dof, value);
+    if (current_constraints.can_store_line(first_pressure_dof))
+      {
+        current_constraints.add_line(first_pressure_dof);
+        current_constraints.set_inhomogeneity (first_pressure_dof, value);
 
-    std::cout << "adding constraint idx= " << first_pressure_dof
-              << " to value= " << value
-              << std::endl;
+        std::cout << "adding constraint idx= " << first_pressure_dof
+                  << " to value= " << value
+                  << std::endl;
+      }
   }
 
   // Connect constraints function to correct signal.

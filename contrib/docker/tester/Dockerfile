@@ -1,6 +1,6 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
-LABEL maintainer <rene.gassmoeller@mailbox.org>
+LABEL maintainer=<rene.gassmoeller@mailbox.org>
 
 RUN DEBIAN_FRONTEND=noninteractive apt update && apt upgrade -yq && \
   DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends \
@@ -11,9 +11,13 @@ RUN DEBIAN_FRONTEND=noninteractive apt update && apt upgrade -yq && \
   texlive-plain-generic texlive-base texlive-latex-recommended \
   texlive-latex-base texlive-fonts-recommended \
   texlive-bibtex-extra lmodern texlive-latex-extra \
-  texlive-science graphviz python3-pip python-setuptools
+  texlive-science graphviz python3-pip python-setuptools libpython3-dev \
+  lcov
 
 RUN pip3 install cpp-coveralls
+
+# install uv:
+COPY --from=ghcr.io/astral-sh/uv:0.11.31 /uv /uvx /usr/local/bin/
 
 COPY local.cfg /opt/
 
@@ -22,29 +26,32 @@ RUN cd /opt && \
     git clone https://github.com/dealii/candi && \
     cd candi && \
     mv /opt/local.cfg . && \
-    ./candi.sh -p /opt -j2 && \
+    ./candi.sh -p /opt -j4 && \
     rm -rf /opt/tmp
+
+# Install FastScape for ASPECT
+RUN cd /opt && \
+    git clone https://github.com/anne-glerum/fastscapelib-fortran.git && \
+    cd fastscapelib-fortran  && \
+    git checkout aspect_tester && \
+    mkdir build && \
+    cd build && \
+    /opt/cmake-3.26.4-linux-x86_64/bin/cmake -DBUILD_FASTSCAPELIB_SHARED=ON .. && \
+    make
 
 # Set environment variables for this image to be used
 # by Github Actions
 ENV PATH="/opt/astyle-2.04:/opt/cmake-3.26.4-linux-x86_64/bin:$PATH"
-ENV DEAL_II_DIR /opt/deal.II-master
-ENV NETCDF_DIR /opt/netcdf-4.7.4
+ENV DEAL_II_DIR=/opt/deal.II-master
+ENV FASTSCAPE_DIR=/opt/fastscapelib-fortran/build
+ENV GFORTRAN_CONVERT_UNIT='big_endian'
+ENV NETCDF_DIR=/opt/netcdf-4.7.4
 ENV OMPI_MCA_btl_base_warn_component_unused=0
 ENV OMPI_MCA_mpi_yield_when_idle=1
 ENV OMPI_MCA_rmaps_base_oversubscribe=1
 ENV OMPI_ALLOW_RUN_AS_ROOT=1
 ENV OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
-
-# Set environment variables for derived images, which
-# are build by Jenkins
-ONBUILD ENV PATH="/opt/astyle-2.04:/opt/cmake-3.26.4-linux-x86_64/bin:$PATH"
-ONBUILD ENV DEAL_II_DIR /opt/deal.II-master
-ONBUILD ENV NETCDF_DIR /opt/netcdf-4.7.4
-ONBUILD ENV OMPI_MCA_btl_base_warn_component_unused=0
-ONBUILD ENV OMPI_MCA_mpi_yield_when_idle=1
-ONBUILD ENV OMPI_MCA_rmaps_base_oversubscribe=1
-ONBUILD ENV OMPI_ALLOW_RUN_AS_ROOT=1
-ONBUILD ENV OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
+# Prevent an OpenMPI warning in Ubuntu 22.04 (see https://github.com/openwall/john/issues/5088)
+ENV HWLOC_HIDE_ERRORS=2
 
 WORKDIR /opt

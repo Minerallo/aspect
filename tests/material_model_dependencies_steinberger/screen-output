@@ -5,29 +5,20 @@ Number of active cells: 48 (on 3 levels)
 Number of degrees of freedom: 740 (450+65+225)
 
 *** Timestep 0:  t=0 seconds, dt=0 seconds
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 17+0 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 1: 1
+   Solving Stokes system (GMG)... 11+0 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 1: 0.00630906
 
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 11+0 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 2: 1.77869
+   Solving Stokes system (GMG)... 8+0 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 2: 0.0101025
 
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 8+0 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 3: 0.0294974
+   Solving Stokes system (GMG)... 6+0 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 3: 0.000167544
 
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 7+0 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 4: 0.00180303
+   Solving Stokes system (GMG)... 4+0 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 4: 1.02415e-05
 
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 3+0 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 5: 4.648e-05
-
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 3+0 iterations.
-      Relative nonlinear residual (Stokes system) after nonlinear iteration 6: 2.8245e-06
+   Solving Stokes system (GMG)... 3+0 iterations.
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 5: 2.6388e-07
 
 
    Postprocessing:

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -205,14 +205,14 @@ namespace aspect
           // analytical solution for the thermal boundary layer from half-space cooling model
           surface_cooling_temperature = age_top > 0.0 ?
                                         (T_surface - adiabatic_surface_temperature) *
-                                        erfc(this->get_geometry_model().depth(position) /
-                                             (2 * sqrt(kappa * age_top)))
+                                        std::erfc(this->get_geometry_model().depth(position) /
+                                                  (2 * std::sqrt(kappa * age_top)))
                                         : 0.0;
           bottom_heating_temperature = (age_bottom > 0.0 && this->get_adiabatic_conditions().is_initialized()) ?
                                        (T_bottom - adiabatic_bottom_temperature + subadiabaticity)
-                                       * erfc((this->get_geometry_model().maximal_depth()
-                                               - this->get_geometry_model().depth(position)) /
-                                              (2 * sqrt(kappa * age_bottom)))
+                                       * std::erfc((this->get_geometry_model().maximal_depth()
+                                                    - this->get_geometry_model().depth(position)) /
+                                                   (2 * std::sqrt(kappa * age_bottom)))
                                        : 0.0;
         }
 
@@ -224,11 +224,12 @@ namespace aspect
             }
           else
             {
-              const double exponential = -kappa * std::pow(numbers::PI, 2) * age_top / std::pow(lithosphere_thickness, 2);
-              double sum_terms = 0;
+              const double exponential = -kappa * Utilities::fixed_power<2>(numbers::PI) * age_top / Utilities::fixed_power<2>(lithosphere_thickness);
+              double sum_terms = 0.;
               for (unsigned int n=1; n<11; ++n)
                 {
-                  sum_terms += 1/(double)n * std::exp(std::pow((double)n, 2) * exponential) * std::sin((double)n * depth * numbers::PI / lithosphere_thickness);
+                  const auto dn = static_cast<double>(n);
+                  sum_terms += 1./dn * std::exp(dn * dn * exponential) * std::sin(dn * depth * numbers::PI / lithosphere_thickness);
                   surface_cooling_temperature = T_surface - adiabatic_surface_temperature + (adiabatic_surface_temperature - T_surface) * (depth / lithosphere_thickness + 2 / numbers::PI * sum_terms);
                 }
             }
@@ -374,22 +375,22 @@ namespace aspect
           prm.declare_entry ("Age top boundary layer", "0.",
                              Patterns::Double (0.),
                              "The age of the upper thermal boundary layer, used for the calculation "
-                             "of the half-space cooling model temperature. Units: years if the "
-                             "'Use years in output instead of seconds' parameter is set; "
-                             "seconds otherwise.");
+                             "of the half-space cooling model temperature. Units: \\si{\\year} if the "
+                             "'Use years instead of seconds' parameter is set; "
+                             "\\si{\\second} otherwise.");
           prm.declare_entry ("Age bottom boundary layer", "0.",
                              Patterns::Double (0.),
                              "The age of the lower thermal boundary layer, used for the calculation "
-                             "of the half-space cooling model temperature. Units: years if the "
-                             "'Use years in output instead of seconds' parameter is set; "
-                             "seconds otherwise.");
+                             "of the half-space cooling model temperature. Units: \\si{\\year} if the "
+                             "'Use years instead of seconds' parameter is set; "
+                             "\\si{\\second} otherwise.");
           prm.declare_entry ("Radius", "0.",
                              Patterns::Double (0.),
-                             "The Radius (in m) of the initial spherical temperature perturbation "
+                             "The Radius (in \\si{\\meter}) of the initial spherical temperature perturbation "
                              "at the bottom of the model domain.");
           prm.declare_entry ("Amplitude", "0.",
                              Patterns::Double (0.),
-                             "The amplitude (in K) of the initial spherical temperature perturbation "
+                             "The amplitude (in \\si{\\kelvin}) of the initial spherical temperature perturbation "
                              "at the bottom of the model domain. This perturbation will be added to "
                              "the adiabatic temperature profile, but not to the bottom thermal "
                              "boundary layer. Instead, the maximum of the perturbation and the bottom "
@@ -407,7 +408,7 @@ namespace aspect
                              "If this value is larger than 0, the initial temperature profile will "
                              "not be adiabatic, but subadiabatic. This value gives the maximal "
                              "deviation from adiabaticity. Set to 0 for an adiabatic temperature "
-                             "profile. Units: \\si{\\kelvin}.\n\n"
+                             "profile. Units: $\\text{K}$.\n\n"
                              "The function object in the Function subsection "
                              "represents the compositional fields that will be used as a reference "
                              "profile for calculating the thermal diffusivity. "

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2019 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -30,8 +30,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     namespace Rheology
     {
       /**
@@ -46,14 +44,29 @@ namespace aspect
         double angle_internal_friction;
 
         /**
+         * Dilation angle (psi) for the current composition and phase
+         */
+        double angle_dilation;
+
+        /**
          * Cohesion for the current composition and phase
          */
         double cohesion;
 
         /**
+         * Prefactor for the yield stress for the current composition and phase
+         */
+        double yield_stress_prefactor;
+
+        /**
          * Limit maximum yield stress from drucker prager yield criterion.
          */
         double max_yield_stress;
+
+        /**
+         * Constructor. Initializes all values to NaN.
+         */
+        DruckerPragerParameters();
       };
 
       template <int dim>
@@ -96,7 +109,11 @@ namespace aspect
 
           /**
            * Compute the plastic yield stress based on the Drucker Prager yield criterion.
+           *
+           * @deprecated This function is deprecated, use the other function with the same name
+           * that takes DruckerPragerParameters as input.
            */
+          DEAL_II_DEPRECATED
           double
           compute_yield_stress (const double cohesion,
                                 const double angle_internal_friction,
@@ -104,11 +121,29 @@ namespace aspect
                                 const double max_yield_stress) const;
 
           /**
+           * Compute the plastic yield stress based on the Drucker Prager yield criterion for
+           * the given pressure, and drucker prager parameters.
+           *
+           * @param pressure The current pressure.
+           * @param p The parameters of the drucker prager plasticity. This can either be
+           * manually created, or computed by compute_drucker_prager_parameters().
+           *
+           * @return The yield stress for the given conditions.
+           */
+          double
+          compute_yield_stress (const double pressure,
+                                const DruckerPragerParameters &p) const;
+
+          /**
            * Compute the apparent viscosity using the yield stress and effective strain rate.
            * If the non_yielding_viscosity is not infinite
            * (i.e., if there are other rheological elements accommodating strain), the returned
            * value is the effective composite viscosity, not the pure "plastic" viscosity.
+           *
+           * @deprecated This function is deprecated, use the other function with the same name
+           * that takes DruckerPragerParameters as input.
            */
+          DEAL_II_DEPRECATED
           double
           compute_viscosity (const double cohesion,
                              const double angle_internal_friction,
@@ -118,13 +153,25 @@ namespace aspect
                              const double non_yielding_viscosity = std::numeric_limits<double>::infinity()) const;
 
           /**
+           * Compute the apparent viscosity using the yield stress and effective strain rate.
+           * If the non_yielding_viscosity is not infinite
+           * (i.e., if there are other rheological elements accommodating strain), the returned
+           * value is the effective composite viscosity, not the pure "plastic" viscosity.
+           */
+          double
+          compute_viscosity (const double pressure,
+                             const double effective_strain_rate,
+                             const DruckerPragerParameters &p,
+                             const double non_yielding_viscosity = std::numeric_limits<double>::infinity()) const;
+
+          /**
            * Compute the strain rate and first stress derivative
            * as a function of stress based on the damped Drucker-Prager flow law.
            */
           std::pair<double, double>
           compute_strain_rate_and_derivative (const double stress,
                                               const double pressure,
-                                              const DruckerPragerParameters p) const;
+                                              const DruckerPragerParameters &p) const;
 
           /**
            * Compute the derivative of the plastic viscosity with respect to pressure.
@@ -133,20 +180,76 @@ namespace aspect
           compute_derivative (const double angle_internal_friction,
                               const double effective_strain_rate) const;
 
+          /**
+           * Compute the LHS and RHS dilation terms for the Stokes system.
+           * LHS: $\bar\alpha\alpha / \eta^{ve}$;
+           * RHS: $\bar(2\eta^{ve}\varepsilon^{eff} - k) / \eta^{ve}$.
+           * Here $\alpha$ and $\bar\alpha$ correspond to the friction angle
+           * and the dilation angle, respectively, $k$ is cohesion,
+           * $\eta^{ve}$ is the non-yielding viscosity, and $\varepsilon^{eff}$
+           * is the effective viscosity.
+           */
+          std::pair<double,double>
+          compute_dilation_terms_for_stokes_system(const DruckerPragerParameters &drucker_prager_parameters,
+                                                   const double non_yielding_viscosity,
+                                                   const double effective_strain_rate) const;
+
         private:
 
+          /**
+           * The Drucker-Prager rheology is a simple plastic model
+           * that yields at a stress of
+           * (6.0 * cohesion * cos_phi + 6.0 * pressure * sin_phi) / (sqrt(3.0) * (3.0 + sin_phi))
+           * in 3D or
+           * cohesion * cos_phi + pressure * sin_phi in 2D.
+           * Phi is an angle of internal friction, that is
+           * input by the user in degrees, but stored as radians.
+           *
+           * This variable is read from the parameter file through a parameter called 'Angles of internal friction'.
+           */
           std::vector<double> angles_internal_friction;
+
+          /**
+           * The plastic potential of the Drucker-Prager model is given by
+           * tau_II - 6.0 * pressure * sin_psi / (sqrt(3.0) * (3.0 + sin_psi)) in 3D or
+           * tau_II - pressure * sin_psi in 2D, where tau_II is the second invariant
+           * of the deviatoric stress.
+           * Psi is an angle of dilation, that is input by the user in degrees,
+           * but stored as radians. Note that the dilation angle must not be larger
+           * than the internal friction angle.
+           * This variable is read from the parameter file through a parameter called 'Angles of dilation'.
+           */
+          std::vector<double> angles_dilation;
+
+          /**
+           * The cohesion is provided and stored in Pa.
+           * This variable is read from the parameter file through a parameter called 'Cohesions'.
+           */
           std::vector<double> cohesions;
-          double max_yield_stress;
+
+          /**
+           *The prefactors for the yield stress.
+           * This variable is read from the parameter file through a parameter called 'Prefactors for yield stress'.
+           */
+          std::vector<double> yield_stress_prefactors;
+
+          /**
+           * The yield stress is limited to a constant value, stored in Pa.
+           * This variable is read from the parameter file through a parameter called 'Maximum yield stress'.
+           */
+          std::vector<double> max_yield_stresses;
 
           /**
            * Whether to add a plastic damper in the computation
            * of the drucker prager plastic viscosity.
+           * This variable is read from the parameter file through a parameter called 'Use plastic damper'.
            */
           bool use_plastic_damper;
 
           /**
            * Viscosity of a damper used to stabilize plasticity
+           *
+           * This variable is read from the parameter file through a parameter called 'Plastic damper viscosity'.
            */
           double damper_viscosity;
       };

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2017 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2017 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -20,7 +20,7 @@
 
 #include <aspect/simulator/assemblers/interface.h>
 
-#include <aspect/simulator.h>
+#include <aspect/advection_field.h>
 #include <aspect/utilities.h>
 
 #include <deal.II/base/signaling_nan.h>
@@ -42,19 +42,20 @@ namespace aspect
                               const unsigned int        n_compositional_fields,
                               const unsigned int        stokes_dofs_per_cell,
                               const bool                add_compaction_pressure,
-                              const bool                rebuild_matrix)
+                              const bool                rebuild_matrix,
+                              const bool                use_bfbt)
           :
           ScratchBase<dim>(),
 
           finite_element_values (mapping, finite_element, quadrature,
                                  update_flags),
           local_dof_indices (finite_element.dofs_per_cell),
-          dof_component_indices(stokes_dofs_per_cell),
           grads_phi_u (stokes_dofs_per_cell, numbers::signaling_nan<SymmetricTensor<2,dim>>()),
           div_phi_u (stokes_dofs_per_cell, numbers::signaling_nan<double>()),
           phi_p (stokes_dofs_per_cell, numbers::signaling_nan<double>()),
+          phi_u (stokes_dofs_per_cell,numbers::signaling_nan<Tensor<1,dim>>()),
           phi_p_c (add_compaction_pressure ? stokes_dofs_per_cell : 0, numbers::signaling_nan<double>()),
-          grad_phi_p (add_compaction_pressure ? stokes_dofs_per_cell : 0, numbers::signaling_nan<Tensor<1,dim>>()),
+          grad_phi_p ((add_compaction_pressure || use_bfbt) ? stokes_dofs_per_cell : 0, numbers::signaling_nan<Tensor<1,dim>>()),
           material_model_inputs(quadrature.size(), n_compositional_fields),
           material_model_outputs(quadrature.size(), n_compositional_fields),
           rebuild_stokes_matrix(rebuild_matrix)
@@ -74,10 +75,10 @@ namespace aspect
                                  scratch.finite_element_values.get_update_flags()),
 
           local_dof_indices (scratch.local_dof_indices),
-          dof_component_indices( scratch.dof_component_indices),
           grads_phi_u (scratch.grads_phi_u),
           div_phi_u (scratch.div_phi_u),
           phi_p (scratch.phi_p),
+          phi_u (scratch.phi_u),
           phi_p_c (scratch.phi_p_c),
           grad_phi_p(scratch.grad_phi_p),
           material_model_inputs(scratch.material_model_inputs),
@@ -116,7 +117,8 @@ namespace aspect
                       const bool                add_compaction_pressure,
                       const bool                use_reference_density_profile,
                       const bool                rebuild_stokes_matrix,
-                      const bool                rebuild_newton_stokes_matrix)
+                      const bool                rebuild_newton_stokes_matrix,
+                      const bool                use_bfbt)
           :
           StokesPreconditioner<dim> (finite_element, quadrature,
                                      mapping,
@@ -124,7 +126,8 @@ namespace aspect
                                      n_compositional_fields,
                                      stokes_dofs_per_cell,
                                      add_compaction_pressure,
-                                     rebuild_stokes_matrix),
+                                     rebuild_stokes_matrix,
+                                     use_bfbt),
 
           face_finite_element_values (mapping,
                                       finite_element,
@@ -189,7 +192,7 @@ namespace aspect
                          const UpdateFlags         update_flags,
                          const UpdateFlags         face_update_flags,
                          const unsigned int        n_compositional_fields,
-                         const typename Simulator<dim>::AdvectionField &field)
+                         const AdvectionField &field)
           :
           ScratchBase<dim>(),
 
@@ -357,7 +360,7 @@ namespace aspect
         {}
 
 
-        template<int dim>
+        template <int dim>
         void
         AdvectionSystem<dim>::
         reinit (const typename DoFHandler<dim>::active_cell_iterator &cell_ref)
@@ -379,6 +382,7 @@ namespace aspect
           :
           local_matrix (stokes_dofs_per_cell,
                         stokes_dofs_per_cell),
+          local_inverse_lumped_mass_matrix (stokes_dofs_per_cell),
           local_dof_indices (stokes_dofs_per_cell)
         {}
 
@@ -389,6 +393,7 @@ namespace aspect
         StokesPreconditioner (const StokesPreconditioner &data)
           :
           local_matrix (data.local_matrix),
+          local_inverse_lumped_mass_matrix (data.local_inverse_lumped_mass_matrix),
           local_dof_indices (data.local_dof_indices)
         {}
 
@@ -396,19 +401,12 @@ namespace aspect
         template <int dim>
         void StokesPreconditioner<dim>::
         extract_stokes_dof_indices(const std::vector<types::global_dof_index> &all_dof_indices,
-                                   const Introspection<dim>                   &introspection,
-                                   const FiniteElement<dim>           &finite_element)
+                                   const Introspection<dim>                   &introspection)
         {
-          const unsigned int dofs_per_cell = finite_element.dofs_per_cell;
-
-          for (unsigned int i=0, i_stokes=0; i<dofs_per_cell; /*increment at end of loop*/)
+          for (unsigned int i_stokes = 0; i_stokes < this->local_dof_indices.size(); ++i_stokes)
             {
-              if (introspection.is_stokes_component(finite_element.system_to_component_index(i).first))
-                {
-                  this->local_dof_indices[i_stokes] = all_dof_indices[i];
-                  ++i_stokes;
-                }
-              ++i;
+              const unsigned int i = introspection.stokes_dof_info[i_stokes].local_dof_index;
+              this->local_dof_indices[i_stokes] = all_dof_indices[i];
             }
         }
 
@@ -450,21 +448,21 @@ namespace aspect
                         finite_element.dofs_per_cell),
           local_matrices_int_ext ((field_is_discontinuous
                                    ?
-                                   Assemblers::n_interface_matrices(finite_element.reference_cell())
+                                   Assemblers::n_interface_matrices<dim>(finite_element.reference_cell())
                                    :
                                    0),
                                   FullMatrix<double>(finite_element.dofs_per_cell,
                                                      finite_element.dofs_per_cell)),
           local_matrices_ext_int ((field_is_discontinuous
                                    ?
-                                   Assemblers::n_interface_matrices(finite_element.reference_cell())
+                                   Assemblers::n_interface_matrices<dim>(finite_element.reference_cell())
                                    :
                                    0),
                                   FullMatrix<double>(finite_element.dofs_per_cell,
                                                      finite_element.dofs_per_cell)),
           local_matrices_ext_ext ((field_is_discontinuous
                                    ?
-                                   Assemblers::n_interface_matrices(finite_element.reference_cell())
+                                   Assemblers::n_interface_matrices<dim>(finite_element.reference_cell())
                                    :
                                    0),
                                   FullMatrix<double>(finite_element.dofs_per_cell,
@@ -473,14 +471,14 @@ namespace aspect
 
           assembled_matrices ((field_is_discontinuous
                                ?
-                               Assemblers::n_interface_matrices(finite_element.reference_cell())
+                               Assemblers::n_interface_matrices<dim>(finite_element.reference_cell())
                                :
                                0), false),
 
           local_dof_indices (finite_element.dofs_per_cell),
           neighbor_dof_indices ((field_is_discontinuous
                                  ?
-                                 Assemblers::n_interface_matrices(finite_element.reference_cell())
+                                 Assemblers::n_interface_matrices<dim>(finite_element.reference_cell())
                                  :
                                  0),
                                 std::vector<types::global_dof_index>(finite_element.dofs_per_cell))
@@ -494,8 +492,9 @@ namespace aspect
 
   namespace Assemblers
   {
+    template <int dim>
     unsigned int
-    n_interface_matrices (const ReferenceCell &reference_cell)
+    n_interface_matrices (const ReferenceCell<dim> &reference_cell)
     {
       // The current implementation assumes that all faces are
       // the same; so no wedges or pyramids please.
@@ -513,8 +512,9 @@ namespace aspect
 
 
 
+    template <int dim>
     unsigned int
-    nth_interface_matrix (const ReferenceCell &reference_cell,
+    nth_interface_matrix (const ReferenceCell<dim> &reference_cell,
                           const unsigned int face)
     {
       AssertIndexRange (face, reference_cell.n_faces());
@@ -524,8 +524,9 @@ namespace aspect
 
 
 
+    template <int dim>
     unsigned int
-    nth_interface_matrix (const ReferenceCell &reference_cell,
+    nth_interface_matrix (const ReferenceCell<dim> &reference_cell,
                           const unsigned int face,
                           const unsigned int sub_face)
     {
@@ -642,7 +643,23 @@ namespace aspect
     template class Interface<dim>; \
     template class AdvectionStabilizationInterface<dim>; \
     template class Manager<dim>; \
+    \
+    template \
+    unsigned int \
+    n_interface_matrices<dim> (const ReferenceCell<dim> &reference_cell); \
+    \
+    template \
+    unsigned int \
+    nth_interface_matrix<dim> (const ReferenceCell<dim> &reference_cell, \
+                               const unsigned int face); \
+    \
+    template \
+    unsigned int \
+    nth_interface_matrix<dim> (const ReferenceCell<dim> &reference_cell, \
+                               const unsigned int face, \
+                               const unsigned int sub_face); \
   }
+
   ASPECT_INSTANTIATE(INSTANTIATE)
 
 #undef INSTANTIATE

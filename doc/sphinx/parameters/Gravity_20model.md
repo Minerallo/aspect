@@ -5,11 +5,11 @@
 ## **Subsection:** Gravity model
 
 
-(parameters:Gravity_20model/Model_20name)=
-### __Parameter name:__ Model name
+::::{dropdown} __Parameter:__ {ref}`Model name<parameters:Gravity_20model/Model_20name>`
+:name: parameters:Gravity_20model/Model_20name
 **Default value:** unspecified
 
-**Pattern:** [Selection ascii data|function|radial constant|radial earth-like|radial linear|vertical|unspecified ]
+**Pattern:** [Selection ascii data|function|radial constant|radial linear|radial with tidal potential|vertical|unspecified ]
 
 **Documentation:** Select one of the following models:
 
@@ -19,42 +19,56 @@
 
 &lsquo;radial constant&rsquo;: A gravity model in which the gravity has a constant magnitude and the direction is radial (pointing inward if the value is positive). The magnitude is read from the parameter file in subsection &rsquo;Radial constant&rsquo;.
 
-&lsquo;radial earth-like&rsquo;: This plugin has been removed due to its misleading name. The included profile was hard-coded and was less earth-like than the &lsquo;ascii data&rsquo; plugin, which uses the profile of the Preliminary Reference Earth Model (PREM). Use &lsquo;ascii data&rsquo; instead of &lsquo;radial earth-like&rsquo;.
-
 &lsquo;radial linear&rsquo;: A gravity model which is radial (pointing inward if the gravity is positive) and the magnitude changes linearly with depth. The magnitude of gravity at the surface and bottom is read from the input file in a section &ldquo;Gravity model/Radial linear&rdquo;.
 
+&lsquo;radial with tidal potential&rsquo;: A gravity model that is the sum of the &lsquo;radial constant&rsquo; model (which is radial, pointing inward if the gravity is positive), and a term that results from a tidal potential and that leads to a gravity field that varies with latitude and longitude, as well as time from Tobie et al. (2025) (https://doi.org/10.1007/s11214-025-01136-y). Out of five components for tidal potential from $T_*$ to $T_3$, $T_*$ and $T_0$ control the shape of the modeled body and are not related to heating, which are pulling of perturbing body and nonsynchronous rotation of modeled body, respectively (The heating-related components are simplified as an equation in Tidal Heating Module). Nonsynchronous rotation occurs in planetary bodies where a liquid layer decouples rotation of surrounding solid layers. The magnitude of gravity for the radial constant part is read from the input file in a section &lsquo;Gravity model/Radial constant&rsquo;; the parameters that describe the tidal potential contribution are read from a section &lsquo;Gravity model/Radial with tidal potential&rsquo;. This module only works in spherical geometries.
+For 2d models, the geometry is interpreted to lie in the equatorial plane.
+
 &lsquo;vertical&rsquo;: A gravity model in which the gravity direction is vertical (pointing downward for positive values) and at a constant magnitude by default equal to one.
+::::
 
 (parameters:Gravity_20model/Ascii_20data_20model)=
 ## **Subsection:** Gravity model / Ascii data model
-(parameters:Gravity_20model/Ascii_20data_20model/Data_20directory)=
-### __Parameter name:__ Data directory
+::::{dropdown} __Parameter:__ {ref}`Data directory<parameters:Gravity_20model/Ascii_20data_20model/Data_20directory>`
+:name: parameters:Gravity_20model/Ascii_20data_20model/Data_20directory
 **Default value:** $ASPECT_SOURCE_DIR/data/gravity-model/
 
 **Pattern:** [DirectoryName]
 
-**Documentation:** The name of a directory that contains the model data. This path may either be absolute (if starting with a &lsquo;/&rsquo;) or relative to the current directory. The path may also include the special text &lsquo;$ASPECT_SOURCE_DIR&rsquo; which will be interpreted as the path in which the ASPECT source files were located when ASPECT was compiled. This interpretation allows, for example, to reference files located in the &lsquo;data/&rsquo; subdirectory of ASPECT.
+**Documentation:** The name of a directory that contains the model data. This path may either be absolute (if starting with a &lsquo;/&rsquo;) or relative to the current directory. The path may also include the special text &lsquo;$ASPECT_SOURCE_DIR&rsquo; which will be interpreted as the path in which the ASPECT source files were located when ASPECT was compiled. This interpretation allows, for example, to reference files located in the &lsquo;data/&rsquo; subdirectory of ASPECT. A trailing slash at the end of the directory path is optional; the plugin will automatically append a &rsquo;/&rsquo; when the parameters are parsed if it is missing.
+::::
 
-(parameters:Gravity_20model/Ascii_20data_20model/Data_20file_20name)=
-### __Parameter name:__ Data file name
+::::{dropdown} __Parameter:__ {ref}`Data file name<parameters:Gravity_20model/Ascii_20data_20model/Data_20file_20name>`
+:name: parameters:Gravity_20model/Ascii_20data_20model/Data_20file_20name
 **Default value:** prem.txt
 
 **Pattern:** [Anything]
 
 **Documentation:** The file name of the model data.
+::::
 
-(parameters:Gravity_20model/Ascii_20data_20model/Scale_20factor)=
-### __Parameter name:__ Scale factor
+::::{dropdown} __Parameter:__ {ref}`Scale factor<parameters:Gravity_20model/Ascii_20data_20model/Scale_20factor>`
+:name: parameters:Gravity_20model/Ascii_20data_20model/Scale_20factor
 **Default value:** 1.
 
 **Pattern:** [Double -MAX_DOUBLE...MAX_DOUBLE (inclusive)]
 
 **Documentation:** Scalar factor, which is applied to the model data. You might want to use this to scale the input to a reference model. Another way to use this factor is to convert units of the input files. For instance, if you provide velocities in cm/yr set this factor to 0.01.
+::::
 
 (parameters:Gravity_20model/Function)=
 ## **Subsection:** Gravity model / Function
-(parameters:Gravity_20model/Function/Function_20constants)=
-### __Parameter name:__ Function constants
+::::{dropdown} __Parameter:__ {ref}`Coordinate system<parameters:Gravity_20model/Function/Coordinate_20system>`
+:name: parameters:Gravity_20model/Function/Coordinate_20system
+**Default value:** cartesian
+
+**Pattern:** [Selection cartesian|spherical|depth ]
+
+**Documentation:** A selection that determines the assumed coordinate system for the function variables. Allowed values are &lsquo;cartesian&rsquo;, &lsquo;spherical&rsquo;, and &lsquo;depth&rsquo;. &lsquo;spherical&rsquo; coordinates are interpreted as r,phi or r,phi,theta in 2d/3d respectively with theta being the polar angle. &lsquo;depth&rsquo; will create a function, in which only the first parameter is non-zero, which is interpreted to be the depth of the point.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Function constants<parameters:Gravity_20model/Function/Function_20constants>`
+:name: parameters:Gravity_20model/Function/Function_20constants
 **Default value:**
 
 **Pattern:** [Anything]
@@ -62,9 +76,10 @@
 **Documentation:** Sometimes it is convenient to use symbolic constants in the expression that describes the function, rather than having to use its numeric value everywhere the constant appears. These values can be defined using this parameter, in the form &lsquo;var1=value1, var2=value2, ...&rsquo;.
 
 A typical example would be to set this runtime parameter to &lsquo;pi=3.1415926536&rsquo; and then use &lsquo;pi&rsquo; in the expression of the actual formula. (That said, for convenience this class actually defines both &lsquo;pi&rsquo; and &lsquo;Pi&rsquo; by default, but you get the idea.)
+::::
 
-(parameters:Gravity_20model/Function/Function_20expression)=
-### __Parameter name:__ Function expression
+::::{dropdown} __Parameter:__ {ref}`Function expression<parameters:Gravity_20model/Function/Function_20expression>`
+:name: parameters:Gravity_20model/Function/Function_20expression
 **Default value:** 0; 0
 
 **Pattern:** [Anything]
@@ -72,49 +87,84 @@ A typical example would be to set this runtime parameter to &lsquo;pi=3.14159265
 **Documentation:** The formula that denotes the function you want to evaluate for particular values of the independent variables. This expression may contain any of the usual operations such as addition or multiplication, as well as all of the common functions such as &lsquo;sin&rsquo; or &lsquo;cos&rsquo;. In addition, it may contain expressions like &lsquo;if(x>0, 1, -1)&rsquo; where the expression evaluates to the second argument if the first argument is true, and to the third argument otherwise. For a full overview of possible expressions accepted see the documentation of the muparser library at http://muparser.beltoforion.de/.
 
 If the function you are describing represents a vector-valued function with multiple components, then separate the expressions for individual components by a semicolon.
+::::
 
-(parameters:Gravity_20model/Function/Variable_20names)=
-### __Parameter name:__ Variable names
+::::{dropdown} __Parameter:__ {ref}`Variable names<parameters:Gravity_20model/Function/Variable_20names>`
+:name: parameters:Gravity_20model/Function/Variable_20names
 **Default value:** x,y,t
 
 **Pattern:** [Anything]
 
 **Documentation:** The names of the variables as they will be used in the function, separated by commas. By default, the names of variables at which the function will be evaluated are &lsquo;x&rsquo; (in 1d), &lsquo;x,y&rsquo; (in 2d) or &lsquo;x,y,z&rsquo; (in 3d) for spatial coordinates and &lsquo;t&rsquo; for time. You can then use these variable names in your function expression and they will be replaced by the values of these variables at which the function is currently evaluated. However, you can also choose a different set of names for the independent variables at which to evaluate your function expression. For example, if you work in spherical coordinates, you may wish to set this input parameter to &lsquo;r,phi,theta,t&rsquo; and then use these variable names in your function expression.
+::::
 
 (parameters:Gravity_20model/Radial_20constant)=
 ## **Subsection:** Gravity model / Radial constant
-(parameters:Gravity_20model/Radial_20constant/Magnitude)=
-### __Parameter name:__ Magnitude
+::::{dropdown} __Parameter:__ {ref}`Magnitude<parameters:Gravity_20model/Radial_20constant/Magnitude>`
+:name: parameters:Gravity_20model/Radial_20constant/Magnitude
 **Default value:** 9.81
 
 **Pattern:** [Double -MAX_DOUBLE...MAX_DOUBLE (inclusive)]
 
-**Documentation:** Magnitude of the gravity vector in $m/s^2$. For positive values the direction is radially inward towards the center of the earth.
+**Documentation:** Magnitude of the gravity vector in $\si{\meter\per\second\squared}$. For positive values the direction is radially inward towards the center of the earth.
+::::
 
 (parameters:Gravity_20model/Radial_20linear)=
 ## **Subsection:** Gravity model / Radial linear
-(parameters:Gravity_20model/Radial_20linear/Magnitude_20at_20bottom)=
-### __Parameter name:__ Magnitude at bottom
+::::{dropdown} __Parameter:__ {ref}`Magnitude at bottom<parameters:Gravity_20model/Radial_20linear/Magnitude_20at_20bottom>`
+:name: parameters:Gravity_20model/Radial_20linear/Magnitude_20at_20bottom
 **Default value:** 10.7
 
 **Pattern:** [Double -MAX_DOUBLE...MAX_DOUBLE (inclusive)]
 
-**Documentation:** Magnitude of the radial gravity vector at the bottom of the domain. &lsquo;Bottom&rsquo; means themaximum depth in the chosen geometry, and for example represents the core-mantle boundary in the case of the &lsquo;spherical shell&rsquo; geometry model, and the center in the case of the &lsquo;sphere&rsquo; geometry model. Units: \si{\meter\per\second\squared}.
+**Documentation:** Magnitude of the radial gravity vector at the bottom of the domain. &lsquo;Bottom&rsquo; means the maximum depth in the chosen geometry, and for example represents the core-mantle boundary in the case of the &lsquo;spherical shell&rsquo; geometry model, and the center in the case of the &lsquo;sphere&rsquo; geometry model. Units: \si{\meter\per\second\squared}.
+::::
 
-(parameters:Gravity_20model/Radial_20linear/Magnitude_20at_20surface)=
-### __Parameter name:__ Magnitude at surface
+::::{dropdown} __Parameter:__ {ref}`Magnitude at surface<parameters:Gravity_20model/Radial_20linear/Magnitude_20at_20surface>`
+:name: parameters:Gravity_20model/Radial_20linear/Magnitude_20at_20surface
 **Default value:** 9.8
 
 **Pattern:** [Double -MAX_DOUBLE...MAX_DOUBLE (inclusive)]
 
 **Documentation:** Magnitude of the radial gravity vector at the surface of the domain. Units: \si{\meter\per\second\squared}.
+::::
+
+(parameters:Gravity_20model/Radial_20with_20tidal_20potential)=
+## **Subsection:** Gravity model / Radial with tidal potential
+::::{dropdown} __Parameter:__ {ref}`Mass of perturbing body<parameters:Gravity_20model/Radial_20with_20tidal_20potential/Mass_20of_20perturbing_20body>`
+:name: parameters:Gravity_20model/Radial_20with_20tidal_20potential/Mass_20of_20perturbing_20body
+**Default value:** 1.898e27
+
+**Pattern:** [Double -MAX_DOUBLE...MAX_DOUBLE (inclusive)]
+
+**Documentation:** Mass of body that perturbs gravity of modeled body. The default value is chosen for modeling Europa, therefore, it is the mass of Jupiter. Units: \si{\kilo\gram}.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Period of nonsynchronous rotation<parameters:Gravity_20model/Radial_20with_20tidal_20potential/Period_20of_20nonsynchronous_20rotation>`
+:name: parameters:Gravity_20model/Radial_20with_20tidal_20potential/Period_20of_20nonsynchronous_20rotation
+**Default value:** 10000
+
+**Pattern:** [Double -MAX_DOUBLE...MAX_DOUBLE (inclusive)]
+
+**Documentation:** Period of nonsynchronous rotation (NSR). The default value is the period of NSR on Europa&rsquo;s icy shell. Units is year when &rsquo;Use years instead of seconds&rsquo; is true, and \si{\second} when &rsquo;Use years instead of seconds&rsquo; is false.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Semimajor axis of orbit<parameters:Gravity_20model/Radial_20with_20tidal_20potential/Semimajor_20axis_20of_20orbit>`
+:name: parameters:Gravity_20model/Radial_20with_20tidal_20potential/Semimajor_20axis_20of_20orbit
+**Default value:** 670900000
+
+**Pattern:** [Double -MAX_DOUBLE...MAX_DOUBLE (inclusive)]
+
+**Documentation:** The length of the semimajor axis of the orbit that cause the tidal perturbation. For example, tidal perturbation on Europa happens by Europa orbiting Jupiter, and that on Earth, if Moon is in consideration, happens by Moon orbiting Earth. The default value is for the semimajor axis of Europa&rsquo;s orbit. Units: \si{\meter}.
+::::
 
 (parameters:Gravity_20model/Vertical)=
 ## **Subsection:** Gravity model / Vertical
-(parameters:Gravity_20model/Vertical/Magnitude)=
-### __Parameter name:__ Magnitude
+::::{dropdown} __Parameter:__ {ref}`Magnitude<parameters:Gravity_20model/Vertical/Magnitude>`
+:name: parameters:Gravity_20model/Vertical/Magnitude
 **Default value:** 1.
 
 **Pattern:** [Double -MAX_DOUBLE...MAX_DOUBLE (inclusive)]
 
-**Documentation:** Value of the gravity vector in $m/s^2$ directed along negative y (2d) or z (3d) axis (if the magnitude is positive.
+**Documentation:** Value of the gravity vector in $\si{\meter\per\second\squared}$ directed along the negative $y$ (in 2d) or $z$ (in 3d) axis (if the magnitude is positive.
+::::

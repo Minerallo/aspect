@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -21,6 +21,7 @@
 #include <aspect/utilities.h>
 #include <aspect/simulator_access.h>
 #include <aspect/geometry_model/interface.h>
+#include <aspect/melt.h>
 
 #ifdef ASPECT_WITH_LIBDAP
 #include <D4Connect.h>
@@ -36,7 +37,6 @@
 #include <deal.II/base/table.h>
 #include <deal.II/base/table_indices.h>
 #include <deal.II/base/function_lib.h>
-#include <deal.II/base/exceptions.h>
 #include <deal.II/base/signaling_nan.h>
 #include <deal.II/base/patterns.h>
 #include <deal.II/grid/grid_tools.h>
@@ -44,11 +44,11 @@
 #include <cerrno>
 #include <dirent.h>
 #include <fstream>
-#include <locale>
 #include <string>
 #include <sys/stat.h>
 #include <iostream>
 #include <regex>
+#include <random>
 
 #include <boost/math/special_functions/spherical_harmonic.hpp>
 #include <boost/lexical_cast.hpp>
@@ -64,154 +64,6 @@ namespace aspect
    */
   namespace Utilities
   {
-    namespace internal
-    {
-      namespace MPI
-      {
-        // --------------------------------------------------------------------
-        // The following is copied from deal.II's mpi.templates.h file.
-        // We should instead import it from deal.II's header files directly
-        // if that information is made available via one of the existing .h
-        // files.
-        // --------------------------------------------------------------------
-#ifdef DEAL_II_WITH_MPI
-        /**
-         * Return the corresponding MPI data type id for the argument given.
-         */
-        inline MPI_Datatype
-        mpi_type_id(const bool *)
-        {
-          return MPI_CXX_BOOL;
-        }
-
-
-
-        inline MPI_Datatype
-        mpi_type_id(const char *)
-        {
-          return MPI_CHAR;
-        }
-
-
-
-        inline MPI_Datatype
-        mpi_type_id(const signed char *)
-        {
-          return MPI_SIGNED_CHAR;
-        }
-
-
-
-        inline MPI_Datatype
-        mpi_type_id(const short *)
-        {
-          return MPI_SHORT;
-        }
-
-
-
-        inline MPI_Datatype
-        mpi_type_id(const int *)
-        {
-          return MPI_INT;
-        }
-
-
-
-        inline MPI_Datatype
-        mpi_type_id(const long int *)
-        {
-          return MPI_LONG;
-        }
-
-
-
-        inline MPI_Datatype
-        mpi_type_id(const unsigned char *)
-        {
-          return MPI_UNSIGNED_CHAR;
-        }
-
-
-
-        inline MPI_Datatype
-        mpi_type_id(const unsigned short *)
-        {
-          return MPI_UNSIGNED_SHORT;
-        }
-
-
-
-        inline MPI_Datatype
-        mpi_type_id(const unsigned int *)
-        {
-          return MPI_UNSIGNED;
-        }
-
-
-
-        inline MPI_Datatype
-        mpi_type_id(const unsigned long int *)
-        {
-          return MPI_UNSIGNED_LONG;
-        }
-
-
-
-        inline MPI_Datatype
-        mpi_type_id(const unsigned long long int *)
-        {
-          return MPI_UNSIGNED_LONG_LONG;
-        }
-
-
-
-        inline MPI_Datatype
-        mpi_type_id(const float *)
-        {
-          return MPI_FLOAT;
-        }
-
-
-
-        inline MPI_Datatype
-        mpi_type_id(const double *)
-        {
-          return MPI_DOUBLE;
-        }
-
-
-
-        inline MPI_Datatype
-        mpi_type_id(const long double *)
-        {
-          return MPI_LONG_DOUBLE;
-        }
-
-
-
-        inline MPI_Datatype
-        mpi_type_id(const std::complex<float> *)
-        {
-          return MPI_COMPLEX;
-        }
-
-
-
-        inline MPI_Datatype
-        mpi_type_id(const std::complex<double> *)
-        {
-          return MPI_DOUBLE_COMPLEX;
-        }
-#endif
-      }
-    }
-
-
-
-
-
-
     template <typename T>
     Table<2,T>
     parse_input_table (const std::string &input_string,
@@ -484,7 +336,7 @@ namespace aspect
                   AssertThrow((n_expected_values == n_values || n_values == 1),
                               ExcMessage("The key <" + field_name + "> in <"+ options.property_name + "> does not have "
                                          + "the expected number of values. It expects " + std::to_string(n_expected_values)
-                                         + "or 1 values, but we found " + std::to_string(n_values) + " values."));
+                                         + " or 1 values, but we found " + std::to_string(n_values) + " values."));
 
                   // If we expect multiple values for a key, but found exactly one: assume
                   // the one value stands for every expected value. This allows
@@ -524,7 +376,12 @@ namespace aspect
                      ExcMessage("parse_map_to_double_array can only check the structure "
                                 "of the parsed map for "
                                 + options.property_name
-                                + " if an expected number of values for each key is given."));
+                                + " if an expected number of values for each key is given. "
+                                "The expected number of values is "
+                                + std::to_string(options.list_of_required_keys.size())
+                                + ", but instead "
+                                + std::to_string(options.n_values_per_key.size())
+                                + " were provided."));
 
         // First: parse the string into a map depending on what Pattern we are dealing with
         std::multimap<std::string, double> parsed_map = parse_string_to_map(input_string,
@@ -619,6 +476,43 @@ namespace aspect
             }
         }
       return var_name_list;
+    }
+
+
+
+    template <int dim>
+    Tensor<1, dim>
+    calculate_approximate_darcy_velocity (const MaterialModel::MaterialModelInputs<dim> &in,
+                                          const MaterialModel::MaterialModelOutputs<dim> &out,
+                                          const std::shared_ptr<const MaterialModel::MeltOutputs<dim>> fluid_out,
+                                          const Tensor<1, dim> &solid_velocity,
+                                          const Tensor<1, dim> &gravity,
+                                          const unsigned int porosity_idx,
+                                          const unsigned int q,
+                                          const bool use_pressure_gradient_for_darcy_field)
+    {
+      const double porosity = std::max(in.composition[q][porosity_idx], 1e-10);
+      const double solid_density = out.densities[q];
+      const double fluid_density = fluid_out->fluid_densities[q];
+      const double fluid_viscosity = fluid_out->fluid_viscosities[q];
+      const double permeability = fluid_out->permeabilities[q];
+      Tensor<1,dim> fluid_velocity;
+
+      if (use_pressure_gradient_for_darcy_field)
+        {
+          const Tensor<1,dim> pressure_gradient = in.pressure_gradient[q];
+          fluid_velocity = solid_velocity -
+                           permeability / fluid_viscosity / porosity *
+                           (pressure_gradient - gravity * fluid_density);
+        }
+
+      else
+        {
+          fluid_velocity = solid_velocity -
+                           permeability / fluid_viscosity / porosity *
+                           gravity * (solid_density - fluid_density);
+        }
+      return fluid_velocity;
     }
 
 
@@ -870,8 +764,8 @@ namespace aspect
         const double p      = std::sqrt(x(0) * x(0) + x(1) * x(1));
         const double th     = std::atan2(R * x(2), b * p);
         const double phi    = std::atan2(x(1), x(0));
-        const double theta  = std::atan2(x(2) + ep * ep * b * std::pow(std::sin(th),3),
-                                         (p - (eccentricity * eccentricity * R  * std::pow(std::cos(th),3))));
+        const double theta  = std::atan2(x(2) + ep * ep * b * Utilities::fixed_power<3>(std::sin(th)),
+                                         (p - (eccentricity * eccentricity * R  * Utilities::fixed_power<3>(std::cos(th)))));
         const double R_bar = R / (std::sqrt(1 - eccentricity * eccentricity * std::sin(theta) * std::sin(theta)));
         const double R_plus_d = p / std::cos(theta);
 
@@ -1438,7 +1332,8 @@ namespace aspect
 
                           // The url Array contains a separate array for each column of data.
                           // This will put each of these individual arrays into its own vector.
-                          urlArray->value(&tmp[0]);
+                          if (!tmp.empty())
+                            urlArray->value(tmp.data());
                           columns.push_back(tmp);
                         }
                       else
@@ -1501,14 +1396,12 @@ namespace aspect
               filesize = data_string.size();
 
 #else // ASPECT_WITH_LIBDAP
+              // We got a URL but we don't have libDAP. That's an error.
 
               // Broadcast failure state, then throw. We signal the failure by
               // setting the file size to an invalid size, then trigger an assert.
-              {
-                std::size_t invalid_filesize = numbers::invalid_size_type;
-                const int ierr = MPI_Bcast(&invalid_filesize, 1, Utilities::internal::MPI::mpi_type_id(&filesize), 0, comm);
-                AssertThrowMPI(ierr);
-              }
+              const std::size_t invalid_filesize = numbers::invalid_size_type;
+              std::ignore = Utilities::MPI::broadcast (comm, invalid_filesize, 0);
               AssertThrow(false,
                           ExcMessage(std::string("Reading of file ") + filename + " failed. " +
                                      "Make sure you have the dependencies for reading a url " +
@@ -1516,7 +1409,7 @@ namespace aspect
 
 #endif // ASPECT_WITH_LIBDAP
             }
-          else
+          else // we have a regular file name
             {
               std::ifstream filestream;
               const bool filename_ends_in_gz = std::regex_search(filename, std::regex("\\.gz$"));
@@ -1528,9 +1421,8 @@ namespace aspect
               if (!filestream)
                 {
                   // broadcast failure state, then throw
-                  std::size_t invalid_filesize = numbers::invalid_size_type;
-                  const int ierr = MPI_Bcast(&invalid_filesize, 1, Utilities::internal::MPI::mpi_type_id(&filesize), 0, comm);
-                  AssertThrowMPI(ierr);
+                  const std::size_t invalid_filesize = numbers::invalid_size_type;
+                  std::ignore = Utilities::MPI::broadcast (comm, invalid_filesize, 0);
                   AssertThrow (false,
                                ExcMessage (std::string("Could not open file <") + filename + ">."));
                 }
@@ -1550,9 +1442,8 @@ namespace aspect
               catch (const std::ios::failure &)
                 {
                   // broadcast failure state, then throw
-                  std::size_t invalid_filesize = numbers::invalid_size_type;
-                  const int ierr = MPI_Bcast(&invalid_filesize, 1, Utilities::internal::MPI::mpi_type_id(&filesize), 0, comm);
-                  AssertThrowMPI(ierr);
+                  const std::size_t invalid_filesize = numbers::invalid_size_type;
+                  std::ignore = Utilities::MPI::broadcast (comm, invalid_filesize, 0);
                   AssertThrow (false,
                                ExcMessage (std::string("Could not read file content from <") + filename + ">."));
                 }
@@ -1562,24 +1453,23 @@ namespace aspect
             }
 
           // Distribute data_size and data across processes
-          int ierr = MPI_Bcast(&filesize, 1, Utilities::internal::MPI::mpi_type_id(&filesize), 0, comm);
-          AssertThrowMPI(ierr);
+          std::ignore = Utilities::MPI::broadcast (comm, filesize, 0);
 
-          big_mpi::broadcast(&data_string[0], filesize, 0, comm);
+          if (filesize > 0)
+            big_mpi::broadcast(data_string.data(), filesize, 0, comm);
         }
       else
         {
           // Prepare for receiving data
-          std::size_t filesize;
-          int ierr = MPI_Bcast(&filesize, 1, Utilities::internal::MPI::mpi_type_id(&filesize), 0, comm);
-          AssertThrowMPI(ierr);
+          const std::size_t filesize = Utilities::MPI::broadcast (comm, /* dummy = */ std::size_t(), 0);
           if (filesize == numbers::invalid_size_type)
             throw QuietException();
 
           data_string.resize(filesize);
 
           // Receive and store data
-          big_mpi::broadcast(&data_string[0], filesize, 0, comm);
+          if (filesize > 0)
+            big_mpi::broadcast(data_string.data(), filesize, 0, comm);
         }
 
       return data_string;
@@ -1606,16 +1496,15 @@ namespace aspect
               for (const auto &content : collected_content)
                 filestream << content;
 
-              bool success = filestream.good();
-              const int ierr = MPI_Bcast(&success, 1, Utilities::internal::MPI::mpi_type_id(&success), 0, comm);
-              AssertThrowMPI(ierr);
+              // We are only reading on process 0. Whether or not that succeeded is something
+              // we need to let the other processes know:
+              std::ignore = Utilities::MPI::broadcast (comm, static_cast<bool>(filestream.good()), 0);
             }
           catch (const std::ios::failure &)
             {
-              // broadcast failure state, then throw
-              bool success = false;
-              const int ierr = MPI_Bcast(&success, 1, Utilities::internal::MPI::mpi_type_id(&success), 0, comm);
-              AssertThrowMPI(ierr);
+              // If reading failed altogether, we may not even have gotten to the broadcast
+              // call above. In that case, broadcast the failure state, then throw.
+              std::ignore = Utilities::MPI::broadcast (comm, false, 0);
               AssertThrow (false,
                            ExcMessage (std::string("Could not write content to file <") + filename + ">."));
             }
@@ -1624,10 +1513,8 @@ namespace aspect
         }
       else
         {
-          // Check that the file was written successfully
-          bool success;
-          int ierr = MPI_Bcast(&success, 1, Utilities::internal::MPI::mpi_type_id(&success), 0, comm);
-          AssertThrowMPI(ierr);
+          // On the other processes, receive process 0's broadcast of its result state:
+          const bool success = Utilities::MPI::broadcast (comm, /* dummy= */ bool(), 0);
           if (success == false)
             throw QuietException();
         }
@@ -1659,7 +1546,6 @@ namespace aspect
           int mkdir_return_value;
           if ((mkdir_return_value = mkdir(subdir.c_str(),mode)) && (errno != EEXIST))
             return mkdir_return_value;
-
         }
 
       return 0;
@@ -1669,7 +1555,7 @@ namespace aspect
 
     void create_directory(const std::string &pathname,
                           const MPI_Comm comm,
-                          bool silent)
+                          const bool silent)
     {
       // verify that the output directory actually exists. if it doesn't, create
       // it on processor zero
@@ -1690,15 +1576,13 @@ namespace aspect
                           << std::endl;
 
               error = Utilities::mkdirp(pathname, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
-
             }
           else
             {
               error = closedir(output_directory);
             }
           // Broadcast error code
-          const int ierr = MPI_Bcast (&error, 1, MPI_INT, 0, comm);
-          AssertThrowMPI(ierr);
+          std::ignore = Utilities::MPI::broadcast (comm, error, 0);
           AssertThrow (error == 0,
                        ExcMessage (std::string("Can't create the output directory at <") + pathname + ">"));
         }
@@ -1706,8 +1590,7 @@ namespace aspect
         {
           // Wait to receive error code, and throw QuietException if directory
           // creation has failed
-          const int ierr = MPI_Bcast (&error, 1, MPI_INT, 0, comm);
-          AssertThrowMPI(ierr);
+          error = Utilities::MPI::broadcast (comm, /* dummy= */ decltype(error)(), 0);
           if (error!=0)
             throw aspect::QuietException();
         }
@@ -2155,7 +2038,7 @@ namespace aspect
         // find the closest point m_x[idx] < x, idx=0 even if x<m_x[0]
         std::vector<double>::const_iterator it;
         it = std::lower_bound(m_x.begin(),m_x.end(),x);
-        int idx = std::max( int(it-m_x.begin())-1, 0);
+        const int idx = std::max( static_cast<int>(it-m_x.begin())-1, 0);
 
         double h = x-m_x[idx];
         double interpol;
@@ -2185,7 +2068,7 @@ namespace aspect
     {
       // Check for environment variable override to ASPECT_SOURCE_DIR
       char const *ASPECT_SOURCE_DIR_env = getenv("ASPECT_SOURCE_DIR");
-      if (ASPECT_SOURCE_DIR_env != NULL)
+      if (ASPECT_SOURCE_DIR_env != nullptr)
         {
           return Utilities::replace_in_string(location,
                                               "$ASPECT_SOURCE_DIR",
@@ -2206,6 +2089,52 @@ namespace aspect
         return " (\"" + s + "\")";
       else
         return "";
+    }
+
+
+
+    bool
+    string_to_bool(const std::string &s)
+    {
+      return (s == "true" || s == "yes");
+    }
+
+
+
+    std::vector<bool>
+    string_to_bool(const std::vector<std::string> &s)
+    {
+      std::vector<bool> result;
+      result.reserve(s.size());
+
+      for (auto &i : s)
+        result.push_back(string_to_bool(i));
+
+      return result;
+    }
+
+
+
+    unsigned int
+    string_to_unsigned_int(const std::string &s)
+    {
+      const int value = dealii::Utilities::string_to_int(s);
+      AssertThrow (value >= 0, ExcMessage("Negative number in string_to_unsigned_int() detected."));
+      return static_cast<unsigned int>(value);
+    }
+
+
+
+    std::vector<unsigned int>
+    string_to_unsigned_int(const std::vector<std::string> &s)
+    {
+      std::vector<unsigned int> result;
+      result.reserve(s.size());
+
+      for (auto &str : s)
+        result.emplace_back(string_to_unsigned_int(str));
+
+      return result;
     }
 
 
@@ -2426,7 +2355,7 @@ namespace aspect
             }
           const double sum_of_weights = std::accumulate(weights.begin(), weights.end(), 0.0);
           Assert (sum_of_weights > 0, ExcMessage ("The sum of the weights may not be smaller or equal to zero."));
-          return std::pow(averaged_parameter_derivative_part_1/sum_of_weights,-2) * averaged_parameter_derivative_part_2/sum_of_weights;
+          return Utilities::fixed_power<-2>(averaged_parameter_derivative_part_1/sum_of_weights) * averaged_parameter_derivative_part_2/sum_of_weights;
         }
       else if (p == 0)
         {
@@ -2522,11 +2451,32 @@ namespace aspect
       if ((strain_rate.norm() == 0) || (dviscosities_dstrain_rate.norm() == 0))
         return 1;
 
-      const double E = strain_rate * dviscosities_dstrain_rate;
-      if (E >= -eta * SPD_safety_factor)
+
+      // The factor in the Newton matrix is going to be of the form
+      //   2*eta I + (a \otimes b + b \otimes a)
+      // where a=strain_rate and b=dviscosities_dstrain_rate.
+      //
+      // If a,b are parallel, this simplifies to
+      //   [2*eta + 2 a:b] I =  2 [eta + a:b] I
+      // and we need to make sure that
+      //   [eta + alpha a:b] > (1-safety_factor)*eta
+      // by choosing alpha appropriately.
+
+      // So, first check: If
+      //   [eta + a:b] > (1-safety_factor)*eta
+      // is already satisfied, then we can choose alpha=1
+      const double a_colon_b = strain_rate * dviscosities_dstrain_rate;
+      if (eta + a_colon_b > eta * (1. - SPD_safety_factor))
         return 1.0;
       else
-        return SPD_safety_factor * std::abs(eta / E);
+        {
+          // Otherwise solve the equation above for alpha, which yields
+          //   a:b = -safety_factor*eta / a:b
+          // This can only ever happen if a:b < 0, so we get
+          //   a:b = safety_factor * abs(eta / a:b)
+          Assert (a_colon_b < 0, ExcInternalError());
+          return SPD_safety_factor * std::abs(eta / a_colon_b);
+        }
     }
 
 
@@ -2793,7 +2743,7 @@ namespace aspect
                      const Quadrature<dim>                                     &quadrature,
                      const std::function<void(
                        const typename DoFHandler<dim>::active_cell_iterator &,
-                       const std::vector<Point<dim>> &,
+                       const typename std_cxx20::type_identity<std::vector<Point<dim>>>::type &,
                        std::vector<double> &)>                                 &function,
                      VectorType                                                &vec_result)
     {
@@ -2827,26 +2777,29 @@ namespace aspect
 
             cell_vector = 0;
             local_mass_matrix = 0;
-            for (unsigned int point=0; point<n_q_points; ++point)
-              for (unsigned int i=0; i<dofs_per_cell; ++i)
-                {
-                  if (dof_handler.get_fe().system_to_component_index(i).first == component_index)
-                    cell_vector(i) +=
-                      rhs_values[point] *
-                      fe_values[extractor].value(i,point) *
-                      fe_values.JxW(point);
+            for (unsigned int q=0; q<n_q_points; ++q)
+              {
+                const double JxW = fe_values.JxW(q);
+                for (unsigned int i=0; i<dofs_per_cell; ++i)
+                  {
+                    if (dof_handler.get_fe().system_to_component_index(i).first == component_index)
+                      cell_vector(i) +=
+                        rhs_values[q] *
+                        fe_values[extractor].value(i,q) *
+                        JxW;
 
-                  for (unsigned int j=0; j<dofs_per_cell; ++j)
-                    if ((dof_handler.get_fe().system_to_component_index(i).first ==
-                         component_index)
-                        &&
-                        (dof_handler.get_fe().system_to_component_index(j).first ==
-                         component_index))
-                      local_mass_matrix(j,i) += (fe_values[extractor].value(i,point) * fe_values[extractor].value(j,point) *
-                                                 fe_values.JxW(point));
-                    else if (i == j)
-                      local_mass_matrix(i,j) = 1.;
-                }
+                    for (unsigned int j=0; j<dofs_per_cell; ++j)
+                      if ((dof_handler.get_fe().system_to_component_index(i).first ==
+                           component_index)
+                          &&
+                          (dof_handler.get_fe().system_to_component_index(j).first ==
+                           component_index))
+                        local_mass_matrix(j,i) += (fe_values[extractor].value(i,q) * fe_values[extractor].value(j,q) *
+                                                   JxW);
+                      else if (i == j)
+                        local_mass_matrix(i,j) = 1.;
+                  }
+              }
 
             // now invert the local mass matrix and multiply it with the rhs
             local_mass_matrix.gauss_jordan();
@@ -2855,6 +2808,7 @@ namespace aspect
             // then set the global solution vector to the values just computed
             cell->set_dof_values (local_projection, vec_result);
           }
+      vec_result.compress(VectorOperation::insert);
     }
 
 
@@ -2865,46 +2819,8 @@ namespace aspect
     (const unsigned int n_components,
      const std::function<Tensor<1,dim> (const Point<dim> &)> &function_object)
       :
-      Function<dim>(n_components),
-      function_object (function_object)
+      VectorFunctionFromTensorFunctionObject<dim>(function_object, 0, n_components)
     {
-    }
-
-
-
-    template <int dim>
-    double
-    VectorFunctionFromVelocityFunctionObject<dim>::value (const Point<dim> &p,
-                                                          const unsigned int component) const
-    {
-      Assert (component < this->n_components,
-              ExcIndexRange (component, 0, this->n_components));
-
-      if (component < dim)
-        {
-          const Tensor<1,dim> v = function_object(p);
-          return v[component];
-        }
-      else
-        return 0;
-    }
-
-
-
-    template <int dim>
-    void
-    VectorFunctionFromVelocityFunctionObject<dim>::
-    vector_value (const Point<dim>   &p,
-                  Vector<double>     &values) const
-    {
-      AssertDimension(values.size(), this->n_components);
-
-      // set everything to zero, and then the right components to their correct values
-      values = 0;
-
-      const Tensor<1,dim> v = function_object(p);
-      for (unsigned int d=0; d<dim; ++d)
-        values(d) = v[d];
     }
 
 
@@ -2938,9 +2854,9 @@ namespace aspect
           if (output_filename != "")
             {
               // output solver history
-              std::ofstream f((output_filename));
+              std::ofstream f(output_filename);
 
-              for (const auto &solver_control: solver_controls)
+              for (const auto &solver_control : solver_controls)
                 {
                   // Skip the output if no iterations were run for this solver
                   if (solver_control.last_step() == numbers::invalid_unsigned_int)
@@ -2951,7 +2867,7 @@ namespace aspect
                     f << std::endl;
 
                   unsigned int j=0;
-                  for (const auto &residual: solver_control.get_history_data())
+                  for (const auto &residual : solver_control.get_history_data())
                     f << j++ << ' ' << residual << std::endl;
                 }
 
@@ -2976,8 +2892,8 @@ namespace aspect
 
 
     std::vector<Tensor<2,3>>
-    rotation_matrices_random_draw_volume_weighting(const std::vector<double> volume_fraction,
-                                                   const std::vector<Tensor<2,3>> rotation_matrices,
+    rotation_matrices_random_draw_volume_weighting(const std::vector<double> &volume_fraction,
+                                                   const std::vector<Tensor<2,3>> &rotation_matrices,
                                                    const unsigned int n_output_matrices,
                                                    std::mt19937 &random_number_generator)
     {
@@ -3039,7 +2955,7 @@ namespace aspect
       std::array<double,3> euler_angles;
       for (size_t i = 0; i < 3; ++i)
         for (size_t j = 0; j < 3; ++j)
-          Assert(abs(rotation_matrix[i][j]) <= 1.0,
+          Assert(std::abs(rotation_matrix[i][j]) <= 1.0,
                  ExcMessage("rotation_matrix[" + std::to_string(i) + "][" + std::to_string(j) +
                             "] is larger than one: " + std::to_string(rotation_matrix[i][j]) + " (" + std::to_string(rotation_matrix[i][j]-1.0) + "). rotation_matrix = \n"
                             + std::to_string(rotation_matrix[0][0]) + " " + std::to_string(rotation_matrix[0][1]) + " " + std::to_string(rotation_matrix[0][2]) + "\n"
@@ -3219,6 +3135,60 @@ namespace aspect
         return symmetrize((rotation_matrix*input_tensor)*rotation_matrix_transposed);
       }
 
+      SymmetricTensor<2,6>
+      rotate_kelvin_tensor(const Tensor<2,3> &rotation_tensor, const SymmetricTensor<2,6> &input_tensor)
+      {
+        // rotating a 4th order tensor represented as a matrix in kelvin notation
+        // by computing $C'=MCM^T$ and using the same principle as in (Carcione, J. M. (2007).
+        // Wave Fields in Real Media: Wave Propagation in Anisotropic, Anelastic,
+        // Porous and Electromagnetic Media. Netherlands: Elsevier Science. Pages 8-9).
+        // though this time using kelvin notation
+
+        Tensor<2,6> rotation_matrix;
+        rotation_matrix[0][0] = Utilities::fixed_power<2>(rotation_tensor[0][0]);
+        rotation_matrix[0][1] = Utilities::fixed_power<2>(rotation_tensor[0][1]);
+        rotation_matrix[0][2] = Utilities::fixed_power<2>(rotation_tensor[0][2]);
+        rotation_matrix[0][3] = numbers::SQRT2*rotation_tensor[0][1]*rotation_tensor[0][2];
+        rotation_matrix[0][4] = numbers::SQRT2*rotation_tensor[0][0]*rotation_tensor[0][2];
+        rotation_matrix[0][5] = numbers::SQRT2*rotation_tensor[0][0]*rotation_tensor[0][1];
+
+        rotation_matrix[1][0] = Utilities::fixed_power<2>(rotation_tensor[1][0]);
+        rotation_matrix[1][1] = Utilities::fixed_power<2>(rotation_tensor[1][1]);
+        rotation_matrix[1][2] = Utilities::fixed_power<2>(rotation_tensor[1][2]);
+        rotation_matrix[1][3] = numbers::SQRT2*rotation_tensor[1][1]*rotation_tensor[1][2];
+        rotation_matrix[1][4] = numbers::SQRT2*rotation_tensor[1][0]*rotation_tensor[1][2];
+        rotation_matrix[1][5] = numbers::SQRT2*rotation_tensor[1][0]*rotation_tensor[1][1];
+
+        rotation_matrix[2][0] = Utilities::fixed_power<2>(rotation_tensor[2][0]);
+        rotation_matrix[2][1] = Utilities::fixed_power<2>(rotation_tensor[2][1]);
+        rotation_matrix[2][2] = Utilities::fixed_power<2>(rotation_tensor[2][2]);
+        rotation_matrix[2][3] = numbers::SQRT2*rotation_tensor[2][1]*rotation_tensor[2][2];
+        rotation_matrix[2][4] = numbers::SQRT2*rotation_tensor[2][0]*rotation_tensor[2][2];
+        rotation_matrix[2][5] = numbers::SQRT2*rotation_tensor[2][0]*rotation_tensor[2][1];
+
+        rotation_matrix[3][0] = numbers::SQRT2*rotation_tensor[1][0]*rotation_tensor[2][0];
+        rotation_matrix[3][1] = numbers::SQRT2*rotation_tensor[1][1]*rotation_tensor[2][1];
+        rotation_matrix[3][2] = numbers::SQRT2*rotation_tensor[1][2]*rotation_tensor[2][2];
+        rotation_matrix[3][3] = rotation_tensor[1][1]*rotation_tensor[2][2]+rotation_tensor[1][2]*rotation_tensor[2][1];
+        rotation_matrix[3][4] = rotation_tensor[1][0]*rotation_tensor[2][2]+rotation_tensor[1][2]*rotation_tensor[2][0];
+        rotation_matrix[3][5] = rotation_tensor[1][0]*rotation_tensor[2][1]+rotation_tensor[1][1]*rotation_tensor[2][0];
+
+        rotation_matrix[4][0] = numbers::SQRT2*rotation_tensor[0][0]*rotation_tensor[2][0];
+        rotation_matrix[4][1] = numbers::SQRT2*rotation_tensor[0][1]*rotation_tensor[2][1];
+        rotation_matrix[4][2] = numbers::SQRT2*rotation_tensor[0][2]*rotation_tensor[2][2];
+        rotation_matrix[4][3] = rotation_tensor[0][1]*rotation_tensor[2][2]+rotation_tensor[0][2]*rotation_tensor[2][1];
+        rotation_matrix[4][4] = rotation_tensor[0][0]*rotation_tensor[2][2]+rotation_tensor[0][2]*rotation_tensor[2][0];
+        rotation_matrix[4][5] = rotation_tensor[0][0]*rotation_tensor[2][1]+rotation_tensor[0][1]*rotation_tensor[2][0];
+
+        rotation_matrix[5][0] = numbers::SQRT2*rotation_tensor[0][0]*rotation_tensor[1][0];
+        rotation_matrix[5][1] = numbers::SQRT2*rotation_tensor[0][1]*rotation_tensor[1][1];
+        rotation_matrix[5][2] = numbers::SQRT2*rotation_tensor[0][2]*rotation_tensor[1][2];
+        rotation_matrix[5][3] = rotation_tensor[0][1]*rotation_tensor[1][2]+rotation_tensor[0][2]*rotation_tensor[1][1];
+        rotation_matrix[5][4] = rotation_tensor[0][0]*rotation_tensor[1][2]+rotation_tensor[0][2]*rotation_tensor[1][0];
+        rotation_matrix[5][5] = rotation_tensor[0][0]*rotation_tensor[1][1]+rotation_tensor[0][1]*rotation_tensor[1][0];
+
+        return symmetrize((rotation_matrix*input_tensor)*transpose(rotation_matrix));
+      }
 
 
       SymmetricTensor<2,6>
@@ -3394,6 +3364,7 @@ namespace aspect
       }
 
 
+
       template <>
       const Tensor<3,3> &levi_civita<3>()
       {
@@ -3412,6 +3383,37 @@ namespace aspect
         }();
 
         return t;
+      }
+
+
+
+      template <int dim>
+      SymmetricTensor<2,dim> consistent_deviator(const SymmetricTensor<2,dim> &input)
+      {
+        SymmetricTensor<2,dim> output = input;
+
+        const double volumetric_value = trace(input) / 3.;
+        for (unsigned int d = 0; d < dim; ++d)
+          output[d][d] -= volumetric_value;
+
+        return output;
+      }
+
+
+
+      template <int dim>
+      double consistent_second_invariant_of_deviatoric_tensor(const SymmetricTensor<2,dim> &t)
+      {
+        if (dim == 2)
+          // Under plane strain assumption, t is not a 2D tensor, but a "slice" of
+          // a 3D tensor. Therefore, t[2][2] is generally not zero, but equals to
+          // -(t[0][0] + t[1][1]).
+          return -( t[0][0] * t[0][0] + t[1][1] * t[1][1]
+                    + (t[0][0] + t[1][1]) * (t[0][0] + t[1][1])
+                    + t[0][1] * t[0][1] * 2.0
+                  ) * 0.5;
+        else
+          return second_invariant(t);
       }
     }
 
@@ -3495,7 +3497,7 @@ namespace aspect
                    const Quadrature<dim> &quadrature, \
                    const std::function<void( \
                                              const DoFHandler<dim>::active_cell_iterator &, \
-                                             const std::vector<Point<dim>> &, \
+                                             const std_cxx20::type_identity<std::vector<Point<dim>>>::type &, \
                                              std::vector<double> &)> &function, \
                    dealii::LinearAlgebra::distributed::Vector<double> &vec_result); \
   \
@@ -3509,7 +3511,27 @@ namespace aspect
                                              const DoFHandler<dim>::active_cell_iterator &, \
                                              const std::vector<Point<dim>> &, \
                                              std::vector<double> &)> &function, \
-                   LinearAlgebra::BlockVector &vec_result);
+                   LinearAlgebra::BlockVector &vec_result); \
+  \
+  template \
+  Tensor<1, dim> \
+  calculate_approximate_darcy_velocity (const MaterialModel::MaterialModelInputs<dim> &in, \
+                                        const MaterialModel::MaterialModelOutputs<dim> &out, \
+                                        std::shared_ptr<const MaterialModel::MeltOutputs<dim>> fluid_out, \
+                                        const Tensor<1, dim> &solid_velocity, \
+                                        const Tensor<1, dim> &gravity, \
+                                        const unsigned int porosity_idx, \
+                                        unsigned int q, \
+                                        bool use_pressure_gradient_for_darcy_field); \
+  namespace Tensors \
+  { \
+    template \
+    SymmetricTensor<2,dim> consistent_deviator(const SymmetricTensor<2,dim> &); \
+    \
+    template \
+    double consistent_second_invariant_of_deviatoric_tensor(const SymmetricTensor<2,dim> &); \
+  }
+
 
     ASPECT_INSTANTIATE(INSTANTIATE)
 

@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2016 - 2021 by the authors of the ASPECT code.
+ Copyright (C) 2016 - 2023 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -22,7 +22,7 @@
 #include <aspect/volume_of_fluid/handler.h>
 
 #include <deal.II/lac/affine_constraints.h>
-#include <deal.II/lac/trilinos_solver.h>
+#include <deal.II/lac/solver_cg.h>
 
 #include <deal.II/fe/fe_values.h>
 
@@ -33,16 +33,16 @@ namespace aspect
   {
     const unsigned int block_idx = field.volume_fraction.block_index;
 
-    TimerOutput::Scope timer (sim.computing_timer, "Solve volume of fluid system");
+    this->get_computing_timer().enter_subsection("Solve volume of fluid system");
     this->get_pcout() << "   Solving volume of fluid system... " << std::flush;
 
     const double tolerance = std::max(1e-50,
                                       volume_of_fluid_solver_tolerance*sim.system_rhs.block(block_idx).l2_norm());
 
     SolverControl solver_control (1000, tolerance);
+    SolverCG<LinearAlgebra::Vector> solver(solver_control);
 
-    TrilinosWrappers::SolverCG solver(solver_control);
-    TrilinosWrappers::PreconditionJacobi precondition;
+    LinearAlgebra::PreconditionJacobi precondition;
     precondition.initialize(sim.system_matrix.block(block_idx, block_idx));
 
     // Create distributed vector (we need all blocks here even though we only
@@ -91,6 +91,8 @@ namespace aspect
     // Do not add VolumeOfFluid solver iterations to statistics, duplication due to
     // dimensional splitting results in incorrect line formatting (lines of
     // data split inconsistently with missing values)
+
+    this->get_computing_timer().leave_subsection("Solve volume of fluid system");
   }
 }
 

@@ -31,8 +31,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     /**
      * A data structure containing output fields that can be filled by the
      * evaluate() function of an EquationOfState model. It contains those
@@ -98,6 +96,35 @@ namespace aspect
        */
       std::vector<double> entropy_derivative_temperature;
     };
+
+
+
+    /**
+    * Modify the equation of state outputs for all compositions and phases
+    * according to the supplied reaction progress.
+    *
+    * The input @p eos_outputs_all_phases contains equation of state properties
+    * for every phase of every composition at the current conditions. For each
+    * composition, this function uses the corresponding entries in
+    * @p reaction_progress_values and @p reaction_progress_mapping to modify the
+    * equation of state properties of phases affected by kinetic reactions.
+    *
+    * The vector @p reaction_progress_values contains one value for each kinetic
+    * reaction, while @p reaction_progress_mapping specifies the associated phase
+    * transition index for each reaction. The vector
+    * @p n_phase_transitions_per_composition is used to determine which phase
+    * transitions belong to each composition.
+    *
+    * The modified equation of state properties are written back into
+    * @p eos_outputs_all_phases, preserving the data layout for all phases and
+    * compositions so they can subsequently be used during phase averaging.
+    */
+    template <int dim>
+    void
+    reaction_progress_modify_equation_of_state_outputs(const std::vector<double> &reaction_progress_values,
+                                                       const std::vector<unsigned int> &reaction_progress_mapping,
+                                                       const std::vector<unsigned int> &n_phase_transitions_per_composition,
+                                                       EquationOfStateOutputs<dim> &eos_outputs_all_phases);
 
 
 

@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2015 - 2022 by the authors of the ASPECT code.
+ Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -21,7 +21,7 @@
 #ifndef _aspect_particle_integrator_interface_h
 #define _aspect_particle_integrator_interface_h
 
-#include <aspect/plugins.h>
+#include <aspect/particle/interface.h>
 #include <aspect/global.h>
 
 #include <deal.II/particles/particle.h>
@@ -34,7 +34,6 @@ namespace aspect
   {
     namespace Integrator
     {
-      using namespace dealii;
       using namespace dealii::Particles;
 
       /**
@@ -44,23 +43,9 @@ namespace aspect
        * @ingroup ParticleIntegrators
        */
       template <int dim>
-      class Interface
+      class Interface : public ParticleInterfaceBase
       {
         public:
-          /**
-           * Destructor. Made virtual so that derived classes can be created
-           * and destroyed through pointers to the base class.
-           */
-          virtual ~Interface () = default;
-
-          /**
-           * Initialization function. This function is called once at the
-           * beginning of the program after parse_parameters is run.
-           */
-          virtual
-          void
-          initialize ();
-
           /**
            * Perform an integration step of moving the particles of one cell
            * by the specified timestep dt. Implementations of this function
@@ -95,7 +80,7 @@ namespace aspect
            * false, which is ok for single-step integration methods.
            *
            * @return This function returns true if the integrator requires
-           * another integration step. The particle world will continue
+           * another integration step. The particle manager will continue
            * to start new integration steps until this function returns false.
            */
           virtual bool new_integration_step();
@@ -122,7 +107,7 @@ namespace aspect
            * requires the solution vector at the old time (k), and the third entry
            * indicates if the particle integrator requires the solution vector
            * at the new time (k+1).
-          */
+           */
           virtual std::array<bool, 3> required_solution_vectors() const = 0;
 
           /**
@@ -158,27 +143,6 @@ namespace aspect
           void *
           write_data(const typename ParticleHandler<dim>::particle_iterator &particle,
                      void *data) const;
-
-
-          /**
-           * Declare the parameters this class takes through input files. The
-           * default implementation of this function does not describe any
-           * parameters. Consequently, derived classes do not have to overload
-           * this function if they do not take any runtime parameters.
-           */
-          static
-          void
-          declare_parameters (ParameterHandler &prm);
-
-          /**
-           * Read the parameters this class declares from the parameter file.
-           * The default implementation of this function does not read any
-           * parameters. Consequently, derived classes do not have to overload
-           * this function if they do not take any runtime parameters.
-           */
-          virtual
-          void
-          parse_parameters (ParameterHandler &prm);
       };
 
 

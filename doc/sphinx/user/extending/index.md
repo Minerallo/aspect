@@ -1,5 +1,5 @@
 (cha:extending)=
-# Extending and contributing to ASPECT
+# Extending and contributing
 
 After you have familiarized yourself with
 ASPECT using the examples of
@@ -95,7 +95,7 @@ which there is an extensive amount of documentation:
     deal.II does.
 
 -   A collection of modules at
-    <https://www.dealii.org/developer/doxygen/deal.II/modules.html> that give
+    <https://www.dealii.org/developer/doxygen/deal.II/topics.html> that give
     an overview of whole groups of classes and functions and how they work
     together to achieve their goal.
 
@@ -125,8 +125,7 @@ which there is an extensive amount of documentation:
     <https://github.com/dealii/dealii/wiki/Frequently-Asked-Questions> that
     also have extensive sections on developing code with
     deal.II as well as on debugging. It also answers
-    a number of questions we frequently get about the use of C++ in <span
-    deal.II.
+    a number of questions we frequently get about the use of C++ in deal.II.
 
 -   Several other parts of the deal.II website
     at <https://www.dealii.org/> also have information that may be relevant if
@@ -155,6 +154,7 @@ section on how to debug deal.II programs.
 ---
 maxdepth: 1
 ---
+contributing.md
 idea-of-plugins.md
 write-a-plugin.md
 write-a-cookbook/index.md
@@ -163,7 +163,7 @@ compatibility.md
 signals.md
 extending-solver.md
 testing/index.md
-contributing.md
+benchmarking-run-time.md
 future-plans.md
 release-tasklist-link.md
 :::

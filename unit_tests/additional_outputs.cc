@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2018 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -58,9 +58,7 @@ namespace
       void evaluate(const MaterialModel::MaterialModelInputs<dim> &/*in*/,
                     MaterialModel::MaterialModelOutputs<dim> &out) const override
       {
-        AdditionalOutputs1<dim> *additional;
-
-        additional = out.template get_additional_output<AdditionalOutputs1<dim>>();
+        const auto additional = out.template get_additional_output_object<AdditionalOutputs1<dim>>();
         additional->additional_material_output1[0] = 42.0;
       }
   };
@@ -77,22 +75,22 @@ TEST_CASE("AdditionalOutputs works")
   in.requested_properties = MaterialProperties::additional_outputs;
 
 
-  REQUIRE(out.get_additional_output<AdditionalOutputs1<dim>>() == NULL);
+  REQUIRE(out.has_additional_output_object<AdditionalOutputs1<dim>>() == false);
 
   out.additional_outputs.push_back(std::make_unique<AdditionalOutputs1<dim>> (1, 1));
 
-  REQUIRE(out.get_additional_output<AdditionalOutputs1<dim>>() != NULL);
+  REQUIRE(out.has_additional_output_object<AdditionalOutputs1<dim>>());
 
   Material1<dim> mat;
   mat.evaluate(in, out);
 
-  REQUIRE(out.get_additional_output<AdditionalOutputs1<dim>>()->additional_material_output1[0] == 42.0);
+  REQUIRE(out.get_additional_output_object<AdditionalOutputs1<dim>>()->additional_material_output1[0] == 42.0);
 
   // test const version of get_additional_output:
   {
     const MaterialModelOutputs<dim> &const_out = out;
-    REQUIRE(const_out.get_additional_output<AdditionalOutputs1<dim>>() != NULL);
-    const AdditionalOutputs1<dim> *a = const_out.get_additional_output<AdditionalOutputs1<dim>>();
+    REQUIRE(const_out.has_additional_output_object<AdditionalOutputs1<dim>>());
+    const auto a = const_out.get_additional_output_object<AdditionalOutputs1<dim>>();
     REQUIRE(a != nullptr);
   }
 }

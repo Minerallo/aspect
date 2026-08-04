@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -32,8 +32,6 @@ namespace aspect
 {
   namespace GeometryModel
   {
-    using namespace dealii;
-
     namespace internal
     {
       /**
@@ -46,7 +44,7 @@ namespace aspect
           /**
            * Constructor
            */
-          EllipsoidalChunkGeometry(const InitialTopographyModel::Interface<dim> &topography,
+          EllipsoidalChunkGeometry(const std::shared_ptr<const InitialTopographyModel::Interface<dim>> &topography,
                                    const double para_semi_major_axis_a,
                                    const double para_eccentricity,
                                    const double para_semi_minor_axis_b,
@@ -102,6 +100,11 @@ namespace aspect
           std::unique_ptr<Manifold<dim,3>>
           clone() const override;
 
+          /**
+           * A pointer to the topography model.
+           */
+          const std::shared_ptr<const InitialTopographyModel::Interface<dim>> topography;
+
         private:
           /**
            * This function adds topography to the cartesian coordinates.
@@ -114,11 +117,6 @@ namespace aspect
            * For the equation details, please see deal.ii step 53.
            */
           Point<3> pull_back_topography (const Point<3> &phi_theta_d) const;
-
-          /**
-           * A pointer to the topography model.
-           */
-          const InitialTopographyModel::Interface<dim> *topography;
 
           const double semi_major_axis_a;
           const double eccentricity;
@@ -192,7 +190,7 @@ namespace aspect
         /**
          * Return whether the given point lies within the domain specified
          * by the geometry. This function does not take into account
-         * initial or dynamic surface topography.
+         * dynamic surface topography.
          */
         bool
         point_is_in_domain(const Point<dim> &point) const override;
@@ -257,12 +255,6 @@ namespace aspect
          */
         void
         parse_parameters(ParameterHandler &prm) override;
-
-        /**
-         * Calculate radius at current position.
-         */
-        double
-        get_radius(const Point<dim> &position) const;
 
         /**
          * Retrieve the semi minor axis b value.

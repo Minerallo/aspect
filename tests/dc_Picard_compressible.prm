@@ -3,7 +3,7 @@
 #### version of a production type setup.
 #### Global parameters
 set Dimension                              = 2
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set Start time                             = 0
 set End time                               = 0
 set Nonlinear solver scheme                = single Advection, iterated defect correction Stokes
@@ -12,8 +12,6 @@ set Max nonlinear iterations               = 150
 set Max nonlinear iterations in pre-refinement = 0
 set Pressure normalization                 = surface
 set Maximum time step                      = 1e6
-
-#set Number of cheap Stokes solver steps    = 200  # aspect 2.2
 set Adiabatic surface temperature          = 1600
 set CFL number                             = 0.5
 
@@ -221,7 +219,7 @@ subsection Material model
 
     #     Diffusion creep
     set Prefactors for diffusion creep            = background: 1.e-9|1.e-9|1.0e-16|1.0e-16, plastic_strain: 1.e-9
-    set Stress exponents for diffusion creep      = 1.0                                                  #### doesnt exist anymore??? ####
+    set Stress exponents for diffusion creep      = 1.0                                                  #### doesn't exist anymore??? ####
     set Activation energies for diffusion creep   = background: 3.35e5|3.35e5|2.e5|2.e5, plastic_strain: 3.35e5
     set Activation volumes for diffusion creep    = background: 4.8e-6|4.8e-6|1.1e-6|1.1e-6, plastic_strain: 4.8e-6
     set Grain size                                = 1 #1e-3

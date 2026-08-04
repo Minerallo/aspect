@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -49,7 +49,7 @@ namespace aspect
        * (once they exist). For more thoughts on that, see the documentation for the
        * grain lag angle postprocessor.
        */
-      template<int dim>
+      template <int dim>
       class ISARotationTimescale: public CellDataVectorCreator<dim>, public SimulatorAccess<dim>
       {
         public:

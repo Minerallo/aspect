@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018-2024 by the authors of the World Builder code.
+  Copyright (C) 2018-2026 by the authors of the World Builder code.
 
   This file is part of the World Builder.
 
@@ -24,6 +24,7 @@
 #include "world_builder/features/subducting_plate.h"
 #include "world_builder/gravity_model/interface.h"
 #include "world_builder/nan.h"
+#include "world_builder/point.h"
 #include "world_builder/types/array.h"
 #include "world_builder/types/bool.h"
 #include "world_builder/types/double.h"
@@ -35,6 +36,8 @@
 #include <iostream>
 #include <world_builder/coordinate_system.h>
 #include <world_builder/objects/distance_from_surface.h>
+
+#include <algorithm>
 
 #ifdef WB_WITH_MPI
 // we don't need the c++ MPI wrappers
@@ -52,6 +55,16 @@
 namespace WorldBuilder
 {
   using namespace Utilities;
+
+  double
+  World::maximum_topography() const
+  {
+    double maximum = 0.0;
+    for (const auto &feature : parameters.features)
+      maximum = std::max(maximum, feature->maximum_topography());
+
+    return maximum;
+  }
 
   World::World(std::string filename, bool has_output_dir, const std::string &output_dir, unsigned long random_number_seed, const bool limit_debug_consistency_checks_)
     :
@@ -163,20 +176,16 @@ namespace WorldBuilder
      * version number of the program.
      */
 
-    WBAssertThrow((Version::MAJOR == "0"
-                   && prm.get<std::string>("version") == Version::MAJOR + "." + Version::MINOR)
-                  || (Version::MAJOR != "0"
-                      && prm.get<std::string>("version") == Version::MAJOR),
-                  "The major and minor version combination (for major version 0) or the major "
-                  "version (for major versions after 0) for which is input file was written "
+    WBAssertThrow((prm.get<std::string>("version") == Version::MAJOR + "." + Version::MINOR),
+                  "The major and minor version combination for which this input file was written "
                   "is not the same as the version of the World Builder you are running. This means "
-                  "That there may have been incompatible changes made between the versions. \n\n"
+                  "that there may have been incompatible changes made between the versions. \n\n"
                   "Verify those changes and whether they affect your model. If this is not "
                   "the case, adjust the version number in the input file. \n\nThe provided version "
-                  "number is \"" << prm.get<std::string>("version") << "\", while the used world builder "
+                  "number is \"" << prm.get<std::string>("version") << "\", while the used World Builder "
                   "has  (major.minor) version \"" << Version::MAJOR << "." << Version::MINOR << "\". "
                   "If you created this file from scratch, fill set the version number to \"" <<
-                  Version::MAJOR << "." << Version::MINOR << "\" to continue. If you got the world builder "
+                  Version::MAJOR << "." << Version::MINOR << "\" to continue. If you got the World Builder "
                   "file from somewhere, make sure that the output is what you expect it to be, because "
                   "backwards incompatible changes may have been made to the code.");
 
@@ -251,7 +260,7 @@ namespace WorldBuilder
     const int local_seed = prm.get<int>("random number seed");
 
     if (local_seed>=0)
-      random_number_engine.seed(local_seed+MPI_RANK);
+      random_number_engine.seed(static_cast<unsigned int>(local_seed+MPI_RANK));
 
     /**
      * Now load the features. Some features use for example temperature values,
@@ -269,6 +278,52 @@ namespace WorldBuilder
         }
     }
     prm.leave_subsection();
+  }
+
+
+
+  unsigned int
+  World::properties_output_size(const std::vector<std::array<unsigned int,3>> &properties) const
+  {
+    unsigned int n_output_entries = 0;
+    for (auto property : properties)
+      {
+        switch (property[0])
+          {
+            case 1: // Temperature
+              n_output_entries += 1;
+              break;
+            case 2: // composition
+              n_output_entries += 1;
+              break;
+            case 3: // grains (10 entries per grain)
+            {
+              n_output_entries += property[2]*10;
+              break;
+            }
+            case 4: // tag
+            {
+              n_output_entries += 1;
+              break;
+            }
+            case 5: // velocity (3 entries)
+            {
+              n_output_entries += 3;
+              break;
+            }
+            case 6: // topography
+            {
+              n_output_entries += 1;
+              break;
+            }
+            default:
+              WBAssertThrow(false,
+                            "Internal error: Unimplemented property provided. " <<
+                            "Only temperature (1), composition (2), grains (3), tag (4), velocity (5) or topography (6) are allowed. "
+                            "Provided property number was: " << property[0]);
+          }
+      }
+    return n_output_entries;
   }
 
 
@@ -309,7 +364,58 @@ namespace WorldBuilder
 
     const std::array<double, 3> point_3d_cartesian = this->parameters.coordinate_system->natural_to_cartesian_coordinates(coord_3d.get_array());
 
-    return this->properties(point_3d_cartesian, depth, properties);
+    std::vector<double> results = this->properties(point_3d_cartesian, depth, properties);
+    unsigned int counter = 0;
+    for (auto property : properties)
+      {
+        switch (property[0])
+          {
+            case 1:   // temperature
+            {
+              counter += 1;
+              break;
+            }
+            case 2:   // composition
+            {
+              counter += 1;
+              break;
+            }
+            case 3:   // grains
+            {
+              counter += 10;
+              break;
+            }
+            case 4:   // tag
+            {
+              counter += 1;
+              break;
+            }
+            case 5:
+            {
+              // convert 3d velocity vector to a 2d one
+              Point<2> vector = Point<2>(cartesian);
+              vector[0] = surface_coord_conversions[0]*results[counter]+surface_coord_conversions[1]*results[counter+1];
+              vector[1] = results[counter+2];
+              results[counter] = surface_coord_conversions[0]*results[counter]+surface_coord_conversions[1]*results[counter+1];
+              results[counter+1] = results[counter+2];
+              results[counter+2] = 0;
+              counter += 3;
+              break;
+            }
+            case 6: // topography
+            {
+              counter += 1;
+              break;
+            }
+            default:
+              WBAssertThrow(false,
+                            "Internal error: Unimplemented property provided. " <<
+                            "Only temperature (1), composition (2), grains (3), tag (4), velocity (5) or topography (6) are allowed. "
+                            "Provided property number was: " << property[0]);
+          }
+
+      }
+    return results;
   }
 
 
@@ -376,10 +482,26 @@ namespace WorldBuilder
               properties_local.emplace_back(properties[i_property]);
               break;
             }
+            case 5: // velocity
+            {
+              entry_in_output.emplace_back(output.size());
+              output.emplace_back(0);
+              output.emplace_back(0);
+              output.emplace_back(0);
+              properties_local.emplace_back(properties[i_property]);
+              break;
+            }
+            case 6: // topography
+            {
+              entry_in_output.emplace_back(output.size());
+              output.emplace_back(0);
+              properties_local.emplace_back(properties[i_property]);
+              break;
+            }
             default:
               WBAssertThrow(false,
                             "Internal error: Unimplemented property provided. " <<
-                            "Only temperature (1), composition (2), grains (3) or tag (4) are allowed. "
+                            "Only temperature (1), composition (2), grains (3), tag (4), velocity (5) and topography (6) are allowed. "
                             "Provided property number was: " << properties[i_property][0]);
           }
       }
@@ -445,7 +567,7 @@ namespace WorldBuilder
                 const unsigned int composition_number,
                 size_t number_of_grains) const
   {
-    return WorldBuilder::grains(properties(point, depth, {{{3,composition_number,(unsigned int)number_of_grains}}}),(unsigned int)number_of_grains,0);
+    return WorldBuilder::grains(properties(point, depth, {{{3,composition_number,static_cast<unsigned int>(number_of_grains)}}}),static_cast<unsigned int>(number_of_grains),0);
   }
 
   WorldBuilder::grains
@@ -454,7 +576,7 @@ namespace WorldBuilder
                 const unsigned int composition_number,
                 size_t number_of_grains) const
   {
-    return WorldBuilder::grains(properties(point, depth, {{{3,composition_number,(unsigned int)number_of_grains}}}),(unsigned int)number_of_grains,0);
+    return WorldBuilder::grains(properties(point, depth, {{{3,composition_number,static_cast<unsigned int>(number_of_grains)}}}),static_cast<unsigned int>(number_of_grains),0);
   }
 
   std::mt19937 &
@@ -495,4 +617,3 @@ namespace WorldBuilder
   }
 
 } // namespace WorldBuilder
-

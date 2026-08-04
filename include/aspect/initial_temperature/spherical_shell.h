@@ -30,8 +30,6 @@ namespace aspect
 {
   namespace InitialTemperature
   {
-    using namespace dealii;
-
     /**
      * A class that describes a perturbed initial temperature field for the
      * spherical shell.
@@ -66,6 +64,8 @@ namespace aspect
          * spherical shell. Historically, this was permanently set to 6 (hence
          * the class name SphericalHexagonalPerturbation) The default is 6 in
          * order to provide backwards compatibility.
+         *
+         * This variable is read from the parameter file through a parameter called 'Angular mode'.
          */
         unsigned int angular_mode;
 
@@ -75,6 +75,7 @@ namespace aspect
          * will cause one of the perturbations to point north/up. Rotation
          * offset is set to -45 degrees by default in order to provide
          * backwards compatibility.
+         * This variable is read from the parameter file through a parameter called 'Rotation offset'.
          */
         double rotation_offset;
 
@@ -121,10 +122,25 @@ namespace aspect
         parse_parameters (ParameterHandler &prm) override;
 
       private:
+        /**
+         * This variable is read from the parameter file through a parameter called 'Angle'.
+         */
         double angle;
+        /**
+         * This variable is read from the parameter file through a parameter called 'Non-dimensional depth'.
+         */
         double depth;
+        /**
+         * This variable is read from the parameter file through a parameter called 'Amplitude'.
+         */
         double amplitude;
+        /**
+         * This variable is read from the parameter file through a parameter called 'Sigma'.
+         */
         double sigma;
+        /**
+         * This variable is read from the parameter file through a parameter called 'Sign'.
+         */
         double sign;
         unsigned int npoint;
 

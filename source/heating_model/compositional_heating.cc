@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2017 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2017 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -51,6 +51,17 @@ namespace aspect
           heating_model_outputs.lhs_latent_heat_terms[q] = 0.0;
         }
     }
+
+
+
+    template <int dim>
+    MaterialModel::MaterialProperties::Property
+    CompositionalHeating<dim>::
+    get_required_properties () const
+    {
+      return MaterialModel::MaterialProperties::thermal_expansion_coefficient;
+    }
+
 
 
     template <int dim>

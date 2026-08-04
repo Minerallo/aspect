@@ -1,7 +1,6 @@
 
 Loading shared library <./libtosi_benchmark_gmg_dc_picard_solver.debug.so>
 
-Vectorization over 2 doubles = 128 bits (SSE2), VECTORIZATION_LEVEL=1
 Number of active cells: 256 (on 5 levels)
 Number of degrees of freedom: 3,556 (2,178+289+1,089)
 
@@ -9,33 +8,41 @@ Number of degrees of freedom: 3,556 (2,178+289+1,089)
    Solving temperature system... 0 iterations.
    Initial Newton Stokes residual = 1.97927, v = 1.97927, p = 0
 
-   Solving Stokes system... 7+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 1: 1, norm of the rhs: 1.97927
+   Solving Stokes system (GMG)... 7+0 iterations.
+      Newton system information: Norm of the rhs: 1.97927
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 1: 1
 
-   Solving Stokes system... 18+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 2: 0.00662148, norm of the rhs: 0.0131057, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 18+0 iterations.
+      Newton system information: Norm of the rhs: 0.0131057, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 2: 0.00662148
 
-   Solving Stokes system... 16+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 3: 0.00090009, norm of the rhs: 0.00178152, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 16+0 iterations.
+      Newton system information: Norm of the rhs: 0.00178152, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 3: 0.00090009
 
-   Solving Stokes system... 16+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 4: 0.000131035, norm of the rhs: 0.000259354, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 16+0 iterations.
+      Newton system information: Norm of the rhs: 0.000259354, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 4: 0.000131035
 
-   Solving Stokes system... 15+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 5: 1.9738e-05, norm of the rhs: 3.90667e-05, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 15+0 iterations.
+      Newton system information: Norm of the rhs: 3.90667e-05, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 5: 1.97379e-05
 
-   Solving Stokes system... 16+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 6: 3.03324e-06, norm of the rhs: 6.00361e-06, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 16+0 iterations.
+      Newton system information: Norm of the rhs: 6.00351e-06, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 6: 3.03319e-06
 
-   Solving Stokes system... 18+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 7: 4.72157e-07, norm of the rhs: 9.34527e-07, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 17+0 iterations.
+      Newton system information: Norm of the rhs: 9.34491e-07, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 7: 4.72139e-07
 
-   Solving Stokes system... 19+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 8: 7.44201e-08, norm of the rhs: 1.47297e-07, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 19+0 iterations.
+      Newton system information: Norm of the rhs: 1.47431e-07, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 8: 7.44877e-08
 
 
    Postprocessing:
-     RMS, max velocity:                               3.35 m/s, 15.8 m/s
+     RMS, max velocity:                               3.35 m/s, 15.9 m/s
      Temperature min/avg/max:                         0 K, 0.5 K, 1 K
      Heat fluxes through boundary parts:              0 W, 0 W, -1 W, 1 W
      Writing graphical output:                        output-tosi_benchmark_gmg_dc_picard_solver/solution/solution-00000
@@ -46,99 +53,133 @@ Number of degrees of freedom: 3,556 (2,178+289+1,089)
    Solving temperature system... 19 iterations.
    Initial Newton Stokes residual = 0.0373897, v = 0.0373897, p = 0
 
-   Solving Stokes system... 19+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 1: 0.205101, norm of the rhs: 0.00766867
+   Solving Stokes system (GMG)... 19+0 iterations.
+      Newton system information: Norm of the rhs: 0.00766867
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 1: 0.205101
 
-   Solving Stokes system... 18+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 2: 0.00960573, norm of the rhs: 0.000359155, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 18+0 iterations.
+      Newton system information: Norm of the rhs: 0.000359155, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 2: 0.00960571
 
-   Solving Stokes system... 17+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 3: 0.00178143, norm of the rhs: 6.66072e-05, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 17+0 iterations.
+      Newton system information: Norm of the rhs: 6.66077e-05, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 3: 0.00178145
 
-   Solving Stokes system... 17+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 4: 0.000331184, norm of the rhs: 1.23829e-05, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 16+0 iterations.
+      Newton system information: Norm of the rhs: 1.23828e-05, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 4: 0.000331182
 
-   Solving Stokes system... 18+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 5: 6.24971e-05, norm of the rhs: 2.33675e-06, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 17+0 iterations.
+      Newton system information: Norm of the rhs: 2.33687e-06, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 5: 6.25003e-05
 
-   Solving Stokes system... 18+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 6: 1.19504e-05, norm of the rhs: 4.46824e-07, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 18+0 iterations.
+      Newton system information: Norm of the rhs: 4.46936e-07, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 6: 1.19534e-05
 
-   Solving Stokes system... 20+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 7: 2.33587e-06, norm of the rhs: 8.73374e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 20+0 iterations.
+      Newton system information: Norm of the rhs: 8.75903e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 7: 2.34263e-06
 
-   Solving Stokes system... 21+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 8: 6.02797e-07, norm of the rhs: 2.25384e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 21+0 iterations.
+      Newton system information: Norm of the rhs: 2.22969e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 8: 5.96338e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 9: 4.07026e-07, norm of the rhs: 1.52186e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 23+0 iterations.
+      Newton system information: Norm of the rhs: 1.51658e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 9: 4.05614e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 10: 3.94507e-07, norm of the rhs: 1.47505e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.51894e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 10: 4.06247e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 11: 3.84717e-07, norm of the rhs: 1.43845e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.48834e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 11: 3.98062e-07
 
-   Solving Stokes system... 23+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 12: 3.85777e-07, norm of the rhs: 1.44241e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.41098e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 12: 3.77371e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 13: 4.07127e-07, norm of the rhs: 1.52224e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.46878e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 13: 3.9283e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 14: 4.21781e-07, norm of the rhs: 1.57703e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.49895e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 14: 4.009e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 15: 4.23459e-07, norm of the rhs: 1.5833e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.51386e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 15: 4.04888e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 16: 3.95146e-07, norm of the rhs: 1.47744e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.45562e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 16: 3.89311e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 17: 4.01607e-07, norm of the rhs: 1.5016e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.48974e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 17: 3.98435e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 18: 4.10662e-07, norm of the rhs: 1.53545e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.42017e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 18: 3.7983e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 19: 3.90089e-07, norm of the rhs: 1.45853e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 23+0 iterations.
+      Newton system information: Norm of the rhs: 1.45753e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 19: 3.89822e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 20: 3.87199e-07, norm of the rhs: 1.44772e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.48701e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 20: 3.97706e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 21: 3.9138e-07, norm of the rhs: 1.46336e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.50613e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 21: 4.0282e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 22: 4.03144e-07, norm of the rhs: 1.50734e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.48561e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 22: 3.9733e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 23: 3.83211e-07, norm of the rhs: 1.43281e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.49528e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 23: 3.99918e-07
 
-   Solving Stokes system... 23+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 24: 3.99365e-07, norm of the rhs: 1.49321e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 23+0 iterations.
+      Newton system information: Norm of the rhs: 1.47461e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 24: 3.94389e-07
 
-   Solving Stokes system... 23+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 25: 3.91755e-07, norm of the rhs: 1.46476e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 23+0 iterations.
+      Newton system information: Norm of the rhs: 1.42383e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 25: 3.80808e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 26: 3.99297e-07, norm of the rhs: 1.49296e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.48309e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 26: 3.96658e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 27: 3.8894e-07, norm of the rhs: 1.45423e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.48058e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 27: 3.95986e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 28: 4.1016e-07, norm of the rhs: 1.53357e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.44276e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 28: 3.85871e-07
 
-   Solving Stokes system... 23+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 29: 4.08136e-07, norm of the rhs: 1.52601e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.5551e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 29: 4.15916e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 30: 3.86817e-07, norm of the rhs: 1.4463e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 23+0 iterations.
+      Newton system information: Norm of the rhs: 1.5749e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 30: 4.21211e-07
 
+
+   WARNING: The nonlinear solver in the current timestep failed to converge.
+   Acting according to the parameter 'Nonlinear solver failure strategy':
+   Continuing to the next timestep even though solution is not fully converged.
 
    Postprocessing:
-     RMS, max velocity:                               6.95 m/s, 34.2 m/s
+     RMS, max velocity:                               6.95 m/s, 34.5 m/s
      Temperature min/avg/max:                         0 K, 0.5 K, 1 K
      Heat fluxes through boundary parts:              0 W, 0 W, -1.005 W, 1 W
      Max, min, and rms velocity along boundary parts: 8.974 m/s, 0.002571 m/s, 4.058 m/s, 7.352 m/s, 0.002484 m/s, 3.345 m/s, 34.47 m/s, 0.701 m/s, 24.34 m/s, 0.09844 m/s, 0.002255 m/s, 0.07055 m/s
@@ -147,99 +188,133 @@ Number of degrees of freedom: 3,556 (2,178+289+1,089)
    Solving temperature system... 5 iterations.
    Initial Newton Stokes residual = 0.0463712, v = 0.0463712, p = 0
 
-   Solving Stokes system... 17+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 1: 0.0219036, norm of the rhs: 0.00101569
+   Solving Stokes system (GMG)... 17+0 iterations.
+      Newton system information: Norm of the rhs: 0.00101569
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 1: 0.0219036
 
-   Solving Stokes system... 18+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 2: 0.00105964, norm of the rhs: 4.9137e-05, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 18+0 iterations.
+      Newton system information: Norm of the rhs: 4.91368e-05, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 2: 0.00105964
 
-   Solving Stokes system... 17+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 3: 0.000205472, norm of the rhs: 9.528e-06, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 17+0 iterations.
+      Newton system information: Norm of the rhs: 9.52807e-06, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 3: 0.000205474
 
-   Solving Stokes system... 18+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 4: 3.99034e-05, norm of the rhs: 1.85037e-06, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 18+0 iterations.
+      Newton system information: Norm of the rhs: 1.85057e-06, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 4: 3.99077e-05
 
-   Solving Stokes system... 19+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 5: 7.87501e-06, norm of the rhs: 3.65174e-07, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 19+0 iterations.
+      Newton system information: Norm of the rhs: 3.65062e-07, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 5: 7.87261e-06
 
-   Solving Stokes system... 20+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 6: 1.60132e-06, norm of the rhs: 7.42551e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 19+0 iterations.
+      Newton system information: Norm of the rhs: 7.46021e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 6: 1.6088e-06
 
-   Solving Stokes system... 21+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 7: 4.46593e-07, norm of the rhs: 2.07091e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 21+0 iterations.
+      Newton system information: Norm of the rhs: 2.08991e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 7: 4.50691e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 8: 3.28981e-07, norm of the rhs: 1.52552e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.45313e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 8: 3.13368e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 9: 3.21311e-07, norm of the rhs: 1.48996e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.52531e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 9: 3.28934e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 10: 3.28644e-07, norm of the rhs: 1.52396e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.54261e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 10: 3.32666e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 11: 3.17213e-07, norm of the rhs: 1.47095e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.44479e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 11: 3.11572e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 12: 3.40126e-07, norm of the rhs: 1.5772e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 23+0 iterations.
+      Newton system information: Norm of the rhs: 1.52497e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 12: 3.28861e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 13: 3.10018e-07, norm of the rhs: 1.43759e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.6358e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 13: 3.52761e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 14: 3.27075e-07, norm of the rhs: 1.51669e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.56014e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 14: 3.36445e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 15: 3.02897e-07, norm of the rhs: 1.40457e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.47411e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 15: 3.17894e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 16: 2.9737e-07, norm of the rhs: 1.37894e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.5404e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 16: 3.32188e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 17: 3.20724e-07, norm of the rhs: 1.48723e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.52124e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 17: 3.28057e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 18: 2.98451e-07, norm of the rhs: 1.38395e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.52877e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 18: 3.2968e-07
 
-   Solving Stokes system... 23+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 19: 3.15692e-07, norm of the rhs: 1.4639e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 23+0 iterations.
+      Newton system information: Norm of the rhs: 1.51481e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 19: 3.2667e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 20: 3.18518e-07, norm of the rhs: 1.47701e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.44973e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 20: 3.12636e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 21: 3.11242e-07, norm of the rhs: 1.44326e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.4636e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 21: 3.15627e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 22: 3.18568e-07, norm of the rhs: 1.47724e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 23+0 iterations.
+      Newton system information: Norm of the rhs: 1.52743e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 22: 3.29392e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 23: 3.27835e-07, norm of the rhs: 1.52021e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.49693e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 23: 3.22814e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 24: 3.20128e-07, norm of the rhs: 1.48447e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.42007e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 24: 3.0624e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 25: 3.17496e-07, norm of the rhs: 1.47227e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 23+0 iterations.
+      Newton system information: Norm of the rhs: 1.48649e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 25: 3.20564e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 26: 3.28633e-07, norm of the rhs: 1.52391e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.49093e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 26: 3.21521e-07
 
-   Solving Stokes system... 23+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 27: 3.35513e-07, norm of the rhs: 1.55581e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.50768e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 27: 3.25133e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 28: 3.35533e-07, norm of the rhs: 1.55591e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.52573e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 28: 3.29025e-07
 
-   Solving Stokes system... 23+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 29: 3.23839e-07, norm of the rhs: 1.50168e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.46453e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 29: 3.15827e-07
 
-   Solving Stokes system... 22+0 iterations.
-      Relative nonlinear residual (total Newton system) after nonlinear iteration 30: 3.28075e-07, norm of the rhs: 1.52132e-08, newton_derivative_scaling_factor: 0
+   Solving Stokes system (GMG)... 22+0 iterations.
+      Newton system information: Norm of the rhs: 1.43026e-08, Derivative scaling factor: 0
+      Relative nonlinear residual (Stokes system) after nonlinear iteration 30: 3.08437e-07
 
+
+   WARNING: The nonlinear solver in the current timestep failed to converge.
+   Acting according to the parameter 'Nonlinear solver failure strategy':
+   Continuing to the next timestep even though solution is not fully converged.
 
    Postprocessing:
-     RMS, max velocity:                               7.9 m/s, 39.1 m/s
+     RMS, max velocity:                               7.9 m/s, 39.4 m/s
      Temperature min/avg/max:                         0 K, 0.5 K, 1 K
      Heat fluxes through boundary parts:              0 W, 0 W, -1.007 W, 1 W
      Max, min, and rms velocity along boundary parts: 10.39 m/s, 0.002716 m/s, 4.66 m/s, 8.141 m/s, 0.002622 m/s, 3.694 m/s, 39.4 m/s, 0.7814 m/s, 27.8 m/s, 0.1038 m/s, 0.002382 m/s, 0.07445 m/s
@@ -248,3 +323,5 @@ Termination requested by criterion: end time
 
 
 
+
+WARNING: During this computation 2 nonlinear solver failures occurred!

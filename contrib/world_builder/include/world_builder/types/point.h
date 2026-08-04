@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018-2024 by the authors of the World Builder code.
+  Copyright (C) 2018-2026 by the authors of the World Builder code.
 
   This file is part of the World Builder.
 
@@ -38,7 +38,7 @@ namespace WorldBuilder
      * the returned temperature or composition of the temperature and composition
      * functions of this class will be.
      */
-    template <int dim>
+    template <unsigned int dim>
     class Point final: public Interface
     {
       public:
@@ -124,7 +124,7 @@ namespace WorldBuilder
 
     };
 
-    template<int dim>
+    template<unsigned int dim>
     WorldBuilder::Point<dim> operator*(const double scalar, const Point<dim> &point);
   } // namespace Types
 } // namespace WorldBuilder

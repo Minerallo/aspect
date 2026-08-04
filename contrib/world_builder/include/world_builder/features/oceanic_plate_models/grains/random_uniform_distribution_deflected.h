@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018-2024 by the authors of the World Builder code.
+  Copyright (C) 2018-2026 by the authors of the World Builder code.
 
   This file is part of the World Builder.
 
@@ -34,7 +34,7 @@ namespace WorldBuilder
       namespace Grains
       {
         /**
-         * This class represents a continental plate and can implement
+         * This class represents an oceanic plate and can implement
          * submodules for temperature and grains. These submodules determine
          * what the returned temperature or grains of the temperature and grains
          * functions of this class will be.
@@ -105,6 +105,7 @@ namespace WorldBuilder
             std::vector<double> grain_sizes;
             std::vector<bool> normalize_grain_sizes;
             std::vector<double> deflections;
+            std::vector<std::array<std::array<double, 3>, 3>> basis_rotation_matrices;
         };
       } // namespace Grains
     }   // namespace OceanicPlateModels

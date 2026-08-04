@@ -1,11 +1,12 @@
 # This test is a simplified 2d crustal extension problem with
-# a free surface an adaptive refinement. It would trigger a bug
+# a free surface an adaptive refinement. It used to trigger a bug
 # with negative cell diagonals in the GMG preconditioner.
+# Now the test ensures the bug is fixed.
 
 set Dimension                                       = 2
 set Start time                                      = 0
 set End time                                        = 600000
-set Use years in output instead of seconds          = true
+set Use years instead of seconds                    = true
 set Nonlinear solver scheme                         = single Advection, iterated Stokes
 
 # This model is very sensitive to the nonlinear solver tolerance,
@@ -120,9 +121,13 @@ subsection Postprocess
   set List of postprocessors = visualization, velocity statistics, basic statistics, material statistics, topography
 
   subsection Visualization
-    set List of output variables = density, viscosity, strain rate, error indicator, heating, partition
+    set List of output variables = material properties, strain rate, error indicator, heating, partition
     set Time between graphical output = 0
     set Output mesh velocity = true
+
+    subsection Material properties
+      set List of material properties = density, viscosity
+    end
   end
 
   subsection Topography

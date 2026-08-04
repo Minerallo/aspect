@@ -4,26 +4,19 @@ Number of degrees of freedom: 2,724 (1,666+225+833)
 
 *** Timestep 0:  t=0 years, dt=0 years
    Solving temperature system... retrying linear solve with different preconditioner...
-TimerOutput objects finalize timed values printed to the
-screen by communicating over MPI in their destructors.
-Since an exception is currently uncaught, this
-synchronization (and subsequent output) will be skipped
-to avoid a possible deadlock.
 
 
 Exception 'ExcMessage (exception_message.str())' on rank 0 on processing: 
 
 An error occurred in file <utilities.cc> in function
 (line in output replaced by default.sh script)
-The violated condition was: 
-    false
 Additional information: 
     The iterative advection solver in Simulator::solve_advection did not
     converge.
     
-    The initial residual was: 6.012476e+05
-    The final residual is: 9.049629e-11
-    The required residual for convergence is: 5.533280e-14
+    The initial residual was: 5.994871e+05
+    The final residual is: 4.493189e-47
+    The required residual for convergence is: 1.000000e-50
     See output-advection_solver_fail/solver_history.txt for the full
     convergence history.
     
@@ -41,7 +34,7 @@ Additional information:
     iteration_state == SolverControl::success
     Additional information:
     Iterative method reported convergence failure in step 1000. The
-    residual in the last step was 9.04963e-11.
+    residual in the last step was 4.49319e-47.
     
     This error message can indicate that you have simply not allowed a
     sufficiently large number of iterations for your iterative solver to

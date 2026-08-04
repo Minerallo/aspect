@@ -3,7 +3,7 @@
 
 # set CFL number = 0.1
 set Dimension                              = 2
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set End time                               = .5
 set Output directory                       = output
 set Nonlinear solver scheme                = single Advection, no Stokes
@@ -36,7 +36,6 @@ subsection Initial temperature model
 
   subsection Function
     set Variable names      = x,y
-    set Function constants  =
     set Function expression =  if((sqrt((x-0)^2+(y-0.5)^2)<0.3)&(abs(x)>=0.05|y>=0.7),1,if(sqrt((x-0)^2+(y+0.5)^2)<0.3,1-sqrt((x-0)^2+(y+0.5)^2)/0.3,if(sqrt((x+0.5)^2+(y+0)^2)<0.3,1.0/4.0*(1+cos(pi*min(sqrt((x+0.5)^2+(y+0)^2)/0.3,1))),0)))
   end
 end

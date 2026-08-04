@@ -7,7 +7,7 @@ set Dimension                              = 3
 # There are several global variables that have to do with what
 # time system we want to work in and what the end time is. We
 # also designate an output directory.
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set End time                               = 1.0
 set Output directory                       = output-convection_box_3d
 
@@ -51,7 +51,7 @@ subsection Initial temperature model
 
   subsection Function
     set Variable names      = x,y,z
-    set Function constants  = p=0.01, L=1, pi=3.1415926536, k=1
+    set Function constants  = p=0.01, L=1, k=1
     set Function expression = (1.0-z) - p*cos(k*pi*x/L)*sin(pi*z)*y^3
   end
 end

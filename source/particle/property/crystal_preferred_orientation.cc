@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2024 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -20,8 +20,15 @@
 
 #include <aspect/particle/property/crystal_preferred_orientation.h>
 #include <aspect/geometry_model/interface.h>
-#include <aspect/citation_info.h>
 #include <aspect/utilities.h>
+
+#ifdef ASPECT_WITH_WORLD_BUILDER
+#include <world_builder/grains.h>
+#include <world_builder/world.h>
+#endif
+
+#include <boost/serialization/map.hpp>
+
 
 namespace aspect
 {
@@ -29,12 +36,6 @@ namespace aspect
   {
     namespace Property
     {
-
-      template <int dim>
-      CrystalPreferredOrientation<dim>::CrystalPreferredOrientation ()
-      {}
-
-
 
       template <int dim>
       void
@@ -123,10 +124,10 @@ namespace aspect
 
       template <int dim>
       void
-      CrystalPreferredOrientation<dim>::initialize_one_particle_property(const Point<dim> &,
+      CrystalPreferredOrientation<dim>::initialize_one_particle_property(const Point<dim> &position,
                                                                          std::vector<double> &data) const
       {
-        // the layout of the data vector per perticle is the following:
+        // the layout of the data vector per particle is the following:
         // 1. M mineral times
         //    1.1  olivine deformation type   -> 1 double, at location
         //                                      => data_position + 0 + mineral_i * (n_grains * 10 + 2)
@@ -142,13 +143,14 @@ namespace aspect
         //
         // Note that we store exactly the same number of grains of all minerals (e.g. olivine and enstatite
         // grains), although their volume fractions may not be the same. We need a minimum amount
-        // of grains per tracer to perform reliable statistics on it. This minimum is the same for all phases.
+        // of grains per particle to perform reliable statistics on it. This minimum is the same for all phases.
         // and enstatite.
         //
         // Furthermore, for this plugin the following dims are always 3. When using 2d an infinitely thin 3d domain is assumed.
         //
         // The rotation matrix is a direction cosine matrix, representing the orientation of the grain in the domain.
         // The fabric is determined later in the computations, so initialize it to -1.
+
         std::vector<double> deformation_type(n_minerals, -1.0);
         std::vector<std::vector<double >>volume_fractions_grains(n_minerals);
         std::vector<std::vector<Tensor<2,3>>> rotation_matrices_grains(n_minerals);
@@ -159,16 +161,38 @@ namespace aspect
             rotation_matrices_grains[mineral_i].resize(n_grains);
 
             // This will be set by the initial grain subsection.
-            bool use_world_builder = false;
-            if (use_world_builder)
+            if (initial_grains_model == CPOInitialGrainsModel::world_builder)
               {
 #ifdef ASPECT_WITH_WORLD_BUILDER
-                AssertThrow(false,
-                            ExcMessage("Not implemented."));
+                WorldBuilder::grains wb_grains = this->get_world_builder().grains(Utilities::convert_point_to_array(position),
+                                                                                  -this->get_geometry_model().height_above_reference_surface(position),
+                                                                                  mineral_i,
+                                                                                  n_grains);
+                double sum_volume_fractions = 0;
+                for (unsigned int grain_i = 0; grain_i < n_grains ; ++grain_i)
+                  {
+                    sum_volume_fractions += wb_grains.sizes[grain_i];
+                    volume_fractions_grains[mineral_i][grain_i] = wb_grains.sizes[grain_i];
+                    // we are receiving a array<array<double,3>,3> from the world builder,
+                    // which needs to be copied in the correct way into a tensor<2,3>.
+                    for (unsigned int component_i = 0; component_i < 3 ; ++component_i)
+                      {
+                        for (unsigned int component_j = 0; component_j < 3 ; ++component_j)
+                          {
+                            Assert(!std::isnan(wb_grains.rotation_matrices[grain_i][component_i][component_j]), ExcMessage("Error: not a number."));
+                            rotation_matrices_grains[mineral_i][grain_i][component_i][component_j] = wb_grains.rotation_matrices[grain_i][component_i][component_j];
+                          }
+                      }
+                  }
+
+                AssertThrow(sum_volume_fractions != 0, ExcMessage("Sum of volumes is equal to zero, which is not supposed to happen. "
+                                                                  "Make sure that all parts of the domain which contain particles are covered by the world builder."));
 #else
                 AssertThrow(false,
                             ExcMessage("The world builder was requested but not provided. Make sure that aspect is "
                                        "compiled with the World Builder and that you provide a world builder file in the input."));
+                // this is to avoid a warning about unused variables
+                (void)position;
 #endif
               }
             else
@@ -207,178 +231,187 @@ namespace aspect
 
       template <int dim>
       void
-      CrystalPreferredOrientation<dim>::update_one_particle_property(const unsigned int data_position,
-                                                                     const Point<dim> &position,
-                                                                     const Vector<double> &solution,
-                                                                     const std::vector<Tensor<1,dim>> &gradients,
-                                                                     const ArrayView<double> &data) const
+      CrystalPreferredOrientation<dim>::update_particle_properties(const ParticleUpdateInputs<dim> &inputs,
+                                                                   typename ParticleHandler<dim>::particle_iterator_range &particles) const
       {
-        // STEP 1: Load data and preprocess it.
+        const unsigned int data_position = this->data_position;
+        std::vector<double> compositions(this->n_compositional_fields());
 
-        // need access to the pressure, viscosity,
-        // get velocity
-        Tensor<1,dim> velocity;
-        for (unsigned int i = 0; i < dim; ++i)
-          velocity[i] = solution[this->introspection().component_indices.velocities[i]];
-
-        // get velocity gradient tensor.
-        Tensor<2,dim> velocity_gradient;
-        for (unsigned int d=0; d<dim; ++d)
-          velocity_gradient[d] = gradients[d];
-
-        // Calculate strain rate from velocity gradients
-        const SymmetricTensor<2,dim> strain_rate = symmetrize (velocity_gradient);
-        const SymmetricTensor<2,dim> deviatoric_strain_rate
-          = (this->get_material_model().is_compressible()
-             ?
-             strain_rate - 1./3 * trace(strain_rate) * unit_symmetric_tensor<dim>()
-             :
-             strain_rate);
-
-        const double pressure = solution[this->introspection().component_indices.pressure];
-        const double temperature = solution[this->introspection().component_indices.temperature];
-        const double water_content = solution[this->introspection().component_indices.compositional_fields[water_index]];
-
-        // get the composition of the particle
-        std::vector<double> compositions;
-        for (unsigned int i = 0; i < this->n_compositional_fields(); ++i)
+        unsigned int p = 0;
+        for (auto &particle: particles)
           {
-            const unsigned int solution_component = this->introspection().component_indices.compositional_fields[i];
-            compositions.push_back(solution[solution_component]);
-          }
+            // STEP 1: Load data and preprocess it.
 
-        const double dt = this->get_timestep();
+            // need access to the pressure, viscosity,
+            // get velocity
+            Tensor<1,dim> velocity;
+            for (unsigned int i = 0; i < dim; ++i)
+              velocity[i] = inputs.solution[p][this->introspection().component_indices.velocities[i]];
 
-        // even in 2d we need 3d strain-rates and velocity gradient tensors. So we make them 3d by
-        // adding an extra dimension which is zero.
-        SymmetricTensor<2,3> strain_rate_3d;
-        strain_rate_3d[0][0] = strain_rate[0][0];
-        strain_rate_3d[0][1] = strain_rate[0][1];
-        //sym: strain_rate_3d[1][0] = strain_rate[1][0];
-        strain_rate_3d[1][1] = strain_rate[1][1];
+            // get velocity gradient tensor.
+            Tensor<2,dim> velocity_gradient;
+            for (unsigned int i = 0; i < dim; ++i)
+              velocity_gradient[i] = inputs.gradients[p][this->introspection().component_indices.velocities[i]];
 
-        if (dim == 3)
-          {
-            strain_rate_3d[0][2] = strain_rate[0][2];
-            strain_rate_3d[1][2] = strain_rate[1][2];
-            //sym: strain_rate_3d[2][0] = strain_rate[0][2];
-            //sym: strain_rate_3d[2][1] = strain_rate[1][2];
-            strain_rate_3d[2][2] = strain_rate[2][2];
-          }
-        Tensor<2,3> velocity_gradient_3d;
-        velocity_gradient_3d[0][0] = velocity_gradient[0][0];
-        velocity_gradient_3d[0][1] = velocity_gradient[0][1];
-        velocity_gradient_3d[1][0] = velocity_gradient[1][0];
-        velocity_gradient_3d[1][1] = velocity_gradient[1][1];
-        if (dim == 3)
-          {
-            velocity_gradient_3d[0][2] = velocity_gradient[0][2];
-            velocity_gradient_3d[1][2] = velocity_gradient[1][2];
-            velocity_gradient_3d[2][0] = velocity_gradient[2][0];
-            velocity_gradient_3d[2][1] = velocity_gradient[2][1];
-            velocity_gradient_3d[2][2] = velocity_gradient[2][2];
-          }
+            // Calculate strain rate from velocity gradients
+            const SymmetricTensor<2,dim> strain_rate = symmetrize (velocity_gradient);
+            const SymmetricTensor<2,dim> deviatoric_strain_rate
+              = (this->get_material_model().is_compressible()
+                 ?
+                 strain_rate - 1./3 * trace(strain_rate) * unit_symmetric_tensor<dim>()
+                 :
+                 strain_rate);
 
-        for (unsigned int mineral_i = 0; mineral_i < n_minerals; ++mineral_i)
-          {
+            const double pressure = inputs.solution[p][this->introspection().component_indices.pressure];
+            const double temperature = inputs.solution[p][this->introspection().component_indices.temperature];
+            const double water_content = inputs.solution[p][this->introspection().component_indices.compositional_fields[water_index]];
 
-            /**
-            * Now we have loaded all the data and can do the actual computation.
-            * The computation consists of two parts. The first part is computing
-            * the derivatives for the directions and grain sizes. Then those
-            * derivatives are used to advect the particle properties.
-            */
-            double sum_volume_mineral = 0;
-            std::pair<std::vector<double>, std::vector<Tensor<2,3>>>
-            derivatives_grains = this->compute_derivatives(data_position,
-                                                           data,
-                                                           mineral_i,
-                                                           strain_rate_3d,
-                                                           velocity_gradient_3d,
-                                                           position,
-                                                           temperature,
-                                                           pressure,
-                                                           velocity,
-                                                           compositions,
-                                                           strain_rate,
-                                                           deviatoric_strain_rate,
-                                                           water_content);
-
-            switch (advection_method)
+            // get the composition of the particle
+            for (unsigned int i = 0; i < this->n_compositional_fields(); ++i)
               {
-                case AdvectionMethod::forward_euler:
-
-                  sum_volume_mineral = this->advect_forward_euler(data_position,
-                                                                  data,
-                                                                  mineral_i,
-                                                                  dt,
-                                                                  derivatives_grains);
-
-                  break;
-
-                case AdvectionMethod::backward_euler:
-                  sum_volume_mineral = this->advect_backward_euler(data_position,
-                                                                   data,
-                                                                   mineral_i,
-                                                                   dt,
-                                                                   derivatives_grains);
-
-                  break;
+                const unsigned int solution_component = this->introspection().component_indices.compositional_fields[i];
+                compositions[i] = inputs.solution[p][solution_component];
               }
 
-            // normalize the volume fractions back to a total of 1 for each mineral
-            const double inv_sum_volume_mineral = 1.0/sum_volume_mineral;
+            const double dt = this->get_timestep();
 
-            Assert(std::isfinite(inv_sum_volume_mineral),
-                   ExcMessage("inv_sum_volume_mineral is not finite. sum_volume_enstatite = "
-                              + std::to_string(sum_volume_mineral)));
+            // even in 2d we need 3d strain-rates and velocity gradient tensors. So we make them 3d by
+            // adding an extra dimension which is zero.
+            SymmetricTensor<2,3> strain_rate_3d;
+            strain_rate_3d[0][0] = strain_rate[0][0];
+            strain_rate_3d[0][1] = strain_rate[0][1];
+            //sym: strain_rate_3d[1][0] = strain_rate[1][0];
+            strain_rate_3d[1][1] = strain_rate[1][1];
 
-            for (unsigned int grain_i = 0; grain_i < n_grains; ++grain_i)
+            if (dim == 3)
               {
-                const double volume_fraction_grains = get_volume_fractions_grains(data_position,data,mineral_i,grain_i)*inv_sum_volume_mineral;
-                set_volume_fractions_grains(data_position,data,mineral_i,grain_i,volume_fraction_grains);
-                Assert(isfinite(get_volume_fractions_grains(data_position,data,mineral_i,grain_i)),
-                       ExcMessage("volume_fractions_grains[mineral_i]" + std::to_string(grain_i) + "] is not finite: "
-                                  + std::to_string(get_volume_fractions_grains(data_position,data,mineral_i,grain_i)) + ", inv_sum_volume_mineral = "
-                                  + std::to_string(inv_sum_volume_mineral) + "."));
+                strain_rate_3d[0][2] = strain_rate[0][2];
+                strain_rate_3d[1][2] = strain_rate[1][2];
+                //sym: strain_rate_3d[2][0] = strain_rate[0][2];
+                //sym: strain_rate_3d[2][1] = strain_rate[1][2];
+                strain_rate_3d[2][2] = strain_rate[2][2];
+              }
+            Tensor<2,3> velocity_gradient_3d;
+            velocity_gradient_3d[0][0] = velocity_gradient[0][0];
+            velocity_gradient_3d[0][1] = velocity_gradient[0][1];
+            velocity_gradient_3d[1][0] = velocity_gradient[1][0];
+            velocity_gradient_3d[1][1] = velocity_gradient[1][1];
+            if (dim == 3)
+              {
+                velocity_gradient_3d[0][2] = velocity_gradient[0][2];
+                velocity_gradient_3d[1][2] = velocity_gradient[1][2];
+                velocity_gradient_3d[2][0] = velocity_gradient[2][0];
+                velocity_gradient_3d[2][1] = velocity_gradient[2][1];
+                velocity_gradient_3d[2][2] = velocity_gradient[2][2];
+              }
+
+            ArrayView<double> data = particle.get_properties();
+            const typename DoFHandler<dim>::active_cell_iterator cell(*particle.get_surrounding_cell(),&(this->get_dof_handler()));
+
+            for (unsigned int mineral_i = 0; mineral_i < n_minerals; ++mineral_i)
+              {
 
                 /**
-                 * Correct direction rotation matrices numerical error (orthnormality) after integration
-                 * Follows same method as in matlab version from Thissen (see https://github.com/cthissen/Drex-MATLAB/)
-                 * of finding the nearest orthonormal matrix using the SVD
-                 */
-                Tensor<2,3> rotation_matrix = get_rotation_matrix_grains(data_position,data,mineral_i,grain_i);
-                for (size_t i = 0; i < 3; ++i)
+                * Now we have loaded all the data and can do the actual computation.
+                * The computation consists of two parts. The first part is computing
+                * the derivatives for the directions and grain sizes. Then those
+                * derivatives are used to advect the particle properties.
+                */
+                double sum_volume_mineral = 0;
+                std::pair<std::vector<double>, std::vector<Tensor<2,3>>>
+                derivatives_grains = this->compute_derivatives(data_position,
+                                                               data,
+                                                               mineral_i,
+                                                               strain_rate_3d,
+                                                               velocity_gradient_3d,
+                                                               particle.get_location(),
+                                                               cell,
+                                                               temperature,
+                                                               pressure,
+                                                               velocity,
+                                                               compositions,
+                                                               strain_rate,
+                                                               deviatoric_strain_rate,
+                                                               water_content);
+
+                switch (advection_method)
                   {
-                    for (size_t j = 0; j < 3; ++j)
-                      {
-                        Assert(!std::isnan(rotation_matrix[i][j]), ExcMessage("rotation_matrix is nan before orthogonalization."));
-                      }
+                    case AdvectionMethod::forward_euler:
+
+                      sum_volume_mineral = this->advect_forward_euler(data_position,
+                                                                      data,
+                                                                      mineral_i,
+                                                                      dt,
+                                                                      derivatives_grains);
+
+                      break;
+
+                    case AdvectionMethod::backward_euler:
+                      sum_volume_mineral = this->advect_backward_euler(data_position,
+                                                                       data,
+                                                                       mineral_i,
+                                                                       dt,
+                                                                       derivatives_grains);
+
+                      break;
                   }
 
-                rotation_matrix = dealii::project_onto_orthogonal_tensors(rotation_matrix);
-                for (size_t i = 0; i < 3; ++i)
-                  for (size_t j = 0; j < 3; ++j)
-                    {
-                      // I don't think this should happen with the projection, but D-Rex
-                      // does not do the orthogonal projection, but just clamps the values
-                      // to 1 and -1.
-                      Assert(std::fabs(rotation_matrix[i][j]) <= 1.0,
-                             ExcMessage("The rotation_matrix has a entry larger than 1."));
+                // normalize the volume fractions back to a total of 1 for each mineral
+                const double inv_sum_volume_mineral = 1.0/sum_volume_mineral;
 
-                      Assert(!std::isnan(rotation_matrix[i][j]),
-                             ExcMessage("rotation_matrix is nan after orthoganalization: "
-                                        + std::to_string(rotation_matrix[i][j])));
+                Assert(std::isfinite(inv_sum_volume_mineral),
+                       ExcMessage("inv_sum_volume_mineral is not finite. sum_volume_enstatite = "
+                                  + std::to_string(sum_volume_mineral)));
 
-                      Assert(abs(rotation_matrix[i][j]) <= 1.0,
-                             ExcMessage("3. rotation_matrix[" + std::to_string(i) + "][" + std::to_string(j) +
-                                        "] is larger than one: "
-                                        + std::to_string(rotation_matrix[i][j]) + " (" + std::to_string(rotation_matrix[i][j]-1.0) + "). rotation_matrix = \n"
-                                        + std::to_string(rotation_matrix[0][0]) + " " + std::to_string(rotation_matrix[0][1]) + " " + std::to_string(rotation_matrix[0][2]) + "\n"
-                                        + std::to_string(rotation_matrix[1][0]) + " " + std::to_string(rotation_matrix[1][1]) + " " + std::to_string(rotation_matrix[1][2]) + "\n"
-                                        + std::to_string(rotation_matrix[2][0]) + " " + std::to_string(rotation_matrix[2][1]) + " " + std::to_string(rotation_matrix[2][2])));
-                    }
+                for (unsigned int grain_i = 0; grain_i < n_grains; ++grain_i)
+                  {
+                    const double volume_fraction_grains = get_volume_fractions_grains(data_position,data,mineral_i,grain_i)*inv_sum_volume_mineral;
+                    set_volume_fractions_grains(data_position,data,mineral_i,grain_i,volume_fraction_grains);
+                    Assert(std::isfinite(get_volume_fractions_grains(data_position,data,mineral_i,grain_i)),
+                           ExcMessage("volume_fractions_grains[mineral_i]" + std::to_string(grain_i) + "] is not finite: "
+                                      + std::to_string(get_volume_fractions_grains(data_position,data,mineral_i,grain_i)) + ", inv_sum_volume_mineral = "
+                                      + std::to_string(inv_sum_volume_mineral) + "."));
+
+                    /**
+                     * Correct direction rotation matrices numerical error (orthnormality) after integration
+                     * Follows same method as in matlab version from Thissen (see https://github.com/cthissen/Drex-MATLAB/)
+                     * of finding the nearest orthonormal matrix using the SVD
+                     */
+                    Tensor<2,3> rotation_matrix = get_rotation_matrix_grains(data_position,data,mineral_i,grain_i);
+                    for (size_t i = 0; i < 3; ++i)
+                      {
+                        for (size_t j = 0; j < 3; ++j)
+                          {
+                            Assert(!std::isnan(rotation_matrix[i][j]), ExcMessage("rotation_matrix is nan before orthogonalization."));
+                          }
+                      }
+
+                    rotation_matrix = dealii::project_onto_orthogonal_tensors(rotation_matrix);
+                    for (size_t i = 0; i < 3; ++i)
+                      for (size_t j = 0; j < 3; ++j)
+                        {
+                          // I don't think this should happen with the projection, but D-Rex
+                          // does not do the orthogonal projection, but just clamps the values
+                          // to 1 and -1.
+                          Assert(std::fabs(rotation_matrix[i][j]) <= 1.0,
+                                 ExcMessage("The rotation_matrix has a entry larger than 1."));
+
+                          Assert(!std::isnan(rotation_matrix[i][j]),
+                                 ExcMessage("rotation_matrix is nan after orthoganalization: "
+                                            + std::to_string(rotation_matrix[i][j])));
+
+                          Assert(std::abs(rotation_matrix[i][j]) <= 1.0,
+                                 ExcMessage("3. rotation_matrix[" + std::to_string(i) + "][" + std::to_string(j) +
+                                            "] is larger than one: "
+                                            + std::to_string(rotation_matrix[i][j]) + " (" + std::to_string(rotation_matrix[i][j]-1.0) + "). rotation_matrix = \n"
+                                            + std::to_string(rotation_matrix[0][0]) + " " + std::to_string(rotation_matrix[0][1]) + " " + std::to_string(rotation_matrix[0][2]) + "\n"
+                                            + std::to_string(rotation_matrix[1][0]) + " " + std::to_string(rotation_matrix[1][1]) + " " + std::to_string(rotation_matrix[1][2]) + "\n"
+                                            + std::to_string(rotation_matrix[2][0]) + " " + std::to_string(rotation_matrix[2][1]) + " " + std::to_string(rotation_matrix[2][2])));
+                        }
+                    set_rotation_matrix_grains(data_position,data,mineral_i,grain_i,rotation_matrix);
+                  }
               }
+            ++p;
           }
       }
 
@@ -404,9 +437,12 @@ namespace aspect
 
       template <int dim>
       UpdateFlags
-      CrystalPreferredOrientation<dim>::get_needed_update_flags () const
+      CrystalPreferredOrientation<dim>::get_update_flags (const unsigned int component) const
       {
-        return update_values | update_gradients;
+        if (this->introspection().component_masks.velocities[component] == true)
+          return update_values | update_gradients;
+
+        return update_values;
       }
 
 
@@ -416,19 +452,20 @@ namespace aspect
       CrystalPreferredOrientation<dim>::get_property_information() const
       {
         std::vector<std::pair<std::string,unsigned int>> property_information;
+        property_information.reserve(n_minerals * n_grains * (1+Tensor<2,3>::n_independent_components));
 
         for (unsigned int mineral_i = 0; mineral_i < n_minerals; ++mineral_i)
           {
-            property_information.push_back(std::make_pair("cpo mineral " + std::to_string(mineral_i) + " type",1));
-            property_information.push_back(std::make_pair("cpo mineral " + std::to_string(mineral_i) + " volume fraction",1));
+            property_information.emplace_back("cpo mineral " + std::to_string(mineral_i) + " type",1);
+            property_information.emplace_back("cpo mineral " + std::to_string(mineral_i) + " volume fraction",1);
 
             for (unsigned int grain_i = 0; grain_i < n_grains; ++grain_i)
               {
-                property_information.push_back(std::make_pair("cpo mineral " + std::to_string(mineral_i) + " grain " + std::to_string(grain_i) + " volume fraction",1));
+                property_information.emplace_back("cpo mineral " + std::to_string(mineral_i) + " grain " + std::to_string(grain_i) + " volume fraction",1);
 
                 for (unsigned int index = 0; index < Tensor<2,3>::n_independent_components; ++index)
                   {
-                    property_information.push_back(std::make_pair("cpo mineral " + std::to_string(mineral_i) + " grain " + std::to_string(grain_i) + " rotation_matrix " + std::to_string(index),1));
+                    property_information.emplace_back("cpo mineral " + std::to_string(mineral_i) + " grain " + std::to_string(grain_i) + " rotation_matrix " + std::to_string(index),1);
                   }
               }
           }
@@ -545,6 +582,7 @@ namespace aspect
                                                             const SymmetricTensor<2,3> &strain_rate_3d,
                                                             const Tensor<2,3> &velocity_gradient_tensor,
                                                             const Point<dim> &position,
+                                                            const typename DoFHandler<dim>::active_cell_iterator &cell,
                                                             const double temperature,
                                                             const double pressure,
                                                             const Tensor<1,dim> &velocity,
@@ -566,6 +604,7 @@ namespace aspect
 
               const DeformationType deformation_type = determine_deformation_type(deformation_type_selector[mineral_i],
                                                                                   position,
+                                                                                  cell,
                                                                                   temperature,
                                                                                   pressure,
                                                                                   velocity,
@@ -574,11 +613,12 @@ namespace aspect
                                                                                   deviatoric_strain_rate,
                                                                                   water_content);
 
-              set_deformation_type(cpo_index,data,mineral_i,static_cast<unsigned int>(deformation_type));
+              set_deformation_type(cpo_index,data,mineral_i,deformation_type);
 
               const std::array<double,4> ref_resolved_shear_stress = reference_resolved_shear_stress_from_deformation_type(deformation_type);
 
-              return compute_derivatives_drex_2004(cpo_index,
+              return compute_derivatives_drex_2004(deformation_type,
+                                                   cpo_index,
                                                    data,
                                                    mineral_i,
                                                    strain_rate_3d,
@@ -607,10 +647,10 @@ namespace aspect
         return std::pair<std::vector<double>, std::vector<Tensor<2,3>>>(std::vector<double>(n_grains,0.0), std::vector<Tensor<2,3>>(n_grains, spin_tensor));
       }
 
-
       template <int dim>
       std::pair<std::vector<double>, std::vector<Tensor<2,3>>>
-      CrystalPreferredOrientation<dim>::compute_derivatives_drex_2004(const unsigned int cpo_index,
+      CrystalPreferredOrientation<dim>::compute_derivatives_drex_2004(const DeformationType deformation_type,
+                                                                      const unsigned int cpo_index,
                                                                       const ArrayView<double> &data,
                                                                       const unsigned int mineral_i,
                                                                       const SymmetricTensor<2,3> &strain_rate_3d,
@@ -636,15 +676,85 @@ namespace aspect
         const Tensor<2,3> strain_rate_nondimensional = nondimensionalization_value != 0 ? strain_rate_3d/nondimensionalization_value : strain_rate_3d;
         const Tensor<2,3> velocity_gradient_tensor_nondimensional = nondimensionalization_value != 0 ? velocity_gradient_tensor/nondimensionalization_value : velocity_gradient_tensor;
 
-        // create output variables
+        // Create output variables
         std::vector<double> deriv_volume_fractions(n_grains);
         std::vector<Tensor<2,3>> deriv_a_cosine_matrices(n_grains);
 
-        // create shortcuts
+        // Create shortcuts
         const std::array<double, 4> &tau = ref_resolved_shear_stress;
-
         std::vector<double> strain_energy(n_grains);
         double mean_strain_energy = 0;
+
+        // First initiate the slip_normal_reference (vector n) and the
+        // slip_direction_reference (vector l) in Kaminski (2001)
+        std::array<Tensor<1,3>,4> slip_normal_reference;
+        std::array<Tensor<1,3>,4> slip_direction_reference;
+
+        // for olivine A,B,C,D,E and types and enstatite
+        if (deformation_type == DeformationType::olivine_a_fabric ||
+            deformation_type == DeformationType::olivine_b_fabric ||
+            deformation_type == DeformationType::olivine_c_fabric ||
+            deformation_type == DeformationType::olivine_d_fabric ||
+            deformation_type == DeformationType::olivine_e_fabric ||
+            deformation_type == DeformationType::enstatite)
+          {
+            slip_normal_reference = {{Tensor<1,3>({0,1,0}),Tensor<1,3>({0,0,1}),Tensor<1,3>({0,1,0}),Tensor<1,3>({1,0,0})}};
+            slip_direction_reference = {{Tensor<1,3>({1,0,0}),Tensor<1,3>({1,0,0}),Tensor<1,3>({0,0,1}),Tensor<1,3>({0,0,1})}};
+          }
+        // Alternative Olivine D type fabric with {0kl} slip plane
+        else if (deformation_type == DeformationType::olivine_d_0kl)
+          {
+            // Olivine axes length in angstrom (Å) https://www.mindat.org/min-29264.html
+            const Tensor<1,3> olivine_a_axis ({4.816,0.,0.});
+            const Tensor<1,3> olivine_b_axis ({0.,10.469,0.});
+            const Tensor<1,3> olivine_c_axis ({0.,0.,6.099});
+
+            // Crystal axis b minus axis c
+            const Tensor<1,3> vec_13b_minus_c = 0.333*olivine_b_axis - olivine_c_axis;
+            // Cross product between a*(b-c) to get normal vector for nsp{031}
+            // Karato 2008 AnnRevEPS: D-type fabric slip system of {0kl}[100]
+            // Bystricky_etal 2001 science {031}[100]
+            Tensor<1,3> plane031_normal = cross_product_3d(olivine_a_axis,vec_13b_minus_c);
+            plane031_normal /= plane031_normal.norm();
+            // slip_normal_reference (vector n) & slip_direction_reference (vector l) for olivine D types
+            slip_normal_reference = {{Tensor<1,3>({0,1,0}),Tensor<1,3>({0,0,1}),Tensor<1,3>({0,1,0}),plane031_normal}};
+            slip_direction_reference = {{Tensor<1,3>({1,0,0}),Tensor<1,3>({1,0,0}),Tensor<1,3>({0,0,1}),Tensor<1,3>({1,0,0})}};
+          }
+        // CPX has different crystal structure (monoclinic) and slip systems than olivine or enstatite fabrics
+        else if (deformation_type == DeformationType::clinopyroxene)
+          {
+            // More accurate way to calculate slip plane <110> normal by doing cross product
+            // First CPX crystal structure info, length unit Angstrom (Å)
+            // See Clinopyroxene on mindat.org at https://www.mindat.org/min-7630.html
+            const Tensor<1,3> vec_a_axis ({9.658, 0., 0.});
+            const Tensor<1,3> vec_b_axis ({0.,8.795, 0.});
+            const double length_c = 5.294; //[Angstrom]
+            const double angle_beta = 107.42 * constants::degree_to_radians;
+            const Tensor<1,3> vec_c_axis ({length_c * std::cos(angle_beta), 0, length_c * std::sin(angle_beta)});
+
+            // Tensor 1 is vector b axis minus the vector a axis
+            // Calculate plane110_normal --> crystal axis b minus axis a
+            const Tensor<1,3> vec_b_minus_a = vec_b_axis - vec_a_axis;
+            // Cross product between c*(b-a) to get normal vector for slip plane nsp{110}
+            Tensor<1,3> plane110_normal = cross_product_3d(vec_b_minus_a,vec_c_axis);
+            plane110_normal /= plane110_normal.norm();
+
+            // Calculate plane11_0_normal --> crystal axis a minus axis -b
+            const Tensor<1,3> vec_a_minus_neg_b = vec_a_axis - (-vec_b_axis);
+            // Cross product between (a-(-b))*c to get normal vector for slip plane nsp{110}
+            Tensor<1,3> plane11_0_normal = cross_product_3d(vec_a_minus_neg_b,vec_c_axis);
+            plane11_0_normal /= plane11_0_normal.norm();
+
+            // Calculate slip direction vector 110 a + b
+            Tensor<1,3> sd110 = vec_a_axis + vec_b_axis;
+            sd110 /= sd110.norm();
+            // Both Bascou etal., 2002 JSG and Zhang et al., 2006 EPSL agree on the three dominant slip systems:
+            // {11_0}1/2[110],  {110}[001],  and  {100}[001],
+            slip_normal_reference =  {{Tensor<1,3>({0,1,0}),plane11_0_normal,plane110_normal,Tensor<1,3>({1,0,0})}};
+            slip_direction_reference = {{Tensor<1,3>({0,0,1}),0.5*sd110,Tensor<1,3>({0,0,1}),Tensor<1,3>({0,0,1})}};
+          }
+        else
+          AssertThrow(false, ExcMessage("Unknown deformation type"));
 
         for (unsigned int grain_i = 0; grain_i < n_grains; ++grain_i)
           {
@@ -654,11 +764,9 @@ namespace aspect
             Tensor<2,3> G;
             Tensor<1,3> w;
             Tensor<1,4> beta({1.0, 1.0, 1.0, 1.0});
-            std::array<Tensor<1,3>,4> slip_normal_reference {{Tensor<1,3>({0,1,0}),Tensor<1,3>({0,0,1}),Tensor<1,3>({0,1,0}),Tensor<1,3>({1,0,0})}};
-            std::array<Tensor<1,3>,4> slip_direction_reference {{Tensor<1,3>({1,0,0}),Tensor<1,3>({1,0,0}),Tensor<1,3>({0,0,1}),Tensor<1,3>({0,0,1})}};
 
-            // these are variables we only need for olivine, but we need them for both
-            // within this if block and the next ones
+            // These are variables we only need for olivine, but we need them for both
+            // Within this if block and the next ones
             // Ordered vector where the first entry is the max/weakest and the last entry is the inactive slip system.
             std::array<unsigned int,4> indices {};
 
@@ -670,8 +778,8 @@ namespace aspect
               {
                 const Tensor<1,3> slip_normal_global = rotation_matrix_transposed*slip_normal_reference[slip_system_i];
                 const Tensor<1,3> slip_direction_global = rotation_matrix_transposed*slip_direction_reference[slip_system_i];
-                const Tensor<2,3> slip_cross_product = outer_product(slip_direction_global,slip_normal_global);
-                bigI[slip_system_i] = scalar_product(slip_cross_product,strain_rate_nondimensional);
+                const Tensor<2,3> slip_outer_product = outer_product(slip_direction_global,slip_normal_global);
+                bigI[slip_system_i] = scalar_product(slip_outer_product,strain_rate_nondimensional);
               }
 
             if (bigI.norm() < 1e-10)
@@ -682,7 +790,7 @@ namespace aspect
             else
               {
                 // compute the element wise absolute value of the element wise
-                // division of BigI by tau (tau = ref_resolved_shear_stress).
+                // division of bigI by tau (tau = ref_resolved_shear_stress).
                 std::array<double,4> q_abs;
                 for (unsigned int i = 0; i < 4; ++i)
                   {
@@ -711,16 +819,17 @@ namespace aspect
                   }
                 beta[indices.back()] = 0.0;
 
-                // Now compute the crystal rate of deformation tensor.
-                for (unsigned int i = 0; i < 3; ++i)
+                // Now compute the crystal rate of deformation tensor. equation 4 of Kaminski&Ribe 2001
+                // rotation_matrix_transposed = inverse of rotation matrix
+                // (see Engler et al., 2024 book: Intro to Texture analysis chp 2.3.2 The Rotation Matrix)
+                // this transform the crystal reference frame to specimen reference frame
+
+                for (unsigned int slip_system_i = 0; slip_system_i < 4; ++slip_system_i)
                   {
-                    for (unsigned int j = 0; j < 3; ++j)
-                      {
-                        G[i][j] = 2.0 * (beta[0] * rotation_matrix[0][i] * rotation_matrix[1][j]
-                                         + beta[1] * rotation_matrix[0][i] * rotation_matrix[2][j]
-                                         + beta[2] * rotation_matrix[2][i] * rotation_matrix[1][j]
-                                         + beta[3] * rotation_matrix[2][i] * rotation_matrix[0][j]);
-                      }
+                    const Tensor<1,3> slip_normal_global = rotation_matrix_transposed*slip_normal_reference[slip_system_i];
+                    const Tensor<1,3> slip_direction_global = rotation_matrix_transposed*slip_direction_reference[slip_system_i];
+                    const Tensor<2,3> slip_outer_product = outer_product(slip_direction_global,slip_normal_global);
+                    G += 2.0 * beta[slip_system_i] * slip_outer_product;
                   }
               }
 
@@ -745,7 +854,7 @@ namespace aspect
                     bottom = bottom + 2.0* G[i][j] * G[i][j];
                   }
               }
-            // see comment on if all BigI are zero. In that case gamma should be zero.
+            // see comment on if all bigI are zero. In that case gamma should be zero.
             const double gamma = (bottom != 0.0) ? top/bottom : 0.0;
 
             // compute w (equation 8, Kaminiski & Ribe, 2001)
@@ -765,11 +874,10 @@ namespace aspect
                                     std::pow(std::abs(gamma*beta[indices[slip_system_i]]),exponent_p/stress_exponent);
                 strain_energy[grain_i] += rhos * std::exp(-nucleation_efficiency * rhos * rhos);
 
-                Assert(isfinite(strain_energy[grain_i]), ExcMessage("strain_energy[" + std::to_string(grain_i) + "] is not finite: " + std::to_string(strain_energy[grain_i])
-                                                                    + ", rhos (" + std::to_string(slip_system_i) + ") = " + std::to_string(rhos)
-                                                                    + ", nucleation_efficiency = " + std::to_string(nucleation_efficiency) + "."));
+                Assert(std::isfinite(strain_energy[grain_i]), ExcMessage("strain_energy[" + std::to_string(grain_i) + "] is not finite: " + std::to_string(strain_energy[grain_i])
+                                                                         + ", rhos (" + std::to_string(slip_system_i) + ") = " + std::to_string(rhos)
+                                                                         + ", nucleation_efficiency = " + std::to_string(nucleation_efficiency) + "."));
               }
-
 
             // compute the derivative of the rotation matrix: \frac{\partial a_{ij}}{\partial t}
             // (Eq. 9, Kaminski & Ribe 2001)
@@ -782,8 +890,8 @@ namespace aspect
                 // volume averaged strain energy
                 mean_strain_energy += volume_fraction_grain * strain_energy[grain_i];
 
-                Assert(isfinite(mean_strain_energy), ExcMessage("mean_strain_energy when adding grain " + std::to_string(grain_i) + " is not finite: " + std::to_string(mean_strain_energy)
-                                                                + ", volume_fraction_grain = " + std::to_string(volume_fraction_grain) + "."));
+                Assert(std::isfinite(mean_strain_energy), ExcMessage("mean_strain_energy when adding grain " + std::to_string(grain_i) + " is not finite: " + std::to_string(mean_strain_energy)
+                                                                     + ", volume_fraction_grain = " + std::to_string(volume_fraction_grain) + "."));
               }
             else
               {
@@ -797,7 +905,7 @@ namespace aspect
             // Different than D-Rex. Here we actually only compute the derivative and do not multiply it with the volume_fractions. We do that when we advect.
             deriv_volume_fractions[grain_i] = get_volume_fraction_mineral(cpo_index,data,mineral_i) * mobility * (mean_strain_energy - strain_energy[grain_i]) * nondimensionalization_value;
 
-            Assert(isfinite(deriv_volume_fractions[grain_i]),
+            Assert(std::isfinite(deriv_volume_fractions[grain_i]),
                    ExcMessage("deriv_volume_fractions[" + std::to_string(grain_i) + "] is not finite: "
                               + std::to_string(deriv_volume_fractions[grain_i])));
           }
@@ -806,10 +914,11 @@ namespace aspect
       }
 
 
-      template<int dim>
+      template <int dim>
       DeformationType
       CrystalPreferredOrientation<dim>::determine_deformation_type(const DeformationTypeSelector deformation_type_selector,
                                                                    const Point<dim> &position,
+                                                                   const typename DoFHandler<dim>::active_cell_iterator &cell,
                                                                    const double temperature,
                                                                    const double pressure,
                                                                    const Tensor<1,dim> &velocity,
@@ -835,6 +944,10 @@ namespace aspect
               return DeformationType::olivine_e_fabric;
             case DeformationTypeSelector::enstatite:
               return DeformationType::enstatite;
+            case DeformationTypeSelector::clinopyroxene:
+              return DeformationType::clinopyroxene;
+            case DeformationTypeSelector::olivine_d_0kl:
+              return DeformationType::olivine_d_0kl;
             case DeformationTypeSelector::olivine_karato_2008:
               // construct the material model inputs and outputs
               // Since this function is only evaluating one particle,
@@ -846,6 +959,7 @@ namespace aspect
               material_model_inputs.velocity[0] = velocity;
               material_model_inputs.composition[0] = compositions;
               material_model_inputs.strain_rate[0] = strain_rate;
+              material_model_inputs.current_cell = cell;
 
               MaterialModel::MaterialModelOutputs<dim> material_model_outputs(1,this->n_compositional_fields());
               this->get_material_model().evaluate(material_model_inputs, material_model_outputs);
@@ -864,7 +978,7 @@ namespace aspect
       }
 
 
-      template<int dim>
+      template <int dim>
       DeformationType
       CrystalPreferredOrientation<dim>::determine_deformation_type_karato_2008(const double stress, const double water_content) const
       {
@@ -902,7 +1016,7 @@ namespace aspect
       }
 
 
-      template<int dim>
+      template <int dim>
       std::array<double,4>
       CrystalPreferredOrientation<dim>::reference_resolved_shear_stress_from_deformation_type(DeformationType deformation_type,
           double max_value) const
@@ -937,8 +1051,7 @@ namespace aspect
               ref_resolved_shear_stress[3] = 1;
               break;
 
-            // from Kaminski and Ribe, GRL 2002 and
-            // Becker et al., 2007 (http://www-udc.ig.utexas.edu/external/becker/preprints/bke07.pdf)
+            // from Kaminski and Ribe, GRL 2002
             case DeformationType::olivine_d_fabric :
               ref_resolved_shear_stress[0] = 1;
               ref_resolved_shear_stress[1] = 1;
@@ -965,6 +1078,16 @@ namespace aspect
               ref_resolved_shear_stress[3] = 1;
               break;
 
+            case DeformationType::clinopyroxene:
+              for (unsigned int i=0; i<4; ++i)
+                ref_resolved_shear_stress[i] = CPX_RRSS[i];
+              break;
+
+            case DeformationType::olivine_d_0kl:
+              for (unsigned int i=0; i<4; ++i)
+                ref_resolved_shear_stress[i] = OlivineD_RRSS[i];
+              break;
+
             default:
               AssertThrow(false,
                           ExcMessage("Deformation type enum with number " + std::to_string(static_cast<unsigned int>(deformation_type))
@@ -974,7 +1097,7 @@ namespace aspect
         return ref_resolved_shear_stress;
       }
 
-      template<int dim>
+      template <int dim>
       unsigned int
       CrystalPreferredOrientation<dim>::get_number_of_grains() const
       {
@@ -983,7 +1106,7 @@ namespace aspect
 
 
 
-      template<int dim>
+      template <int dim>
       unsigned int
       CrystalPreferredOrientation<dim>::get_number_of_minerals() const
       {
@@ -996,108 +1119,115 @@ namespace aspect
       void
       CrystalPreferredOrientation<dim>::declare_parameters (ParameterHandler &prm)
       {
-        prm.enter_subsection("Postprocess");
+        prm.enter_subsection("Crystal Preferred Orientation");
         {
-          prm.enter_subsection("Particles");
+          prm.declare_entry ("Random number seed", "1",
+                             Patterns::Integer (0),
+                             "The seed used to generate random numbers. This will make sure that "
+                             "results are reproducible as long as the problem is run with the "
+                             "same number of MPI processes. It is implemented as final seed = "
+                             "user seed + MPI Rank.");
+
+          prm.declare_entry ("Number of grains per particle", "50",
+                             Patterns::Integer (1),
+                             "The number of grains of each different mineral "
+                             "each particle contains.");
+
+          prm.declare_entry ("Property advection method", "Backward Euler",
+                             Patterns::Anything(),
+                             "Options: Forward Euler, Backward Euler");
+
+          prm.declare_entry ("Property advection tolerance", "1e-10",
+                             Patterns::Double(0),
+                             "The Backward Euler property advection method involve internal iterations. "
+                             "This option allows for setting a tolerance. When the norm of tensor new - tensor old is "
+                             "smaller than this tolerance, the iteration is stopped.");
+
+          prm.declare_entry ("Property advection max iterations", "100",
+                             Patterns::Integer(0),
+                             "The Backward Euler property advection method involve internal iterations. "
+                             "This option allows for setting the maximum number of iterations. Note that when the iteration "
+                             "is ended by the max iteration amount an assert is thrown.");
+
+          prm.declare_entry ("CPO derivatives algorithm", "Spin tensor",
+                             Patterns::List(Patterns::Anything()),
+                             "Options: Spin tensor");
+
+          prm.enter_subsection("Initial grains");
           {
-            prm.enter_subsection("Crystal Preferred Orientation");
-            {
-              prm.declare_entry ("Random number seed", "1",
-                                 Patterns::Integer (0),
-                                 "The seed used to generate random numbers. This will make sure that "
-                                 "results are reproducible as long as the problem is run with the "
-                                 "same number of MPI processes. It is implemented as final seed = "
-                                 "user seed + MPI Rank. ");
+            prm.declare_entry("Model name", "Uniform grains and random uniform rotations",
+                              Patterns::Anything(),
+                              "The model used to initialize the CPO for all particles. "
+                              "Currently 'Uniform grains and random uniform rotations' and 'World Builder' are the only valid option.");
 
-              prm.declare_entry ("Number of grains per particle", "50",
-                                 Patterns::Integer (1),
-                                 "The number of grains of each different mineral "
-                                 "each particle contains.");
+            prm.declare_entry ("Minerals", "Olivine: Karato 2008, Enstatite",
+                               Patterns::List(Patterns::Anything()),
+                               "This determines what minerals and fabrics or fabric selectors are used used for the LPO/CPO calculation. "
+                               "The options are Olivine: Passive, A-fabric, Olivine: B-fabric, Olivine: C-fabric, Olivine: D-fabric, "
+                               "Olivine: E-fabric, Olivine: Karato 2008 or Enstatite or CPX. Passive sets all RRSS entries to the maximum. The "
+                               "Karato 2008 selector selects a fabric based on stress and water content as defined in "
+                               "figure 4 of the Karato 2008 review paper (doi: 10.1146/annurev.earth.36.031207.124120).");
 
-              prm.declare_entry ("Property advection method", "Backward Euler",
-                                 Patterns::Anything(),
-                                 "Options: Forward Euler, Backward Euler");
+            prm.declare_entry ("CPX RRSS", "1,5,5,1.5",
+                               Patterns::List(Patterns::Anything()),
+                               "The default RRSS values for CPX, used in fabric calculations."
+                               "(preliminary results, pending further investigations)."
+                               "This list expects 4 entries separated by commas."
+                               "Main slip systems from Bascou et al., 2002 JSG and "
+                               "Zhang et al., 2006 EPSL and from numerical experiments");
 
-              prm.declare_entry ("Property advection tolerance", "1e-10",
-                                 Patterns::Double(0),
-                                 "The Backward Euler property advection method involve internal iterations. "
-                                 "This option allows for setting a tolerance. When the norm of tensor new - tensor old is "
-                                 "smaller than this tolerance, the iteration is stopped.");
+            prm.declare_entry ("OlivineD RRSS", "3.,5.,1.e60,1.",
+                               Patterns::List(Patterns::Anything()),
+                               "Alternative RRSS values for Olivine D-type fabric when "
+                               "incorporating slip plane {0kl}, used in fabric calculations."
+                               "(preliminary results, pending further investigations)."
+                               "This list expects 4 entries separated by commas."
+                               "Main slip systems from Karato 2008 and "
+                               "Bystricky et al., 2001 and from numerical experiments");
 
-              prm.declare_entry ("Property advection max iterations", "100",
-                                 Patterns::Integer(0),
-                                 "The Backward Euler property advection method involve internal iterations. "
-                                 "This option allows for setting the maximum number of iterations. Note that when the iteration "
-                                 "is ended by the max iteration amount an assert is thrown.");
-
-              prm.declare_entry ("CPO derivatives algorithm", "Spin tensor",
-                                 Patterns::List(Patterns::Anything()),
-                                 "Options: Spin tensor");
-
-              prm.enter_subsection("Initial grains");
-              {
-                prm.declare_entry("Model name","Uniform grains and random uniform rotations",
-                                  Patterns::Anything(),
-                                  "The model used to initialize the CPO for all particles. "
-                                  "Currently 'Uniform grains and random uniform rotations' is the only valid option.");
-
-                prm.declare_entry ("Minerals", "Olivine: Karato 2008, Enstatite",
-                                   Patterns::List(Patterns::Anything()),
-                                   "This determines what minerals and fabrics or fabric selectors are used used for the LPO/CPO calculation. "
-                                   "The options are Olivine: Passive, A-fabric, Olivine: B-fabric, Olivine: C-fabric, Olivine: D-fabric, "
-                                   "Olivine: E-fabric, Olivine: Karato 2008 or Enstatite. Passive sets all RRSS entries to the maximum. The "
-                                   "Karato 2008 selector selects a fabric based on stress and water content as defined in "
-                                   "figure 4 of the Karato 2008 review paper (doi: 10.1146/annurev.earth.36.031207.124120).");
-
-
-                prm.declare_entry ("Volume fractions minerals", "0.7, 0.3",
-                                   Patterns::List(Patterns::Double(0)),
-                                   "The volume fractions for the different minerals. "
-                                   "There need to be the same number of values as there are minerals."
-                                   "Note that the currently implemented scheme is incompressible and "
-                                   "does not allow chemical interaction or the formation of new phases");
-              }
-              prm.leave_subsection ();
-
-              prm.enter_subsection("D-Rex 2004");
-              {
-
-                prm.declare_entry ("Mobility", "50",
-                                   Patterns::Double(0),
-                                   "The dimensionless intrinsic grain boundary mobility for both olivine and enstatite.");
-
-                prm.declare_entry ("Volume fractions minerals", "0.5, 0.5",
-                                   Patterns::List(Patterns::Double(0)),
-                                   "The volume fraction for the different minerals. "
-                                   "There need to be the same amount of values as there are minerals");
-
-                prm.declare_entry ("Stress exponents", "3.5",
-                                   Patterns::Double(0),
-                                   "This is the power law exponent that characterizes the rheology of the "
-                                   "slip systems. It is used in equation 11 of Kaminski et al., 2004.");
-
-                prm.declare_entry ("Exponents p", "1.5",
-                                   Patterns::Double(0),
-                                   "This is exponent p as defined in equation 11 of Kaminski et al., 2004. ");
-
-                prm.declare_entry ("Nucleation efficiency", "5",
-                                   Patterns::Double(0),
-                                   "This is the dimensionless nucleation rate as defined in equation 8 of "
-                                   "Kaminski et al., 2004. ");
-
-                prm.declare_entry ("Threshold GBS", "0.3",
-                                   Patterns::Double(0),
-                                   "The Dimensionless Grain Boundary Sliding (GBS) threshold. "
-                                   "This is a grain size threshold below which grain deform by GBS and "
-                                   "become strain-free grains.");
-              }
-              prm.leave_subsection();
-            }
-            prm.leave_subsection ();
+            prm.declare_entry ("Volume fractions minerals", "0.7, 0.3",
+                               Patterns::List(Patterns::Double(0)),
+                               "The volume fractions for the different minerals. "
+                               "There need to be the same number of values as there are minerals. "
+                               "Note that the currently implemented scheme is incompressible and "
+                               "does not allow chemical interaction or the formation of new phases.");
           }
-          prm.leave_subsection ();
+          prm.leave_subsection();
+
+          prm.enter_subsection("D-Rex 2004");
+          {
+            prm.declare_entry ("Mobility", "50",
+                               Patterns::Double(0),
+                               "The dimensionless intrinsic grain boundary mobility for both olivine and enstatite.");
+
+            prm.declare_entry ("Volume fractions minerals", "0.5, 0.5",
+                               Patterns::List(Patterns::Double(0)),
+                               "The volume fraction for the different minerals. "
+                               "There need to be the same amount of values as there are minerals");
+
+            prm.declare_entry ("Stress exponents", "3.5",
+                               Patterns::Double(0),
+                               "This is the power law exponent that characterizes the rheology of the "
+                               "slip systems. It is used in equation 11 of Kaminski et al., 2004.");
+
+            prm.declare_entry ("Exponents p", "1.5",
+                               Patterns::Double(0),
+                               "This is exponent p as defined in equation 11 of Kaminski et al., 2004.");
+
+            prm.declare_entry ("Nucleation efficiency", "5",
+                               Patterns::Double(0),
+                               "This is the dimensionless nucleation rate as defined in equation 8 of "
+                               "Kaminski et al., 2004.");
+
+            prm.declare_entry ("Threshold GBS", "0.3",
+                               Patterns::Double(0),
+                               "The Dimensionless Grain Boundary Sliding (GBS) threshold. "
+                               "This is a grain size threshold below which grains deform by GBS and "
+                               "become strain-free grains.");
+          }
+          prm.leave_subsection();
         }
-        prm.leave_subsection ();
+        prm.leave_subsection();
       }
 
 
@@ -1110,131 +1240,177 @@ namespace aspect
                                          "2d computations will work when this assert is removed, but you will need to make sure that the "
                                          "correct 3d strain-rate and velocity gradient tensors are provided to the algorithm."));
 
-        prm.enter_subsection("Postprocess");
+        prm.enter_subsection("Crystal Preferred Orientation");
         {
-          prm.enter_subsection("Particles");
-          {
-            prm.enter_subsection("Crystal Preferred Orientation");
+          random_number_seed = prm.get_integer ("Random number seed");
+          n_grains = prm.get_integer("Number of grains per particle");
+
+          property_advection_tolerance = prm.get_double("Property advection tolerance");
+          property_advection_max_iterations = prm.get_integer ("Property advection max iterations");
+
+          const std::string temp_cpo_derivative_algorithm = prm.get("CPO derivatives algorithm");
+
+          if (temp_cpo_derivative_algorithm == "Spin tensor")
             {
-              random_number_seed = prm.get_integer ("Random number seed");
-              n_grains = prm.get_integer("Number of grains per particle");
-
-              property_advection_tolerance = prm.get_double("Property advection tolerance");
-              property_advection_max_iterations = prm.get_integer ("Property advection max iterations");
-
-              const std::string temp_cpo_derivative_algorithm = prm.get("CPO derivatives algorithm");
-
-              if (temp_cpo_derivative_algorithm == "Spin tensor")
-                {
-                  cpo_derivative_algorithm = CPODerivativeAlgorithm::spin_tensor;
-                }
-              else if (temp_cpo_derivative_algorithm ==  "D-Rex 2004")
-                {
-                  cpo_derivative_algorithm = CPODerivativeAlgorithm::drex_2004;
-                }
-              else
-                {
-                  AssertThrow(false,
-                              ExcMessage("The CPO derivatives algorithm needs to be one of the following: "
-                                         "Spin tensor, D-Rex 2004."));
-                }
-
-              const std::string temp_advection_method = prm.get("Property advection method");
-              if (temp_advection_method == "Forward Euler")
-                {
-                  advection_method = AdvectionMethod::forward_euler;
-                }
-              else if (temp_advection_method == "Backward Euler")
-                {
-                  advection_method = AdvectionMethod::backward_euler;
-                }
-              else
-                {
-                  AssertThrow(false, ExcMessage("particle property advection method not found: \"" + temp_advection_method + "\""));
-                }
-
-              prm.enter_subsection("Initial grains");
-              {
-                const std::string model_name = prm.get("Model name");
-                AssertThrow(model_name == "Uniform grains and random uniform rotations",
-                            ExcMessage("No model named " + model_name + "for CPO particle property initialization. "
-                                       + "Only the model \"Uniform grains and random uniform rotations\" is available."));
-
-                const std::vector<std::string> temp_deformation_type_selector = dealii::Utilities::split_string_list(prm.get("Minerals"));
-                n_minerals = temp_deformation_type_selector.size();
-                deformation_type_selector.resize(n_minerals);
-
-                for (size_t mineral_i = 0; mineral_i < n_minerals; ++mineral_i)
-                  {
-                    if (temp_deformation_type_selector[mineral_i] == "Passive")
-                      {
-                        deformation_type_selector[mineral_i] = DeformationTypeSelector::passive;
-                      }
-                    else if (temp_deformation_type_selector[mineral_i] == "Olivine: Karato 2008")
-                      {
-                        deformation_type_selector[mineral_i] = DeformationTypeSelector::olivine_karato_2008;
-                      }
-                    else if (temp_deformation_type_selector[mineral_i] ==  "Olivine: A-fabric")
-                      {
-                        deformation_type_selector[mineral_i] = DeformationTypeSelector::olivine_a_fabric;
-                      }
-                    else if (temp_deformation_type_selector[mineral_i] ==  "Olivine: B-fabric")
-                      {
-                        deformation_type_selector[mineral_i] = DeformationTypeSelector::olivine_b_fabric;
-                      }
-                    else if (temp_deformation_type_selector[mineral_i] ==  "Olivine: C-fabric")
-                      {
-                        deformation_type_selector[mineral_i] = DeformationTypeSelector::olivine_c_fabric;
-                      }
-                    else if (temp_deformation_type_selector[mineral_i] ==  "Olivine: D-fabric")
-                      {
-                        deformation_type_selector[mineral_i] = DeformationTypeSelector::olivine_d_fabric;
-                      }
-                    else if (temp_deformation_type_selector[mineral_i] ==  "Olivine: E-fabric")
-                      {
-                        deformation_type_selector[mineral_i] = DeformationTypeSelector::olivine_e_fabric;
-                      }
-                    else if (temp_deformation_type_selector[mineral_i] ==  "Enstatite")
-                      {
-                        deformation_type_selector[mineral_i] = DeformationTypeSelector::enstatite;
-                      }
-                    else
-                      {
-                        AssertThrow(false,
-                                    ExcMessage("The fabric needs to be assigned one of the following comma-delimited values: Olivine: Karato 2008, "
-                                               "Olivine: A-fabric, Olivine: B-fabric, Olivine: C-fabric, Olivine: D-fabric,"
-                                               "Olivine: E-fabric, Enstatite, Passive."));
-                      }
-                  }
-
-                volume_fractions_minerals = Utilities::string_to_double(dealii::Utilities::split_string_list(prm.get("Volume fractions minerals")));
-                double volume_fractions_minerals_sum = 0;
-                for (auto fraction : volume_fractions_minerals)
-                  {
-                    volume_fractions_minerals_sum += fraction;
-                  }
-
-                AssertThrow(abs(volume_fractions_minerals_sum-1.0) < 2.0 * std::numeric_limits<double>::epsilon(),
-                            ExcMessage("The sum of the CPO volume fractions should be one."));
-              }
-              prm.leave_subsection();
-
-              prm.enter_subsection("D-Rex 2004");
-              {
-                mobility = prm.get_double("Mobility");
-                volume_fractions_minerals = Utilities::string_to_double(dealii::Utilities::split_string_list(prm.get("Volume fractions minerals")));
-                stress_exponent = prm.get_double("Stress exponents");
-                exponent_p = prm.get_double("Exponents p");
-                nucleation_efficiency = prm.get_double("Nucleation efficiency");
-                threshold_GBS = prm.get_double("Threshold GBS");
-              }
-              prm.leave_subsection();
+              cpo_derivative_algorithm = CPODerivativeAlgorithm::spin_tensor;
             }
-            prm.leave_subsection ();
+          else if (temp_cpo_derivative_algorithm ==  "D-Rex 2004")
+            {
+              cpo_derivative_algorithm = CPODerivativeAlgorithm::drex_2004;
+            }
+          else
+            {
+              AssertThrow(false,
+                          ExcMessage("The CPO derivatives algorithm needs to be one of the following: "
+                                     "Spin tensor, D-Rex 2004."));
+            }
+
+          const std::string temp_advection_method = prm.get("Property advection method");
+          if (temp_advection_method == "Forward Euler")
+            {
+              advection_method = AdvectionMethod::forward_euler;
+            }
+          else if (temp_advection_method == "Backward Euler")
+            {
+              advection_method = AdvectionMethod::backward_euler;
+            }
+          else
+            {
+              AssertThrow(false, ExcMessage("particle property advection method not found: \"" + temp_advection_method + "\""));
+            }
+
+          prm.enter_subsection("Initial grains");
+          {
+            const std::string model_name = prm.get("Model name");
+            if (model_name == "Uniform grains and random uniform rotations")
+              {
+                initial_grains_model = CPOInitialGrainsModel::uniform_grains_and_random_uniform_rotations;
+              }
+            else if (model_name == "World Builder")
+              {
+                initial_grains_model = CPOInitialGrainsModel::world_builder;
+              }
+            else
+              {
+                AssertThrow(false,
+                            ExcMessage("No model named " + model_name + "for CPO particle property initialization. "
+                                       + "Only the model \"Uniform grains and random uniform rotations\"  and "
+                                       "\"World Builder\" are available."));
+              }
+
+            const std::vector<std::string> temp_deformation_type_selector = dealii::Utilities::split_string_list(prm.get("Minerals"));
+            n_minerals = temp_deformation_type_selector.size();
+            deformation_type_selector.resize(n_minerals);
+
+            for (size_t mineral_i = 0; mineral_i < n_minerals; ++mineral_i)
+              {
+                if (temp_deformation_type_selector[mineral_i] == "Passive")
+                  {
+                    deformation_type_selector[mineral_i] = DeformationTypeSelector::passive;
+                  }
+                else if (temp_deformation_type_selector[mineral_i] == "Olivine: Karato 2008")
+                  {
+                    deformation_type_selector[mineral_i] = DeformationTypeSelector::olivine_karato_2008;
+                  }
+                else if (temp_deformation_type_selector[mineral_i] ==  "Olivine: A-fabric")
+                  {
+                    deformation_type_selector[mineral_i] = DeformationTypeSelector::olivine_a_fabric;
+                  }
+                else if (temp_deformation_type_selector[mineral_i] ==  "Olivine: B-fabric")
+                  {
+                    deformation_type_selector[mineral_i] = DeformationTypeSelector::olivine_b_fabric;
+                  }
+                else if (temp_deformation_type_selector[mineral_i] ==  "Olivine: C-fabric")
+                  {
+                    deformation_type_selector[mineral_i] = DeformationTypeSelector::olivine_c_fabric;
+                  }
+                else if (temp_deformation_type_selector[mineral_i] ==  "Olivine: D-fabric")
+                  {
+                    deformation_type_selector[mineral_i] = DeformationTypeSelector::olivine_d_fabric;
+                  }
+                else if (temp_deformation_type_selector[mineral_i] ==  "Olivine: E-fabric")
+                  {
+                    deformation_type_selector[mineral_i] = DeformationTypeSelector::olivine_e_fabric;
+                  }
+                else if (temp_deformation_type_selector[mineral_i] ==  "Enstatite")
+                  {
+                    deformation_type_selector[mineral_i] = DeformationTypeSelector::enstatite;
+                  }
+                else if (temp_deformation_type_selector[mineral_i] ==  "Clinopyroxene")
+                  {
+                    deformation_type_selector[mineral_i] = DeformationTypeSelector::clinopyroxene;
+                  }
+                else if (temp_deformation_type_selector[mineral_i] ==  "Olivine: D-fabric_0kl")
+                  {
+                    deformation_type_selector[mineral_i] = DeformationTypeSelector::olivine_d_0kl;
+                  }
+                else
+                  {
+                    AssertThrow(false,
+                                ExcMessage("The fabric needs to be assigned one of the following comma-delimited values: Olivine: Karato 2008, "
+                                           "Olivine: A-fabric, Olivine: B-fabric, Olivine: C-fabric, Olivine: D-fabric,"
+                                           "Olivine: E-fabric, Enstatite, Passive, Clinopyroxene, Olivine: D-fabric_0kl."));
+                  }
+              }
+
+            CPX_RRSS = Utilities::string_to_double(dealii::Utilities::split_string_list(prm.get("CPX RRSS")));
+            AssertThrow(CPX_RRSS.size()==4,
+                        ExcMessage("The number of Reference Resolved Shear Stress (RRSS) entries for CPX has to be equal to four."));
+
+            OlivineD_RRSS = Utilities::string_to_double(dealii::Utilities::split_string_list(prm.get("OlivineD RRSS")));
+            AssertThrow(OlivineD_RRSS.size()==4,
+                        ExcMessage("The number of Reference Resolved Shear Stress (RRSS) entries for alternative Olivine D has to be equal to four."));
+
+            volume_fractions_minerals = Utilities::string_to_double(dealii::Utilities::split_string_list(prm.get("Volume fractions minerals")));
+            double volume_fractions_minerals_sum = 0;
+            for (auto fraction : volume_fractions_minerals)
+              {
+                volume_fractions_minerals_sum += fraction;
+              }
+
+            AssertThrow(std::abs(volume_fractions_minerals_sum-1.0) < 2.0 * std::numeric_limits<double>::epsilon(),
+                        ExcMessage("The sum of the CPO volume fractions should be one."));
           }
-          prm.leave_subsection ();
+          prm.leave_subsection();
+
+          prm.enter_subsection("D-Rex 2004");
+          {
+            mobility = prm.get_double("Mobility");
+            volume_fractions_minerals = Utilities::string_to_double(dealii::Utilities::split_string_list(prm.get("Volume fractions minerals")));
+            stress_exponent = prm.get_double("Stress exponents");
+            exponent_p = prm.get_double("Exponents p");
+            nucleation_efficiency = prm.get_double("Nucleation efficiency");
+            threshold_GBS = prm.get_double("Threshold GBS");
+          }
+          prm.leave_subsection();
         }
         prm.leave_subsection ();
+      }
+
+
+
+      template <int dim>
+      void
+      CrystalPreferredOrientation<dim>::save (std::map<std::string, std::string> &status_strings) const
+      {
+        std::ostringstream os;
+        os << random_number_generator;
+        status_strings["CrystalPreferredOrientationParticleProperty"] = os.str();
+      }
+
+
+
+      template <int dim>
+      void
+      CrystalPreferredOrientation<dim>::load (const std::map<std::string, std::string> &status_strings)
+      {
+        const auto saved_state = status_strings.find("CrystalPreferredOrientationParticleProperty");
+        if (saved_state != status_strings.end())
+          {
+            std::istringstream is (saved_state->second);
+            is >> random_number_generator;
+            AssertThrow(!is.fail(), ExcMessage("Could not restore the crystal preferred orientation random number generator."));
+          }
       }
     }
   }

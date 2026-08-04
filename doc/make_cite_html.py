@@ -62,7 +62,8 @@ want_groups = {"kronbichler:etal:2012": "main",
                "aspect-doi-v2.3.0" : "2.3.0",
                "aspect-doi-v2.4.0" : "2.4.0",
                "aspect-doi-v2.5.0" : "2.5.0",
-               "aspectmanual" : "2.5.0",
+               "aspect-doi-v3.0.0" : "3.0.0",
+               "aspectmanual" : "3.0.0",
                "rose_freesurface" : "fs",
                "dannberg:heister:2016" : "melt",
                "gassmoller:etal:2018" : "particles",
@@ -73,7 +74,13 @@ want_groups = {"kronbichler:etal:2012": "main",
                "fraters_menno_2020_3900603" : "GWB",
                "Fraters2019c" : "GWB",
                "fraters:etal:2019" : "NewtonSolver",
-               "fraters_billen_2021_cpo" : "CPO"
+               "fraters_billen_2021_cpo" : "CPO",
+               "dannberg:etal:2022" : "entropy",
+               "dannberg:grain:size" : "grainsize",
+               "dannberg:etal:2021" : "boukaremelt",
+               "neuharth:etal:2022" : "fastscape",
+               "euen:etal:2023" : "cbfheatflux",
+               "dannberg:gassmoeller:etal:2024" : "cbfheatflux"
 }
 
 want = []
@@ -98,15 +105,22 @@ bibformated = {
         "aspect-doi-v2.3.0" : "Bangerth, Wolfgang, Juliane Dannberg, Menno Fraters, Rene Gassmoeller, Anne Glerum, Timo Heister, and John Naliboff. 2021. <i>ASPECT v2.3.0</i> (version v2.3.0). Zenodo. https://doi.org/10.5281/ZENODO.5131909.",
         "aspect-doi-v2.4.0" : "Bangerth, Wolfgang, Juliane Dannberg, Menno Fraters, Rene Gassmoeller, Anne Glerum, Timo Heister, Robert Myhill, and John Naliboff. 2022. <i>ASPECT v2.4.0</i> (version v2.4.0). Zenodo. https://doi.org/10.5281/zenodo.6903424.",
         "aspect-doi-v2.5.0" : "Bangerth, Wolfgang, Juliane Dannberg, Menno Fraters, Rene Gassmoeller, Anne Glerum, Timo Heister, Robert Myhill, and John Naliboff. 2023. <i>Geodynamics/Aspect: ASPECT 2.5.0</i> (version v2.5.0). Zenodo. https://doi.org/10.5281/ZENODO.8200213.",
-        "aspectmanual" : "Bangerth, Wolfgang, Juliane Dannberg, Menno Fraters, Rene Gassmoeller, Anne Glerum, Timo Heister, Robert Myhill, and John Naliboff. 2022. “ASPECT: Advanced Solver for Problems in Earth's ConvecTion, User Manual.” <i>Figshare</i>. https://doi.org/10.6084/M9.FIGSHARE.4865333.",
+        "aspect-doi-v3.0.0" : "Wolfgang Bangerth, Juliane Dannberg, Menno Fraters, Rene Gassmoeller, Anne Glerum, Timo Heister, Robert Myhill, and John Naliboff. 2024. <i>ASPECT v3.0.0</i> (version v3.0.0). Zenodo. https://doi.org/10.5281/ZENODO.14371679.",
+        "aspectmanual" : "Bangerth, Wolfgang, Juliane Dannberg, Menno Fraters, Rene Gassmoeller, Anne Glerum, Timo Heister, Robert Myhill, and John Naliboff. 2024. “ASPECT: Advanced Solver for Planetary Evolution, Convection, and Tectonics, User Manual.” <i>Figshare</i>. https://doi.org/10.6084/M9.FIGSHARE.4865333.",
         "clevenger:heister:2021" : "Thomas C. Clevenger, and Timo Heister. 2021. “Comparison Between Algebraic and Matrix-free Geometric Multigrid for a Stokes Problem on an Adaptive Mesh with Variable Viscosity.“ Numerical Linear Algebra with Applications, Wiley.",
         "dannberg:heister:2016" : "Juliane Dannberg, and Timo Heister. 2016. “Compressible Magma/mantle Dynamics: 3-D, Adaptive Simulations in ASPECT.” Geophysical Journal International 207 (3) (September 4): 1343–1366. doi:10.1093/gji/ggw329. http://dx.doi.org/10.1093/gji/ggw329.",
         "fraters_menno_2020_3900603" : "Menno Fraters. 2020. ”The Geodynamic World Builder” (version v0.3.0). Zenodo. https://doi.org/10.5281/ZENODO.3900603",
-        "gassmoller:etal:2018" : "Rene Gassmoeller, Eric Heien, Elbridge Gerry Puckett, and Wolfgang Bangerth. 2017. “Flexible and scalable particle-in-cell methods for massively parallel computations.” arXiv:1612.03369",
+        "gassmoller:etal:2018" : "Gassmöller, R., Lokavarapu, H., Heien, E., Puckett, E.G. and Bangerth, W. 2018. Flexible and scalable particle‐in‐cell methods with adaptive mesh refinement for geodynamic computations. Geochemistry, Geophysics, Geosystems, 19(9), pp.3596-3604. doi:10.1029/2018GC007508. https://doi.org/10.1029/2018GC007508",
         "gassmoller:etal:2020" : "Rene Gassmöller, Juliane Dannberg, Wolfgang Bangerth, Timo Heister, and Robert Myhill. 2020. “On Formulations of Compressible Mantle Convection.” Geophysical Journal International 221 (2) (February 13): 1264–1280. doi:10.1093/gji/ggaa078. http://dx.doi.org/10.1093/gji/ggaa078.",
         "heister:etal:2017" : "Timo Heister, Juliane Dannberg, Rene Gassmöller, and Wolfgang Bangerth. 2017. “High Accuracy Mantle Convection Simulation through Modern Numerical Methods – II: Realistic Models and Problems.” Geophysical Journal International 210 (2) (May 9): 833–851. doi:10.1093/gji/ggx195. http://dx.doi.org/10.1093/gji/ggx195.",
         "rose_freesurface" : "Ian Rose, Bruce Buffett, and Timo Heister. 2017. “Stability and Accuracy of Free Surface Time Integration in Viscous Flows.” Physics of the Earth and Planetary Interiors 262 (January): 90–100. doi:10.1016/j.pepi.2016.11.007. http://dx.doi.org/10.1016/j.pepi.2016.11.007.",
-        "fraters_billen_2021_cpo" : "Fraters, M. R. T. and Billen, M. I. 2021. “On the Implementation and Usability of Crystal Preferred Orientation Evolution in Geodynamic Modeling” Geochemistry, Geophysics, Geosystems 22 (10): e2021GC009846. doi:10.1029/2021GC009846. https://doi.org/10.1029/2021GC009846."
+        "fraters_billen_2021_cpo" : "Fraters, M. R. T. and Billen, M. I. 2021. “On the Implementation and Usability of Crystal Preferred Orientation Evolution in Geodynamic Modeling” Geochemistry, Geophysics, Geosystems 22 (10): e2021GC009846. doi:10.1029/2021GC009846. https://doi.org/10.1029/2021GC009846.",
+        "dannberg:etal:2022" : "Dannberg, J., Gassmöller, R., Li, R., Lithgow-Bertelloni, C. and Stixrude, L. 2022. An entropy method for geodynamic modelling of phase transitions: capturing sharp and broad transitions in a multiphase assemblage. Geophysical Journal International, 231(3), pp.1833-1849. doi:10.1093/gji/ggac293. https://doi.org/10.1093/gji/ggac293.",
+        "dannberg:grain:size" : "Dannberg, J., Eilon, Z., Faul, U., Gassmöller, R., Moulik, P. and Myhill, R. 2017. The importance of grain size to mantle dynamics and seismological observations. Geochemistry, Geophysics, Geosystems, 18(8), pp.3034-3061. doi:10.1002/2017GC006944. https://doi.org/10.1002/2017GC006944.",
+        "dannberg:etal:2021" : "Dannberg, J., Myhill, R., Gassmöller, R. and Cottaar, S., 2021. The morphology, evolution and seismic visibility of partial melt at the core–mantle boundary: implications for ULVZs. Geophysical Journal International, 227(2), pp.1028-1059.",
+        "neuharth:etal:2022" : "Neuharth, D., Brune, S., Wrona, T., Glerum, A., Braun, J. and Yuan, X. 2022. Evolution of rift systems and their fault networks in response to surface processes. Tectonics, 41(3), e2021TC007166. doi:10.1029/2021TC007166. https://doi.org/10.1029/2021TC007166.",
+        "euen:etal:2023" : "Euen, G.T., Liu, S., Gassmöller, R., Heister, T. and King, S.D. 2023. A comparison of 3-D spherical shell thermal convection results at low to moderate Rayleigh number using ASPECT (version 2.2.0) and CitcomS (version 3.3.1), Geoscientific Model Development, 16, 3221–3239, doi:10.5194/gmd-16-3221-2023, https://doi.org/10.5194/gmd-16-3221-2023, 2023.",
+        "dannberg:gassmoeller:etal:2024" : "Dannberg, J., Gassmöller, R., Thallner, D., LaCombe, F. and Sprain, C. 2024. Changes in core–mantle boundary heat flux patterns throughout the supercontinent cycle. Geophysical Journal International, 237(3), pp.1251-1274. doi:10.1093/gji/ggae075. https://doi.org/10.1093/gji/ggae075."
 }
 
 

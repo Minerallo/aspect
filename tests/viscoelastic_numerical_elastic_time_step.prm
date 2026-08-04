@@ -5,11 +5,11 @@
 # numerical time step. Viscoelastic stresses (sigma_xx,
 # sigma_yy, sigma_xy) are tracked with compositional
 # fields. The parameter file is derived from the 2D
-# viscoelastic_stress_build-up benchmark with modifications
+# viscoelastic_stress_build_up benchmark with modifications
 # to the resolution, end time, material properties and
 # postprocessors.
 
-include $ASPECT_SOURCE_DIR/benchmarks/viscoelastic_stress_build-up/viscoelastic_stress_build-up.prm
+include $ASPECT_SOURCE_DIR/benchmarks/viscoelastic_stress_build_up/viscoelastic_stress_build_up.prm
 
 
 #  Global parameters

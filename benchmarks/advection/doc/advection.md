@@ -1,3 +1,10 @@
+```{tags}
+category:benchmark
+feature:2d
+feature:cartesian
+feature:solver-comparison
+```
+
 (sec:benchmarks:advection)=
 # Advection stabilization benchmarks
 
@@ -23,7 +30,7 @@ Both benchmarks have the identical setup in the temperature and a
 compositional field. The only difference is that the temperature equation
 contains a (small) physical diffusion term.
 
-**[Description of benchmark files](../README.md)**
+**[Description of benchmark files](../README)**
 
 ```{figure-md} fig:benchmark-drop
 <img src="drop.png" />

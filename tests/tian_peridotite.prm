@@ -14,13 +14,6 @@ set End time                               = 1e3
 set Maximum time step                      = 1e3
 set Use operator splitting                 = true
 
-subsection Solver parameters
-  subsection Operator splitting parameters
-    set Reaction time step                     = 1e2
-    set Reaction time steps per advection step = 10
-  end
-end
-
 # The Tian approximation implementation requires that all 4 rock compositions exist
 # as compositional fields, though they do not have to all be non zero.
 subsection Compositional fields
@@ -28,11 +21,20 @@ subsection Compositional fields
   set Names of fields = porosity, bound_fluid, peridotite, gabbro, MORB, sediment
 end
 
+# Change the Reaction solver type to fixed step, so that the mass of water is conserved.
+subsection Solver parameters
+  subsection Operator splitting parameters
+    set Reaction solver type = fixed step 
+    set Reaction time step   = 10
+  end
+end
+
 # Specify that the entire domain is peridotite, with an initial bound water content
-# of 11% everywhere, the bound_water will evolve to the parametrized phase diagram
+# of 11% everywhere, the bound_water will evolve to the parameterized phase diagram
 # for peridotite.
 subsection Initial composition model
   set Model name = function
+
   subsection Function
     set Function constants  = initial_porosity=0.0, initial_bound_water=0.11
     set Function expression = initial_porosity; \
@@ -53,6 +55,7 @@ end
 # as in phase diagrams from Tian et al., 2019
 subsection Geometry model
   set Model name = box
+
   subsection Box
     set X extent  = 200e3
     set Y extent  = 200e3
@@ -64,6 +67,7 @@ end
 # 10 m/s^2 vertical gravity
 subsection Gravity model
   set Model name = vertical
+
   subsection Vertical
     set Magnitude = 10.0
   end
@@ -73,6 +77,7 @@ end
 # phase diagrams from Tian et al., 2019
 subsection Initial temperature model
   set Model name = function
+
   subsection Function
     set Coordinate system   = cartesian
     set Variable names      = x,y
@@ -85,12 +90,12 @@ end
 subsection Boundary temperature model
   set Fixed temperature boundary indicators   = top, bottom, right, left
   set List of model names = initial temperature
+
   subsection Initial temperature
     set Maximal temperature = 573
     set Minimal temperature = 1273
   end
 end
-
 
 # Material model, using the simpler base model and selecting the tian approximation
 # as the fluid solid reaction scheme for the reactive fluid transport model.
@@ -102,7 +107,9 @@ subsection Material model
     set Reference fluid density                          = 3000
     set Fluid reaction time scale for operator splitting = 1e2
     set Fluid-solid reaction scheme                      = tian approximation
-    set Maximum weight percent water in peridotite       = 11
+    subsection Tian 2019 model
+      set Maximum weight percent water in peridotite       = 11
+    end
   end
 
   subsection Simpler model

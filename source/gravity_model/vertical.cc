@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -50,8 +50,8 @@ namespace aspect
         {
           prm.declare_entry ("Magnitude", "1.",
                              Patterns::Double (),
-                             "Value of the gravity vector in $m/s^2$ directed "
-                             "along negative y (2d) or z (3d) axis (if the magnitude "
+                             "Value of the gravity vector in $\\si{\\meter\\per\\second\\squared}$ directed "
+                             "along the negative $y$ (in 2d) or $z$ (in 3d) axis (if the magnitude "
                              "is positive.");
         }
         prm.leave_subsection ();

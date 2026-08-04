@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -25,8 +25,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     template <int dim>
     class PrescribedTemperatureMaterial : public MaterialModel::Simple<dim>
     {
@@ -57,9 +55,10 @@ namespace aspect
       Simple<dim>::evaluate(in, out);
 
       // set up variable to interpolate prescribed field outputs onto compositional fields
-      PrescribedTemperatureOutputs<dim> *prescribed_temperature_out = out.template get_additional_output<PrescribedTemperatureOutputs<dim>>();
+      const std::shared_ptr<PrescribedTemperatureOutputs<dim>> prescribed_temperature_out
+        = out.template get_additional_output_object<PrescribedTemperatureOutputs<dim>>();
 
-      if (prescribed_temperature_out != NULL)
+      if (prescribed_temperature_out != nullptr)
         for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
           {
             const double y = in.position[i](1);
@@ -72,7 +71,7 @@ namespace aspect
     void
     PrescribedTemperatureMaterial<dim>::create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const
     {
-      if (out.template get_additional_output<PrescribedTemperatureOutputs<dim>>() == NULL)
+      if (out.template has_additional_output_object<PrescribedTemperatureOutputs<dim>>() == false)
         {
           const unsigned int n_points = out.n_evaluation_points();
           out.additional_outputs.push_back(

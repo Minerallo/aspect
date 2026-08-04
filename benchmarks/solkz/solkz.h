@@ -36,8 +36,6 @@ namespace aspect
    */
   namespace InclusionBenchmark
   {
-    using namespace dealii;
-
     namespace AnalyticSolutions
     {
       // based on http://geodynamics.org/hg/cs/AMR/Discontinuous_Stokes with permission
@@ -50,7 +48,7 @@ namespace aspect
         double _sigma, /* density */
         double _km, int _n, /* wavelength in z, wavenumber in x */
         double _B, /* viscosity parameter */
-        double vel[], double *presssure,
+        double vel[], double *pressure,
         double total_stress[], double strain_rate[])
       {
         double Z;
@@ -588,22 +586,22 @@ namespace aspect
 
 
         /* Output */
-        if (vel != NULL)
+        if (vel != nullptr)
           {
             vel[0] = sum2;
             vel[1] = sum1;
           }
-        if (presssure != NULL)
+        if (pressure != nullptr)
           {
-            (*presssure) = sum5;
+            (*pressure) = sum5;
           }
-        if (total_stress != NULL)
+        if (total_stress != nullptr)
           {
             total_stress[0] = sum6;
             total_stress[1] = sum3;
             total_stress[2] = sum4;
           }
-        if (strain_rate != NULL)
+        if (strain_rate != nullptr)
           {
             /* sigma = tau - p, tau = sigma + p, tau[] = 2*eta*strain_rate[] */
             Z = exp(2.0 * B * z);
@@ -623,7 +621,7 @@ namespace aspect
       /**
        * The exact solution for the SolKz benchmark.
        */
-      template<int dim>
+      template <int dim>
       class FunctionSolKz : public Function<dim>
       {
         public:
@@ -648,7 +646,7 @@ namespace aspect
 
 
 
-    template<int dim>
+    template <int dim>
     class SolKzMaterial : public MaterialModel::Interface<dim>
     {
       public:
@@ -721,7 +719,7 @@ namespace aspect
      * The implementation of error evaluators that correspond to the
      * benchmarks defined in the paper Duretz et al. reference above.
      */
-    template<int dim>
+    template <int dim>
     class SolKzPostprocessor : public Postprocess::Interface<dim>, public ::aspect::SimulatorAccess<dim>
     {
       public:

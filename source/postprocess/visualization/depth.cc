@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -87,7 +87,7 @@ namespace aspect
                                                   "be used to visualize positive elevations, whereas the the one "
                                                   "called ``surface elevation'' can."
                                                   "\n\n"
-                                                  "Physical units: \\si{\\meter}.")
+                                                  "Physical units: $\\text{m}$.")
     }
   }
 }

@@ -1,3 +1,14 @@
+```{tags}
+category:cookbook
+feature:2d
+feature:spherical
+feature:compositional-fields
+feature:compressibility
+feature:modular-equations
+feature:nonlinear-solver
+```
+
+(sec:cookbooks:steinberger)=
 # Convection using a pressure--temperature look-up table and the rheology of Steinberger and Calderwood (2006)
 
 *This section was contributed by Juliane Dannberg and Ren&eacute;
@@ -336,7 +347,7 @@ provides the values that should be interpolated onto the field.
 ```
 
 The complete input file can be found in
-[cookbooks/steinberger/doc/steinberger.prm](https://www.github.com/geodynamics/aspect/blob/main/cookbooks/steinberger/doc/steinberger.prm).
+[cookbooks/steinberger/doc/steinberger.prm](https://www.github.com/geodynamics/aspect/blob/main/cookbooks/steinberger/steinberger.prm).
 
 ## Results
 

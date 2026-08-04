@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2017 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -47,6 +47,18 @@ namespace aspect
                                                            * material_model_inputs.temperature[q]
                                                            * material_model_outputs.entropy_derivative_temperature[q];
         }
+    }
+
+
+
+    template <int dim>
+    MaterialModel::MaterialProperties::Property
+    LatentHeat<dim>::
+    get_required_properties () const
+    {
+      return MaterialModel::MaterialProperties::entropy_derivative_pressure |
+             MaterialModel::MaterialProperties::entropy_derivative_temperature |
+             MaterialModel::MaterialProperties::density;
     }
   }
 }

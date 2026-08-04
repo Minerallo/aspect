@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -37,11 +37,23 @@ namespace aspect
              ExcMessage ("Heating outputs need to have the same number of entries as the material model inputs."));
 
       // Check if the material model has additional outputs relevant for the shear heating.
-      const ShearHeatingOutputs<dim> *shear_heating_out =
-        material_model_outputs.template get_additional_output<ShearHeatingOutputs<dim>>();
+      const std::shared_ptr<const ShearHeatingOutputs<dim>> shear_heating_out
+        = material_model_outputs.template get_additional_output_object<ShearHeatingOutputs<dim>>();
+
+      const std::shared_ptr<const PrescribedShearHeatingOutputs<dim>> prescribed_shear_heating_out
+        = material_model_outputs.template get_additional_output_object<PrescribedShearHeatingOutputs<dim>>();
 
       for (unsigned int q=0; q<heating_model_outputs.heating_source_terms.size(); ++q)
         {
+          // If the viscous dissipation rate was precomputed by the material model,
+          // use it and skip the rest of the calculation.
+          if (prescribed_shear_heating_out != nullptr)
+            {
+              heating_model_outputs.heating_source_terms[q] = prescribed_shear_heating_out->prescribed_shear_heating_rates[q];
+              heating_model_outputs.lhs_latent_heat_terms[q] = 0.0;
+              continue;
+            }
+
           const SymmetricTensor<2,dim> deviatoric_strain_rate =
             (this->get_material_model().is_compressible()
              ?
@@ -55,14 +67,16 @@ namespace aspect
           if (limit_stress)
             {
               // Compute yield stress.
+              MaterialModel::Rheology::DruckerPragerParameters drucker_prager_parameters;
+              drucker_prager_parameters.cohesion = cohesion;
+              drucker_prager_parameters.angle_internal_friction = friction_angle;
+              drucker_prager_parameters.max_yield_stress = std::numeric_limits<double>::max();
               const double pressure = std::max(material_model_inputs.pressure[q], 0.0);
-              const double yield_stress = drucker_prager_plasticity.compute_yield_stress(cohesion,
-                                                                                         friction_angle,
-                                                                                         pressure,
-                                                                                         std::numeric_limits<double>::max());
+              const double yield_stress = drucker_prager_plasticity.compute_yield_stress(pressure,
+                                                                                         drucker_prager_parameters);
 
               // Scale the stress accordingly.
-              const double deviatoric_stress = 2 * material_model_outputs.viscosities[q] * std::sqrt(std::fabs(second_invariant(deviatoric_strain_rate)));
+              const double deviatoric_stress = 2 * material_model_outputs.viscosities[q] * std::sqrt(std::fabs(Utilities::Tensors::consistent_second_invariant_of_deviatoric_tensor(deviatoric_strain_rate)));
               double scaling_factor = 1.0;
               if (deviatoric_stress > 0.0)
                 scaling_factor = std::min(yield_stress / deviatoric_stress, 1.0);
@@ -72,8 +86,10 @@ namespace aspect
 
           heating_model_outputs.heating_source_terms[q] = stress * deviatoric_strain_rate;
 
-          // If shear heating work fractions are provided, reduce the
-          // overall heating by this amount (which is assumed to be converted into other forms of energy)
+          // If shear heating work fractions are provided, multiply the
+          // overall shear heating by this factor. Work fractions are usually smaller than
+          // one, and the reduction in shear heating is assumed to be work converted into
+          // other forms of energy).
           if (shear_heating_out != nullptr)
             {
               heating_model_outputs.heating_source_terms[q] *= shear_heating_out->shear_heating_work_fractions[q];
@@ -82,6 +98,18 @@ namespace aspect
           heating_model_outputs.lhs_latent_heat_terms[q] = 0.0;
         }
     }
+
+
+
+    template <int dim>
+    MaterialModel::MaterialProperties::Property
+    ShearHeating<dim>::
+    get_required_properties () const
+    {
+      return MaterialModel::MaterialProperties::viscosity |
+             MaterialModel::MaterialProperties::additional_outputs;
+    }
+
 
 
     template <int dim>
@@ -110,7 +138,7 @@ namespace aspect
                              "in the Earth would be lower than the stresses introduced by the "
                              "boundary conditions. Only used if 'Limit stress contribution to shear heating' "
                              "is true. "
-                             "Units: Pa.");
+                             "Units: \\si{\\pascal}.");
           prm.declare_entry ("Friction angle for maximum shear stress", "0",
                              Patterns::Double (0),
                              "Friction angle for maximum shear stress that should be used for the computation "
@@ -176,6 +204,27 @@ namespace aspect
 
       return shear_heating_work_fractions;
     }
+
+
+
+    template <int dim>
+    PrescribedShearHeatingOutputs<dim>::PrescribedShearHeatingOutputs (const unsigned int n_points)
+      :
+      MaterialModel::NamedAdditionalMaterialOutputs<dim>({"prescribed_shear_heating_rates"}),
+                  prescribed_shear_heating_rates(n_points, numbers::signaling_nan<double>())
+    {}
+
+
+
+    template <int dim>
+    std::vector<double>
+    PrescribedShearHeatingOutputs<dim>::get_nth_output(const unsigned int idx) const
+    {
+      (void) idx;
+      AssertIndexRange (idx, 1);
+
+      return prescribed_shear_heating_rates;
+    }
   }
 }
 
@@ -194,7 +243,8 @@ namespace aspect
                                   "right-hand side of the temperature equation.")
 
 #define INSTANTIATE(dim) \
-  template class ShearHeatingOutputs<dim>;
+  template class ShearHeatingOutputs<dim>; \
+  template class PrescribedShearHeatingOutputs<dim>;
 
     ASPECT_INSTANTIATE(INSTANTIATE)
 

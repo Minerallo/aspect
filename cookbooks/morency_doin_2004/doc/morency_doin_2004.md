@@ -1,6 +1,15 @@
+```{tags}
+category:cookbook
+feature:2d
+feature:cartesian
+feature:nonlinear-solver
+feature:plasticity
+feature:compositional-fields
+```
+
 # Reproducing rheology of Morency and Doin, 2004
 
-*This section was contributed by Jonathan Perry-Houts*
+*This section was contributed by Jonathan Perry-Houts.*
 
 Modeling interactions between the upper mantle and the lithosphere can be
 difficult because of the dynamic range of temperatures and pressures involved.
@@ -55,5 +64,5 @@ The viscosity profile in Figure 1 of {cite:t}`morency:doin:2004` appears to be w
 ```{figure-md} fig:md-1
 <img src="morency_doin_2004_fig1.svg" />
 
-Approximate reproduction of figure 1 from <span class="citation" data-cites="MD04">{cite:t}`morency:doin:2004`</span> using the &#x2018;morency doin&#x2019; material model with almost all default parameters. Note the low-viscosity Moho, enabled by the low activation energy of the crustal component.
+Approximate reproduction of figure 1 from <span class="citation" data-cites="MD04">{cite:t}`morency:doin:2004`</span> using the "morency doin" material model with almost all default parameters. Note the low-viscosity Moho, enabled by the low activation energy of the crustal component.
 ```

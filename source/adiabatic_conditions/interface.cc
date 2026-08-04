@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -22,9 +22,7 @@
 #include <aspect/global.h>
 #include <aspect/adiabatic_conditions/interface.h>
 
-#include <deal.II/base/exceptions.h>
 #include <tuple>
-
 #include <list>
 
 
@@ -32,35 +30,6 @@ namespace aspect
 {
   namespace AdiabaticConditions
   {
-    template <int dim>
-    Interface<dim>::~Interface ()
-      = default;
-
-    template <int dim>
-    void
-    Interface<dim>::
-    initialize ()
-    {}
-
-    template <int dim>
-    void
-    Interface<dim>::
-    update ()
-    {}
-
-    template <int dim>
-    void
-    Interface<dim>::
-    declare_parameters (dealii::ParameterHandler &)
-    {}
-
-
-    template <int dim>
-    void
-    Interface<dim>::parse_parameters (dealii::ParameterHandler &)
-    {}
-
-
     template <int dim>
     void Interface<dim>::get_adiabatic_temperature_profile(std::vector<double> &values) const
     {
@@ -129,8 +98,8 @@ namespace aspect
     namespace
     {
       std::tuple
-      <void *,
-      void *,
+      <aspect::internal::Plugins::UnusablePluginList,
+      aspect::internal::Plugins::UnusablePluginList,
       aspect::internal::Plugins::PluginList<Interface<2>>,
       aspect::internal::Plugins::PluginList<Interface<3>>> registered_plugins;
     }
@@ -207,19 +176,6 @@ namespace aspect
 // explicit instantiations
 namespace aspect
 {
-  namespace internal
-  {
-    namespace Plugins
-    {
-      template <>
-      std::list<internal::Plugins::PluginList<AdiabaticConditions::Interface<2>>::PluginInfo> *
-      internal::Plugins::PluginList<AdiabaticConditions::Interface<2>>::plugins = nullptr;
-      template <>
-      std::list<internal::Plugins::PluginList<AdiabaticConditions::Interface<3>>::PluginInfo> *
-      internal::Plugins::PluginList<AdiabaticConditions::Interface<3>>::plugins = nullptr;
-    }
-  }
-
   namespace AdiabaticConditions
   {
 #define INSTANTIATE(dim) \

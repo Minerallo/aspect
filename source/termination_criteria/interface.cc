@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -32,25 +32,10 @@ namespace aspect
 // ------------------------------ Interface -----------------------------
 
     template <int dim>
-    void
-    Interface<dim>::initialize ()
-    {}
-
-    template <int dim>
-    void
-    Interface<dim>::declare_parameters (ParameterHandler &)
-    {}
-
-    template <int dim>
     double Interface<dim>::check_for_last_time_step (const double time_step) const
     {
       return time_step;
     }
-
-    template <int dim>
-    void
-    Interface<dim>::parse_parameters (ParameterHandler &)
-    {}
 
 
 
@@ -60,7 +45,7 @@ namespace aspect
     double Manager<dim>::check_for_last_time_step (const double time_step) const
     {
       double new_time_step = time_step;
-      for (const auto &p : termination_objects)
+      for (const auto &p : this->plugin_objects)
         {
           double current_time_step = p->check_for_last_time_step (new_time_step);
 
@@ -83,14 +68,12 @@ namespace aspect
 
       // call the execute() functions of all plugins we have
       // here in turns.
-      std::list<std::string>::const_iterator  itn = termination_obj_names.begin();
-      for (typename std::list<std::unique_ptr<Interface<dim>>>::const_iterator
-           p = termination_objects.begin();
-           p != termination_objects.end(); ++p,++itn)
+      std::vector<std::string>::const_iterator  itn = this->plugin_names.begin();
+      for (const auto &p : this->plugin_objects)
         {
           try
             {
-              const bool terminate = (*p)->execute ();
+              const bool terminate = p->execute ();
 
               // do the reduction: does any one of the processors
               // think that we should terminate? (do the reduction in
@@ -121,7 +104,7 @@ namespace aspect
               std::cerr << "Exception on MPI process <"
                         << Utilities::MPI::this_mpi_process(MPI_COMM_WORLD)
                         << "> while running termination criterion plugin <"
-                        << typeid(**p).name()
+                        << typeid(*p).name()
                         << ">: " << std::endl
                         << exc.what() << std::endl
                         << "Aborting!" << std::endl
@@ -139,7 +122,7 @@ namespace aspect
               std::cerr << "Exception on MPI process <"
                         << Utilities::MPI::this_mpi_process(MPI_COMM_WORLD)
                         << "> while running termination criterion plugin <"
-                        << typeid(**p).name()
+                        << typeid(*p).name()
                         << ">: " << std::endl;
               std::cerr << "Unknown exception!" << std::endl
                         << "Aborting!" << std::endl
@@ -149,6 +132,8 @@ namespace aspect
               // terminate the program!
               MPI_Abort (MPI_COMM_WORLD, 1);
             }
+
+          ++itn;
         }
 
       return terminate_simulation;
@@ -161,8 +146,8 @@ namespace aspect
     namespace
     {
       std::tuple
-      <void *,
-      void *,
+      <aspect::internal::Plugins::UnusablePluginList,
+      aspect::internal::Plugins::UnusablePluginList,
       aspect::internal::Plugins::PluginList<Interface<2>>,
       aspect::internal::Plugins::PluginList<Interface<3>>> registered_plugins;
     }
@@ -209,36 +194,32 @@ namespace aspect
               ExcMessage ("No termination criteria plugins registered!?"));
 
       // first find out which plugins are requested
-      std::vector<std::string> plugin_names;
       prm.enter_subsection("Termination criteria");
       {
-        plugin_names = Utilities::split_string_list(prm.get("Termination criteria"));
-        AssertThrow(Utilities::has_unique_entries(plugin_names),
+        this->plugin_names = Utilities::split_string_list(prm.get("Termination criteria"));
+        AssertThrow(Utilities::has_unique_entries(this->plugin_names),
                     ExcMessage("The list of strings for the parameter "
                                "'Termination criteria/Termination criteria' contains entries more than once. "
                                "This is not allowed. Please check your parameter file."));
 
         // as described, the end time plugin is always active
-        if (std::find (plugin_names.begin(), plugin_names.end(), "end time")
-            == plugin_names.end())
-          plugin_names.emplace_back("end time");
+        if (std::find (this->plugin_names.begin(), this->plugin_names.end(), "end time")
+            == this->plugin_names.end())
+          this->plugin_names.emplace_back("end time");
       }
       prm.leave_subsection();
 
       // go through the list, create objects, initialize them, and let them parse
       // their own parameters
-      for (const auto &plugin_name : plugin_names)
+      for (const auto &plugin_name : this->plugin_names)
         {
-          termination_objects.push_back (std::unique_ptr<Interface<dim>>
-                                         (std::get<dim>(registered_plugins)
-                                          .create_plugin (plugin_name,
-                                                          "Termination criteria::Termination criteria")));
-          if (SimulatorAccess<dim> *sim = dynamic_cast<SimulatorAccess<dim>*>(&*termination_objects.back()))
+          this->plugin_objects.emplace_back (std::get<dim>(registered_plugins)
+                                             .create_plugin (plugin_name,
+                                                             "Termination criteria::Termination criteria"));
+          if (SimulatorAccess<dim> *sim = dynamic_cast<SimulatorAccess<dim>*>(&*this->plugin_objects.back()))
             sim->initialize_simulator (this->get_simulator());
-          termination_objects.back()->parse_parameters (prm);
-          termination_objects.back()->initialize ();
-
-          termination_obj_names.push_back(plugin_name);
+          this->plugin_objects.back()->parse_parameters (prm);
+          this->plugin_objects.back()->initialize ();
         }
     }
 
@@ -273,19 +254,6 @@ namespace aspect
 // explicit instantiations
 namespace aspect
 {
-  namespace internal
-  {
-    namespace Plugins
-    {
-      template <>
-      std::list<internal::Plugins::PluginList<TerminationCriteria::Interface<2>>::PluginInfo> *
-      internal::Plugins::PluginList<TerminationCriteria::Interface<2>>::plugins = nullptr;
-      template <>
-      std::list<internal::Plugins::PluginList<TerminationCriteria::Interface<3>>::PluginInfo> *
-      internal::Plugins::PluginList<TerminationCriteria::Interface<3>>::plugins = nullptr;
-    }
-  }
-
   namespace TerminationCriteria
   {
 #define INSTANTIATE(dim) \

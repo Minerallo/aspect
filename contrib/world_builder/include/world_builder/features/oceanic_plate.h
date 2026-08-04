@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018-2024 by the authors of the World Builder code.
+  Copyright (C) 2018-2026 by the authors of the World Builder code.
 
   This file is part of the World Builder.
 
@@ -46,6 +46,14 @@ namespace WorldBuilder
       {
         class Interface;
       }  // namespace Temperature
+      namespace Velocity
+      {
+        class Interface;
+      }  // namespace Velocity
+      namespace Topography
+      {
+        class Interface;
+      }  // namespace Velocity
     }  // namespace OceanicPlateModels
 
     /**
@@ -122,6 +130,11 @@ namespace WorldBuilder
                    const std::vector<size_t> &entry_in_output,
                    std::vector<double> &output) const override final;
 
+        /**
+         * Return an upper bound for all topography models in this feature.
+         */
+        double maximum_topography() const override final;
+
       private:
         /**
          * A vector containing all the pointers to the temperature models. This vector is
@@ -146,6 +159,22 @@ namespace WorldBuilder
          * @see Features
          */
         std::vector<std::unique_ptr<Features::OceanicPlateModels::Grains::Interface> > grains_models;
+
+        /**
+         * A vector containing all the pointers to the grains models. This vector is
+         * responsible for the features and has ownership over them. Therefore
+         * unique pointers are used.
+         * @see Features
+         */
+        std::vector<std::unique_ptr<Features::OceanicPlateModels::Velocity::Interface> > velocity_models;
+
+        /**
+         * A vector containing all the pointers to the temperature models. This vector is
+         * responsible for the features and has ownership over them. Therefore
+         * unique pointers are used.
+         * @see Features
+         */
+        std::vector<std::unique_ptr<Features::OceanicPlateModels::Topography::Interface> > topography_models;
 
         double min_depth;
         Objects::Surface min_depth_surface;

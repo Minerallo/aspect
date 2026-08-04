@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2017 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2017 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -62,7 +62,7 @@ namespace aspect
           }
 
         // average the values if requested
-        const auto &viz = this->get_postprocess_manager().template get_matching_postprocessor<Postprocess::Visualization<dim>>();
+        const auto &viz = this->get_postprocess_manager().template get_matching_active_plugin<Postprocess::Visualization<dim>>();
         if (!viz.output_pointwise_stress_and_strain())
           average_quantities(computed_quantities);
       }
@@ -89,7 +89,7 @@ namespace aspect
                                                   "convection models, but can be non-zero in compressible models and "
                                                   "models with melt transport."
                                                   "\n\n"
-                                                  "Physical units: \\si{\\per\\second}.")
+                                                  "Physical units: $\\frac{1}{\\text{s}}$.")
     }
   }
 }

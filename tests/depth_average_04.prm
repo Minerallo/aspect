@@ -1,7 +1,7 @@
 # Like _03, but output stuff in a different format than gnuplot
 
 set Dimension                              = 2
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set End time                               = 10 # but note the very low viscosity
 set Output directory                       = output
 set Pressure normalization                 = surface
@@ -21,7 +21,7 @@ subsection Initial temperature model
 
   subsection Function
     set Variable names      = x,z
-    set Function constants  = p=0.01, L=1, pi=3.1415926536, k=1
+    set Function constants  = p=0.01, L=1, k=1
     set Function expression = (1.0-z) - p*cos(k*pi*x/L)*sin(pi*z)
   end
 end

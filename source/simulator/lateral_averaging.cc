@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -312,8 +312,8 @@ namespace aspect
                         const LinearAlgebra::BlockVector &,
                         std::vector<double> &output) override
         {
-          const MaterialModel::SeismicAdditionalOutputs<dim> *seismic_outputs
-            = out.template get_additional_output<const MaterialModel::SeismicAdditionalOutputs<dim>>();
+          const std::shared_ptr<const MaterialModel::SeismicAdditionalOutputs<dim>> seismic_outputs
+            = out.template get_additional_output_object<const MaterialModel::SeismicAdditionalOutputs<dim>>();
 
           Assert(seismic_outputs != nullptr,ExcInternalError());
 
@@ -467,6 +467,29 @@ namespace aspect
     };
   }
 
+
+
+  template <int dim>
+  class FunctorDepthAverageDensity: public internal::FunctorBase<dim>
+  {
+    public:
+      bool need_material_properties() const override
+      {
+        return true;
+      }
+
+      void operator()(const MaterialModel::MaterialModelInputs<dim> &,
+                      const MaterialModel::MaterialModelOutputs<dim> &out,
+                      const FEValues<dim> &,
+                      const LinearAlgebra::BlockVector &,
+                      std::vector<double> &output) override
+      {
+        output = out.densities;
+      }
+  };
+
+
+
   namespace internal
   {
     template <int dim>
@@ -589,13 +612,9 @@ namespace aspect
     else
       geometry_unique_depth_direction = numbers::invalid_unsigned_int;
 
-    const unsigned int max_fe_degree = std::max(this->introspection().polynomial_degree.velocities,
-                                                std::max(this->introspection().polynomial_degree.temperature,
-                                                         this->introspection().polynomial_degree.compositional_fields));
-
     // We want to integrate over a polynomial of degree p = max_fe_degree, for which we
     // need a quadrature of at least q, with p <= 2q-1 --> q >= (p+1)/2
-    const unsigned int lateral_quadrature_degree = static_cast<unsigned int>(std::ceil((max_fe_degree+1.0)/2.0));
+    const unsigned int lateral_quadrature_degree = static_cast<unsigned int>(std::ceil((this->introspection().polynomial_degree.max_degree+1.0)/2.0));
 
     std::unique_ptr<Quadrature<dim>> quadrature_formula;
     if (geometry_unique_depth_direction != numbers::invalid_unsigned_int)
@@ -715,6 +734,15 @@ namespace aspect
 
 
   template <int dim>
+  void LateralAveraging<dim>::get_density_averages(std::vector<double> &values) const
+  {
+    values = compute_lateral_averages(values.size(),
+                                      std::vector<std::string>(1,"density"))[0];
+  }
+
+
+
+  template <int dim>
   void LateralAveraging<dim>::get_temperature_averages(std::vector<double> &values) const
   {
     values = compute_lateral_averages(values.size(),
@@ -815,16 +843,6 @@ namespace aspect
 
   template <int dim>
   std::vector<std::vector<double>>
-  LateralAveraging<dim>::get_averages(const unsigned int n_slices,
-                                      const std::vector<std::string> &property_names) const
-  {
-    return compute_lateral_averages(n_slices, property_names);
-  }
-
-
-
-  template <int dim>
-  std::vector<std::vector<double>>
   LateralAveraging<dim>::compute_lateral_averages(const unsigned int n_slices,
                                                   const std::vector<std::string> &property_names) const
   {
@@ -852,6 +870,10 @@ namespace aspect
           {
             functors.push_back(std::make_unique<FunctorDepthAverageField<dim>>
                                (this->introspection().extractors.temperature));
+          }
+        else if (property_name == "density")
+          {
+            functors.push_back(std::make_unique<FunctorDepthAverageDensity<dim>>());
           }
         else if (this->introspection().compositional_name_exists(property_name))
           {

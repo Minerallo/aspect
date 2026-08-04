@@ -4,20 +4,17 @@ Number of degrees of freedom: 400 (240+40+120)
 
 *** Timestep 0:  t=0 seconds, dt=0 seconds
    Solving temperature system... 9 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 33+0 iterations.
+   Solving Stokes system (GMG)... 9+0 iterations.
 
    Postprocessing:
      Writing graphical output: output-cells_in_circumference/solution/solution-00000
 
-Number of active cells: 26 (on 2 levels)
-Number of degrees of freedom: 518 (312+50+156)
+Skipping mesh refinement, because no cells were flagged for refinement/coarsening.
 
-Number of active cells: 35 (on 2 levels)
-Number of degrees of freedom: 682 (412+64+206)
+Skipping mesh refinement, because no cells were flagged for refinement/coarsening.
 
 Termination requested by criterion: end time
-*** Snapshot created!
+*** Snapshot output-cells_in_circumference/restart/01/ created!
 
 
 

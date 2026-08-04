@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2014 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2014 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -25,6 +25,8 @@
 #include <aspect/global.h>
 
 #include <array>
+#include <deal.II/base/exceptions.h>
+#include <deal.II/base/thread_local_storage.h>
 #include <random>
 #include <deal.II/base/point.h>
 #include <deal.II/base/conditional_ostream.h>
@@ -32,15 +34,22 @@
 #include <deal.II/base/function_lib.h>
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/fe/component_mask.h>
+#include <deal.II/lac/solver_control.h>
+#include <deal.II/physics/notation.h>
 
 #include <aspect/coordinate_systems.h>
 #include <aspect/structured_data.h>
 
+#include <mpi.h>
 
 
 namespace aspect
 {
   template <int dim> class SimulatorAccess;
+  namespace MaterialModel
+  {
+    template <int dim> class MeltOutputs;
+  }
 
   namespace GeometryModel
   {
@@ -53,9 +62,82 @@ namespace aspect
    */
   namespace Utilities
   {
-    using namespace dealii;
+    /**
+    * Because many places in ASPECT assume that all functions in the namespace
+    * <code>dealii::Utilities</code> are available without qualification as
+    * <code>Utilities::function</code>, just as all the function in the
+    * namespace <code>aspect::Utilities</code>, we make sure all these functions
+    * are available inside <code>aspect::Utilities</code>. This is maybe not
+    * the cleanest solution, but it is most compatible with a lot of existing
+    * code, and also allows to migrate ASPECT functions into deal.II when
+    * useful without introducing incompatibilities.
+    *
+    * We need to do this in every header that introduces something into the
+    * namespace <code>aspect::Utilities</code>, because it needs to happen
+    * no matter which header files of ASPECT are included.
+    */
     using namespace dealii::Utilities;
 
+
+    /**
+     * A class that allows for creating reusable chunks of memory.
+     * When this class's get_object_from_pool() function is called, it returns a reference to a currently unused object,
+     * or creates a new one if non are available. When done with an object it can be returned to the pool for later use.
+     * This is particularly useful when needing the same size memory in a function which is called in a loop. Since the
+     * objects are not reset, using this scratch space can prevent reallocating memory over and over. This class works
+     * in recursive functions.
+     * The class is recommended to be used with the ScopedScratchObject, which will automatically return the
+     * object to the pool when the ScopedScratchObject goes out of scope.
+     */
+    template <typename T>
+    class ScratchSpace
+    {
+      public:
+        /**
+         * This class takes an object from a ScratchSpace pool and will return it to the pool when the ScopedScratchObject
+         * goes out of scope.
+         */
+        class ScopedScratchObject
+        {
+          public:
+            /**
+             * Constructor
+             */
+            ScopedScratchObject (const ScratchSpace<T> &/*space_*/);
+
+            /**
+             * Destructor: return the object to the pool
+             */
+            ~ScopedScratchObject();
+
+            /**
+             * Get a reference to the object.
+             */
+            operator T &() const;
+
+          private:
+            const ScratchSpace &space;
+            T &t;
+        };
+
+        /**
+         * returns an object from the pool. If there are no unused objects, it creates a new object and returns it.
+         */
+        T &get_object_from_pool() const;
+
+        /**
+         * Destructor
+         */
+        ~ScratchSpace() = default;
+
+        /**
+         * returns an object to the pool to be reused later.
+         */
+        void return_object_to_pool (T &t) const;
+
+      private:
+        mutable dealii::Threads::ThreadLocalStorage<std::list<std::pair<T,bool>>>  object_list;
+    };
 
     /**
      * Given an array @p values, consider three cases:
@@ -76,6 +158,13 @@ namespace aspect
                                  const unsigned int N,
                                  const std::string &id_text);
 
+    /**
+     * A namespace that contains options and functions able to parse
+     * a map of double values from a string representation of the form
+     * "key1 : value1, key2 : value2, etc". The parsing and output
+     * is controlled by the Options struct and the parse_map_to_double_array()
+     * function.
+     */
     namespace MapParsing
     {
       /**
@@ -84,7 +173,8 @@ namespace aspect
        */
       struct Options
       {
-        /* A list of valid key names that are allowed
+        /**
+         * A list of valid key names that are allowed
          * to appear in the map. If this list is empty
          * it is assumed to be equal to the list of
          * required keys. If this list is longer than
@@ -94,7 +184,8 @@ namespace aspect
          */
         std::vector<std::string> list_of_allowed_keys;
 
-        /* A list of valid key names that are required
+        /**
+         * A list of valid key names that are required
          * to appear in the map. Only these keys will be
          * parsed into the map structure and the order of
          * these keys determines the order of entries
@@ -102,14 +193,14 @@ namespace aspect
          */
         std::vector<std::string> list_of_required_keys;
 
-        /*
+        /**
          * A name that identifies the type of input property (e.g. 'density', 'viscosity')
          * that is being parsed by this function. This name is used in generating
          * error messages if the map does not conform to the expected format.
          */
         std::string property_name;
 
-        /*
+        /**
          * If true, allow multiple values
          * for each key. If false only allow a single value per key. In either
          * case each key is only allowed to appear once. Multiple values
@@ -125,7 +216,7 @@ namespace aspect
          */
         bool allow_missing_keys;
 
-        /*
+        /**
          * Whether to store the number of values
          * per key in n_values_per_key while creating
          * the map. This vector can be later accessed
@@ -135,7 +226,7 @@ namespace aspect
          */
         bool store_values_per_key;
 
-        /*
+        /**
          * Whether to check the number of values
          * per key in the map against values stored
          * in n_values_per_key. This allows to
@@ -145,7 +236,7 @@ namespace aspect
          */
         bool check_values_per_key;
 
-        /*
+        /**
          * A vector of unsigned
          * integers that is used by store_values_per_key and
          * check_values_per_key to either store the current map
@@ -288,6 +379,7 @@ namespace aspect
      *   Utilities::MapParsing::parse_map_to_double_array() function. Please
      *   use the other function instead.
      */
+    DEAL_II_DEPRECATED
     std::vector<double>
     parse_map_to_double_array (const std::string &key_value_map,
                                const std::vector<std::string> &list_of_keys,
@@ -333,6 +425,17 @@ namespace aspect
     std::vector<std::string>
     expand_dimensional_variable_names (const std::vector<std::string> &var_declarations);
 
+
+    template <int dim>
+    Tensor<1, dim>
+    calculate_approximate_darcy_velocity (const MaterialModel::MaterialModelInputs<dim> &in,
+                                          const MaterialModel::MaterialModelOutputs<dim> &out,
+                                          const std::shared_ptr<const MaterialModel::MeltOutputs<dim>> fluid_out,
+                                          const Tensor<1, dim> &solid_velocity,
+                                          const Tensor<1, dim> &gravity,
+                                          const unsigned int porosity_idx,
+                                          const unsigned int q,
+                                          const bool use_pressure_gradient_for_darcy_field);
     /**
      * Returns an IndexSet that contains all locally active DoFs that belong to
      * the given component_mask.
@@ -667,11 +770,12 @@ namespace aspect
      * @param comm MPI communicator, used to limit creation of directory to
      * processor 0.
      * @param silent Print a nicely formatted message on processor 0 if set
-     * to true.
+     * to false and the directory does not exist yet and is therefore created
+     * in this function.
      */
     void create_directory(const std::string &pathname,
                           const MPI_Comm comm,
-                          bool silent);
+                          const bool silent);
 
     /**
      * A namespace defining the cubic spline interpolation that can be used
@@ -746,6 +850,30 @@ namespace aspect
     std::string parenthesize_if_nonempty (const std::string &s);
 
     /**
+     * Given a string @p s, convert it to a boolean value.
+     */
+    bool
+    string_to_bool(const std::string &s);
+
+    /**
+     * Given a vector of strings @p s, convert it to a vector of boolean values.
+     */
+    std::vector<bool>
+    string_to_bool(const std::vector<std::string> &s);
+
+    /**
+     * Given a string @p s, convert it to an unsigned int.
+     */
+    unsigned int
+    string_to_unsigned_int(const std::string &s);
+
+    /**
+     * Given a vector of strings @p s, convert it to a vector of unsigned int values.
+     */
+    std::vector<unsigned int>
+    string_to_unsigned_int(const std::vector<std::string> &s);
+
+    /**
      * Returns if a vector of strings @p strings only contains unique
      * entries.
      */
@@ -816,17 +944,30 @@ namespace aspect
      *
      * The goal of this function is to find a factor $\alpha$ so that
      * $2\eta(\varepsilon(\mathbf u)) I \otimes I +  \alpha\left[a \otimes b + b \otimes a\right]$ remains a
-     * positive definite matrix. Here, $a=\varepsilon(\mathbf u)$ is the @p strain_rate
+     * positive definite rank-4 tensor (i.e., a positive definite operator mapping
+     * rank-2 tensors to rank-2 tensors). By definition, the whole operator
+     * is symmetric. In the definition above, $a=\varepsilon(\mathbf u)$ is the @p strain_rate
      * and $b=\frac{\partial\eta(\varepsilon(\mathbf u),p)}{\partial \varepsilon}$ is the derivative of the viscosity
      * with respect to the strain rate and is given by @p dviscosities_dstrain_rate. Since the viscosity $\eta$
      * must be positive, there is always a value of $\alpha$ (possibly small) so that the result is a positive
-     * definite matrix. In the best case, we want to choose $\alpha=1$ because that corresponds to the full Newton step,
+     * definite operator. In the best case, we want to choose $\alpha=1$ because that corresponds to the full Newton step,
      * and so the function never returns anything larger than one.
      *
-     * The factor is defined by:
-     * $\frac{2\eta(\varepsilon(\mathbf u))}{\left[1-\frac{b:a}{\|a\| \|b\|} \right]^2\|a\|\|b\|}$. Alpha is
-     * reset to a maximum of one, and if it is smaller then one, a safety_factor scales the alpha to make
-     * sure that the 1-alpha won't get to close to zero.
+     * One can do some algebra to determine what the optimal factor is. We did
+     * this in the Newton paper (Fraters et al., Geophysical Journal
+     * International, 2019) where we derived a factor of
+     * $\frac{2\eta(\varepsilon(\mathbf u))}{\left[1-\frac{b:a}{\|a\| \|b\|} \right]^2\|a\|\|b\|}$,
+     * which we reset to a maximum of one, and if it is smaller then one,
+     * a safety_factor scales the value to make sure that 1-alpha won't get to
+     * close to zero. However, as later pointed out by Yimin Jin, the computation
+     * is wrong, see https://github.com/geodynamics/aspect/issues/5555. Instead,
+     * the function now computes the factor as
+     * $(2 \eta) / (a:b + b:a)$, again capped at a maximal value of 1,
+     * and using a safety factor from below.
+     *
+     * In practice, $a$ and $b$ are almost always parallel to each other,
+     * and $a:b + b:a = 2a:b$, in which case one can drop the factor
+     * of $2$ everywhere in the computations.
      */
     template <int dim>
     double compute_spd_factor(const double eta,
@@ -1002,7 +1143,7 @@ namespace aspect
                      const Quadrature<dim>                                     &quadrature,
                      const std::function<void(
                        const typename DoFHandler<dim>::active_cell_iterator &,
-                       const std::vector<Point<dim>> &,
+                       const typename std_cxx20::type_identity<std::vector<Point<dim>>>::type &,
                        std::vector<double> &)>                                 &function,
                      VectorType                                                &vec_result);
 
@@ -1025,7 +1166,7 @@ namespace aspect
      * @p output_filename An optional file name into which (if present) the solver history will
      *   be written.
      *
-     * @return This function never returns normally. It always exits via an exception, either
+     * @note This function never returns normally. It always exits via an exception, either
      *   of type ExcMessage (on rank 0 of the parallel computation) or QuietException (on all
      *   other ranks).
      */
@@ -1042,9 +1183,12 @@ namespace aspect
      * that matches the dealii::Function interface with a number of output
      * components equal to the number of components of the finite element
      * in use.
+     *
+     * This function is a special case of the VectorFunctionFromTensorFunctionObject
+     * class.
      */
     template <int dim>
-    class VectorFunctionFromVelocityFunctionObject : public Function<dim>
+    class VectorFunctionFromVelocityFunctionObject : public VectorFunctionFromTensorFunctionObject<dim>
     {
       public:
         /**
@@ -1053,40 +1197,11 @@ namespace aspect
          * interface.
          *
          * @param n_components total number of components of the finite element system.
-         * @param function_object The function that will form one component
+         * @param function_object The function that will form the first `dim` components
          *     of the resulting Function object.
          */
         VectorFunctionFromVelocityFunctionObject (const unsigned int n_components,
                                                   const std::function<Tensor<1,dim> (const Point<dim> &)> &function_object);
-
-        /**
-         * Return the value of the
-         * function at the given
-         * point. Returns the value the
-         * function given to the constructor
-         * produces for this point.
-         */
-        double value (const Point<dim>   &p,
-                      const unsigned int  component = 0) const override;
-
-        /**
-         * Return all components of a
-         * vector-valued function at a
-         * given point.
-         *
-         * <tt>values</tt> shall have the right
-         * size beforehand,
-         * i.e. #n_components.
-         */
-        void vector_value (const Point<dim>   &p,
-                           Vector<double>     &values) const override;
-
-      private:
-        /**
-         * The function object which we call when this class's value() or
-         * value_list() functions are called.
-         */
-        const std::function<Tensor<1,dim> (const Point<dim> &)> function_object;
     };
 
     /**
@@ -1127,14 +1242,14 @@ namespace aspect
      * @param random_number_generator a reference to a mt19937 random number generator.
      */
     std::vector<Tensor<2,3>>
-    rotation_matrices_random_draw_volume_weighting(const std::vector<double> volume_fractions,
-                                                   const std::vector<Tensor<2,3>> rotation_matrices,
+    rotation_matrices_random_draw_volume_weighting(const std::vector<double> &volume_fractions,
+                                                   const std::vector<Tensor<2,3>> &rotation_matrices,
                                                    const unsigned int n_output_matrices,
                                                    std::mt19937 &random_number_generator);
 
     /**
-    * Wraps angle between 0 and 360 degrees.
-    */
+     * Wraps angle between 0 and 360 degrees.
+     */
     double wrap_angle(const double angle);
 
     /**
@@ -1152,15 +1267,55 @@ namespace aspect
                                                     const double phi2);
 
   }
-}
 
 
 // inline implementations:
 #ifndef DOXYGEN
-namespace aspect
-{
   namespace Utilities
   {
+    template<typename T>
+    T &ScratchSpace<T>::get_object_from_pool() const
+    {
+      for (auto &pair : object_list.get())
+        if (pair.second == false)
+          {
+            pair.second = true;
+            return pair.first;
+          }
+
+      object_list.get().emplace_back (T(), true);
+      return object_list.get().back().first;
+    }
+
+    template<typename T>
+    void ScratchSpace<T>::return_object_to_pool (T &t) const
+    {
+      for (auto &pair : object_list.get())
+        if (&pair.first == &t)
+          {
+            pair.second = false;
+            return;
+          }
+      AssertThrow(false, ExcMessage("You are tying to return an object to the pool which has apparently not been allocated by this pool."));
+    }
+
+    template<typename T>
+    ScratchSpace<T>::ScopedScratchObject::ScopedScratchObject(const ScratchSpace<T> &space_)
+      : space (space_),
+        t (space.get_object_from_pool())
+    {}
+
+    template<typename T>
+    ScratchSpace<T>::ScopedScratchObject::~ScopedScratchObject()
+    {
+      space.return_object_to_pool(t);
+    }
+
+    template<typename T>
+    ScratchSpace<T>::ScopedScratchObject::operator T &() const
+    {
+      return t;
+    }
 
     template <typename T>
     inline
@@ -1301,6 +1456,12 @@ namespace aspect
       rotate_voigt_stiffness_matrix(const Tensor<2,3> &rotation_tensor, const SymmetricTensor<2,6> &input_tensor);
 
       /**
+       * Rotate a symmetric 6x6 tensor in kelvin notation
+       */
+      SymmetricTensor<2,6>
+      rotate_kelvin_tensor(const Tensor<2,3> &rotation_tensor, const SymmetricTensor<2,6> &input_tensor);
+
+      /**
        * Transform a 4th order full stiffness tensor into a 6x6 Voigt stiffness matrix.
        * See https://en.wikipedia.org/wiki/Voigt_notation for more info on the Voigt notation.
        */
@@ -1346,10 +1507,42 @@ namespace aspect
       // Declare the existence of a specialization:
       template <>
       const Tensor<3,3> &levi_civita<3>();
+
+      /**
+       * Compute the deviator of a symmetric tensor. This function is equivalent to
+       * dealii::deviator in 3D, while in 2D it is consistent with the plane strain assumption.
+       * Specifically, the deviator of the stress tensor $\mathbf\tau$ in 2D is given by
+       * $\text{dev}(\mathbf\tau) = \mathbf\tau - \frac{1}{3}\text{trace}(\mathbf\tau)\mathbf 1$
+       * under the plane strain assumption.
+       *
+       * It should be noted that the consistent deviator of a consistently deviatoric tensor is
+       * not itself in 2D, which implies that it is invalid to apply this function to a symmetric
+       * tensor more than once.
+       */
+      template <int dim>
+      SymmetricTensor<2,dim>
+      consistent_deviator(const SymmetricTensor<2,dim> &input);
+
+      /**
+       * Compute the second invariant of a deviatoric tensor of rank 2. This function is
+       * equivalent to dealii::second_invariant in 3D, while in 2D it is consistent with the
+       * plane strain assumption. Specifically, the second invariant of the deviatoric
+       * stress tensor $\tau_{II}$ in 2D is given by $\tau_{II} = -\frac{1}{2}(\tau_{11}^2 +
+       * \tau_{22}^2 + \tau_{33}^2 + 2\tau_{12}^2) = -\frac{1}{2}[\tau_{11}^2 + \tau_{22}^2 +
+       * (\tau_{11} + \tau_{22})^2 + 2\tau_{12}^2]$ under the plane strain assumption.
+       *
+       * It should be noted that this function provides the correct result in 2D only when the
+       * input tensor is deviatoric in the sense of plane strain, which cannot be examined
+       * without extra information (the trace of a plane strain deviatoric tensor is not
+       * zero). Thus, extra care must be taken when using this function.
+       */
+      template <int dim>
+      double
+      consistent_second_invariant_of_deviatoric_tensor(const SymmetricTensor<2,dim> &input);
     }
 
   }
-}
 #endif
+}
 
 #endif

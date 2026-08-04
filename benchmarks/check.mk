@@ -42,9 +42,11 @@ rm -f $$prm.tmp; \
 run_all_prms() { \
 cd $$1; \
 echo "  running all prms in `pwd` ..."; \
-for prm in *.prm; \
+for file in *.prm; \
   do \
-    run_prm . $$prm || return 4; \
+    if [[ "$${file}" != *.part.prm ]]; then \
+      run_prm . $${file} || return 4; \
+    fi \
   done; \
 echo "  running all prms in `pwd` done"; \
 }
@@ -110,6 +112,8 @@ newton_solver_benchmark_set/: dummy tosi_et_al_2015_gcubed/
 	+@$(def); make_lib $@/nonlinear_channel_flow
 	@$(def); run_prm $@/nonlinear_channel_flow "input_v.prm"
 	@$(def); run_prm $@/nonlinear_channel_flow "input_t.prm"
+	@$(def); run_prm $@/nonlinear_channel_flow "input_v_gmg.prm"
+	@$(def); run_prm $@/nonlinear_channel_flow "input_t_gmg.prm"
 	@$(def); run_all_prms $@/tosi_et_al_2015
 	+@$(def); make_lib $@/spiegelman_et_al_2016
 	@$(def); run_prm $@/spiegelman_et_al_2016 "input.prm"
@@ -123,6 +127,11 @@ operator_splitting/: dummy
 	@$(def); run_all_prms $@/advection_reaction
 	+@$(def); make_lib $@/exponential_decay
 	@$(def); run_all_prms $@/exponential_decay
+
+particle_integration_scheme/: dummy
+	@$(def); run_prm $@ circle.prm euler.part.prm
+	@$(def); run_prm $@ circle.prm rk2.part.prm
+	@$(def); run_prm $@ circle.prm rk4.part.prm
 
 rayleigh_taylor_instability/: dummy
 	+@$(def); make_lib $@

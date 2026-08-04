@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -42,7 +42,7 @@ namespace aspect
 
 
 
-      template<int dim>
+      template <int dim>
       std::pair<std::string, std::unique_ptr<Vector<float>>>
       GrainLagAngle<dim>::execute() const
       {
@@ -66,7 +66,6 @@ namespace aspect
         for (const auto &cell : this->get_dof_handler().active_cell_iterators())
           if (cell->is_locally_owned() && this->get_timestep_number() > 0)
             {
-
               // Fill the material model objects for the cell (for strain rate)
               fe_values.reinit(cell);
               in.reinit(fe_values, cell, this->introspection(),
@@ -175,7 +174,7 @@ namespace aspect
                                                   "$\\Theta$ can be used to calculate the grain "
                                                   "orientation lag parameter."
                                                   "\n\n"
-                                                  "Physical units: \\si{\\radian}.")
+                                                  "Physical units: $\\text{radian}$.")
     }
   }
 }

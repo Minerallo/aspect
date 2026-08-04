@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -33,8 +33,6 @@ namespace aspect
 {
   namespace BoundaryVelocity
   {
-    using namespace dealii;
-
     namespace internal
     {
       /**
@@ -182,10 +180,6 @@ namespace aspect
         boundary_velocity (const types::boundary_id boundary_indicator,
                            const Point<dim> &position) const override;
 
-        // avoid -Woverloaded-virtual warning until the deprecated function
-        // is removed from the interface:
-        using Interface<dim>::boundary_velocity;
-
         /**
          * Initialization function. This function is called once at the
          * beginning of the program. Checks preconditions.
@@ -226,14 +220,17 @@ namespace aspect
          * Time from which on the data file with number 'First data file
          * number' is used as boundary condition. Previous to this time, 0 is
          * returned for every field. Depending on the setting of the global
-         * 'Use years in output instead of seconds' flag in the input file,
+         * 'Use years instead of seconds' flag in the input file,
          * this number is either interpreted as seconds or as years."
+         *
+         * This variable is read from the parameter file through a parameter called 'First data file model time'.
          */
         double first_data_file_model_time;
 
         /**
          * Number of the first data file to be loaded when the model time is
          * larger than 'First data file model time'.
+         * This variable is read from the parameter file through a parameter called 'First data file number'.
          */
         int first_data_file_number;
 
@@ -242,12 +239,14 @@ namespace aspect
          * in decreasing order (e.g. 'Ma BP'). If this flag is set to 'True'
          * the plugin will first load the file with the number 'First data
          * file number' and decrease the file number during the model run.
+         * This variable is read from the parameter file through a parameter called 'Decreasing file order'.
          */
         bool decreasing_file_order;
 
         /**
          * Time in model units (depends on other model inputs) between two
          * velocity files.
+         * This variable is read from the parameter file through a parameter called 'Data file time step'.
          */
         double data_file_time_step;
 
@@ -266,6 +265,7 @@ namespace aspect
 
         /**
          * Directory in which the gplates velocity files are present.
+         * This variable is read from the parameter file through a parameter called 'Data directory'.
          */
         std::string data_directory;
 
@@ -273,11 +273,13 @@ namespace aspect
          * First part of filename of velocity files. The files have to have
          * the pattern velocity_file_name.n.gpml where n is the number of the
          * current timestep (starts from 0).
+         * This variable is read from the parameter file through a parameter called 'Velocity file name'.
          */
         std::string velocity_file_name;
 
         /**
          * Scale the velocity boundary condition by a scalar factor.
+         * This variable is read from the parameter file through a parameter called 'Scale factor'.
          */
         double velocity_scaling_factor;
 
@@ -287,8 +289,13 @@ namespace aspect
          * as if the model is lying in this plane although no actual model
          * coordinate is changed. The strings need to have the format "a,b"
          * where a and b are doubles and define theta and phi on a sphere.
+         * This variable is read from the parameter file through a parameter called 'Point one'.
          */
         std::string point1;
+
+        /**
+         * This variable is read from the parameter file through a parameter called 'Point two'.
+         */
         std::string point2;
 
         /**
@@ -303,6 +310,8 @@ namespace aspect
          * in the whole lithosphere. At every side boundary point with a depth
          * smaller than this value (and thus being located in the lithosphere),
          * the surface velocity will be described.
+         *
+         * This variable is read from the parameter file through a parameter called 'Lithosphere thickness'.
          */
         double lithosphere_thickness;
 
@@ -338,7 +347,7 @@ namespace aspect
          * Create a filename out of the name template.
          */
         std::string
-        create_filename (const int timestep) const;
+        create_filename (const unsigned int timestep) const;
     };
   }
 }

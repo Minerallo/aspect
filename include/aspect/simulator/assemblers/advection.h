@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2017 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2017 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -94,6 +94,21 @@ namespace aspect
      */
     template <int dim>
     class AdvectionSystemBoundaryHeatFlux : public Assemblers::Interface<dim>,
+      public SimulatorAccess<dim>
+    {
+      public:
+        void
+        execute(internal::Assembly::Scratch::ScratchBase<dim>  &scratch_base,
+                internal::Assembly::CopyData::CopyDataBase<dim> &data_base) const override;
+    };
+
+    /**
+     * This class assembles the face terms for the left-hand and right-hand side of the
+     * advection equation for a face at the boundary of the domain where
+     * Robin boundary conditions are used (which allow to prescribe a heat flux and a temperature).
+     */
+    template <int dim>
+    class AdvectionSystemRobinBoundary : public Assemblers::Interface<dim>,
       public SimulatorAccess<dim>
     {
       public:

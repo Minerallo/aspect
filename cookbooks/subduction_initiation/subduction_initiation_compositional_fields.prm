@@ -1,6 +1,6 @@
 # Parameter file for replicating Matsumoto & Tomoda 1983
 
-include subduction_initiation_basis.prm
+include subduction_initiation.prm.base
 
 set Output directory                       = output-subduction-initiation-comp
 
@@ -43,8 +43,12 @@ subsection Postprocess
   set List of postprocessors = visualization, velocity statistics, composition statistics, pressure statistics, material statistics, global statistics
 
   subsection Visualization
-    set List of output variables = density, viscosity, strain rate
+    set List of output variables = material properties, strain rate
     set Time between graphical output = 0
     set Interpolate output = false
+
+    subsection Material properties
+      set List of material properties = density, viscosity
+    end
   end
 end

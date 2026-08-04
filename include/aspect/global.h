@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -23,23 +23,41 @@
 #define _aspect_global_h
 
 #include <aspect/config.h>
+#include <aspect/citation_info.h>
 
 #include <deal.II/base/mpi.h>
+#include <deal.II/base/exceptions.h>
 
 DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
-
-#include <deal.II/lac/generic_linear_algebra.h>
 
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>
 
 DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 
+#include <boost/container/small_vector.hpp>
+
+#ifdef ASPECT_USE_TPETRA
+#include <deal.II/lac/trilinos_tpetra_vector.h>
+#include <deal.II/lac/trilinos_tpetra_block_vector.h>
+#include <deal.II/lac/trilinos_tpetra_sparse_matrix.h>
+#include <deal.II/lac/trilinos_tpetra_block_sparse_matrix.h>
+#else
+#include <deal.II/lac/trilinos_sparse_matrix.h>
+#include <deal.II/lac/trilinos_block_sparse_matrix.h>
+#endif
+
 
 #include <aspect/compat.h>
 
 namespace aspect
 {
+  /**
+   * Make sure that we can use the deal.II classes and utilities
+   * without prefixing them with "dealii::".
+   */
+  using namespace dealii;
+
   /**
    * The following are a set of global constants which may be used by ASPECT:
    * (for sources of data and values used by ASPECT, see source/global.cc)
@@ -220,6 +238,27 @@ namespace aspect
    */
   class QuietException {};
 
+  /**
+   * A type that we use for small vectors, whose approximate size is known at
+   * compile time. Such a vector can be used just like std::vector.
+   * The benefit of using small_vector lies in the fact that it
+   * allocates a small number of elements on the stack. As long as the size
+   * of the vector does not exceed this number N, no dynamic memory allocation
+   * is necessary to create or resize this vector, making these operations
+   * around 100x faster than for std::vector. Our type definition uses a default
+   * size of 100, because most of the vectors in ASPECT are smaller than that,
+   * because they contain as many entries as the number of quadrature points,
+   * the number of compositional fields, the number of particles per cell, or
+   * the number of degrees of freedom per cell. If the size of
+   * the vector exceeds 100 elements, the computations performed on
+   * these 100 elements are significantly more expensive than the memory allocation
+   * anyway.
+   *
+   * See the documentation of boost::container::small_vector for implementation details,
+   * and the documentation of std::vector for available member functions.
+   */
+  template <class T, unsigned int N = 100>
+  using small_vector = boost::container::small_vector<T, N>;
 
   /**
    * A namespace that contains typedefs for classes used in the linear algebra
@@ -227,9 +266,32 @@ namespace aspect
    */
   namespace LinearAlgebra
   {
+#ifdef ASPECT_USE_TPETRA
     /**
      * Typedef for the vector type used.
      */
+    using Vector = dealii::LinearAlgebra::TpetraWrappers::Vector<double>;
+
+    /**
+     * Typedef for the type used to describe vectors that consist of multiple
+     * blocks.
+     */
+    using BlockVector = dealii::LinearAlgebra::TpetraWrappers::BlockVector<double>;
+
+    /**
+     * Typedef for the sparse matrix type used.
+     */
+    using SparseMatrix = dealii::LinearAlgebra::TpetraWrappers::SparseMatrix<double>;
+
+    /**
+     * Typedef for the type used to describe sparse matrices that consist of
+     * multiple blocks.
+     */
+    using BlockSparseMatrix = dealii::LinearAlgebra::TpetraWrappers::BlockSparseMatrix<double>;
+#else
+    /**
+    * Typedef for the vector type used.
+    */
     using Vector = dealii::TrilinosWrappers::MPI::Vector;
 
     /**
@@ -248,65 +310,18 @@ namespace aspect
      * multiple blocks.
      */
     using BlockSparseMatrix = dealii::TrilinosWrappers::BlockSparseMatrix;
-
-    /**
-     * Typedef for the base class for all preconditioners.
-     */
-    using PreconditionBase = dealii::TrilinosWrappers::PreconditionBase;
-
-    /**
-     * Typedef for the AMG preconditioner type used for the top left block of
-     * the Stokes matrix.
-     */
-    using PreconditionAMG = dealii::TrilinosWrappers::PreconditionAMG;
-
-    /**
-     * Typedef for the Incomplete Cholesky preconditioner used for other
-     * blocks of the system matrix.
-     */
-    using PreconditionIC = dealii::TrilinosWrappers::PreconditionIC;
-
-    /**
-     * Typedef for the Incomplete LU decomposition preconditioner used for
-     * other blocks of the system matrix.
-     */
-    using PreconditionILU = dealii::TrilinosWrappers::PreconditionILU;
-
-    /**
-     * Typedef for the Jacobi preconditioner used for free surface velocity
-     * projection.
-     */
-    using PreconditionJacobi = dealii::TrilinosWrappers::PreconditionJacobi;
-
-    /**
-     * Typedef for the block compressed sparsity pattern type.
-     */
-    using BlockDynamicSparsityPattern = dealii::TrilinosWrappers::BlockSparsityPattern;
-
-    /**
-     * Typedef for the compressed sparsity pattern type.
-     */
-    using DynamicSparsityPattern = dealii::TrilinosWrappers::SparsityPattern;
+#endif
   }
+
+  /**
+   * Print a header into the given stream that will be written both to screen
+   * and to the log file and that provides basic information about what is
+   * running, with how many processes, and using which linear algebra library.
+   */
+  template <class Stream>
+  void print_aspect_header(Stream &stream);
 }
 
 
-/**
- * Print a header into the given stream that will be written both to screen
- * and to the log file and that provides basic information about what is
- * running, with how many processes, and using which linear algebra library.
- */
-template <class Stream>
-void print_aspect_header(Stream &stream);
-
-/**
- * A macro that is used in instantiating the ASPECT classes and functions for
- * both 2d and 3d. Call this macro with the name of another macro that when
- * called with a single integer argument instantiates the respective classes
- * in the given space dimension.
- */
-#define ASPECT_INSTANTIATE(INSTANTIATIONS) \
-  INSTANTIATIONS(2) \
-  INSTANTIATIONS(3)
 
 #endif

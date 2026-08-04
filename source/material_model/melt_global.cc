@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,7 +18,7 @@
   <http://www.gnu.org/licenses/>.
 */
 
-
+#include <algorithm>
 #include <aspect/material_model/melt_global.h>
 #include <aspect/adiabatic_conditions/interface.h>
 
@@ -38,7 +38,7 @@ namespace aspect
     reference_darcy_coefficient () const
     {
       // 0.01 = 1% melt
-      return reference_permeability * std::pow(0.01,3.0) / eta_f;
+      return reference_permeability * Utilities::fixed_power<3>(0.01) / eta_f;
     }
 
     template <int dim>
@@ -77,7 +77,8 @@ namespace aspect
     void
     MeltGlobal<dim>::
     melt_fractions (const MaterialModel::MaterialModelInputs<dim> &in,
-                    std::vector<double> &melt_fractions) const
+                    std::vector<double> &melt_fractions,
+                    const MaterialModel::MaterialModelOutputs<dim> *) const
     {
       double depletion = 0.0;
 
@@ -103,7 +104,8 @@ namespace aspect
     {
       std::vector<double> old_porosity(in.n_evaluation_points());
 
-      ReactionRateOutputs<dim> *reaction_rate_out = out.template get_additional_output<ReactionRateOutputs<dim>>();
+      const std::shared_ptr<ReactionRateOutputs<dim>> reaction_rate_out
+        = out.template get_additional_output_object<ReactionRateOutputs<dim>>();
 
       // we want to get the porosity field from the old solution here,
       // because we need a field that is not updated in the nonlinear iterations
@@ -166,7 +168,7 @@ namespace aspect
               const double porosity = std::min(1.0, std::max(in.composition[i][porosity_idx],0.0));
 
               // calculate viscosity based on local melt
-              out.viscosities[i] *= exp(- alpha_phi * porosity);
+              out.viscosities[i] *= std::exp(- alpha_phi * porosity);
 
               if (include_melting_and_freezing && (in.requests_property(MaterialProperties::reaction_terms) ||
                                                    in.requests_property(MaterialProperties::reaction_rates) ||
@@ -224,7 +226,7 @@ namespace aspect
                   const double depletion_visc = std::min(1.0, std::max(in.composition[i][peridotite_idx], 0.0));
 
                   // calculate strengthening due to depletion:
-                  const double depletion_strengthening = std::min(exp(alpha_depletion * depletion_visc), delta_eta_depletion_max);
+                  const double depletion_strengthening = std::min(std::exp(alpha_depletion * depletion_visc), delta_eta_depletion_max);
 
                   // calculate viscosity change due to local melt and depletion:
                   out.viscosities[i] *= depletion_strengthening;
@@ -242,20 +244,22 @@ namespace aspect
           if (this->include_adiabatic_heating ())
             {
               const double delta_temp = in.temperature[i]-this->get_adiabatic_conditions().temperature(in.position[i]);
-              visc_temperature_dependence = std::max(std::min(std::exp(-thermal_viscosity_exponent*delta_temp/this->get_adiabatic_conditions().temperature(in.position[i])),1e4),1e-4);
+              visc_temperature_dependence = std::clamp(std::exp(-thermal_viscosity_exponent*delta_temp/this->get_adiabatic_conditions().temperature(in.position[i])), 1e-4, 1e4);
             }
           else if (thermal_viscosity_exponent != 0.0)
             {
               const double delta_temp = in.temperature[i]-reference_T;
-              visc_temperature_dependence = std::max(std::min(std::exp(-thermal_viscosity_exponent*delta_temp/reference_T),1e4),1e-4);
+              visc_temperature_dependence = std::clamp(std::exp(-thermal_viscosity_exponent*delta_temp/reference_T), 1e-4, 1e4);
             }
           out.viscosities[i] *= visc_temperature_dependence;
         }
 
       // fill melt outputs if they exist
-      MeltOutputs<dim> *melt_out = out.template get_additional_output<MeltOutputs<dim>>();
+      const std::shared_ptr<MeltOutputs<dim>> melt_out
+        = out.template get_additional_output_object<MeltOutputs<dim>>();
 
-      if (melt_out != nullptr)
+      if (melt_out != nullptr && in.requests_property(MaterialProperties::additional_outputs) &&
+          this->introspection().compositional_name_exists("porosity"))
         {
           const unsigned int porosity_idx = this->introspection().compositional_index_for_name("porosity");
 
@@ -264,7 +268,7 @@ namespace aspect
               double porosity = std::max(in.composition[i][porosity_idx],0.0);
 
               melt_out->fluid_viscosities[i] = eta_f;
-              melt_out->permeabilities[i] = reference_permeability * std::pow(porosity,3) * std::pow(1.0-porosity,2);
+              melt_out->permeabilities[i] = reference_permeability * Utilities::fixed_power<3>(porosity) * Utilities::fixed_power<2>(1.0-porosity);
               melt_out->fluid_density_gradients[i] = Tensor<1,dim>();
 
               // temperature dependence of density is 1 - alpha * (T - T(adiabatic))
@@ -277,18 +281,18 @@ namespace aspect
               melt_out->fluid_densities[i] = reference_rho_f * temperature_dependence
                                              * std::exp(melt_compressibility * (in.pressure[i] - this->get_surface_pressure()));
 
-              melt_out->compaction_viscosities[i] = xi_0 * exp(- alpha_phi * porosity);
+              melt_out->compaction_viscosities[i] = xi_0 * std::exp(- alpha_phi * porosity);
 
               double visc_temperature_dependence = 1.0;
               if (this->include_adiabatic_heating ())
                 {
                   const double delta_temp = in.temperature[i]-this->get_adiabatic_conditions().temperature(in.position[i]);
-                  visc_temperature_dependence = std::max(std::min(std::exp(-thermal_bulk_viscosity_exponent*delta_temp/this->get_adiabatic_conditions().temperature(in.position[i])),1e4),1e-4);
+                  visc_temperature_dependence = std::clamp(std::exp(-thermal_bulk_viscosity_exponent*delta_temp/this->get_adiabatic_conditions().temperature(in.position[i])), 1e-4, 1e4);
                 }
               else if (thermal_viscosity_exponent != 0.0)
                 {
                   const double delta_temp = in.temperature[i]-reference_T;
-                  visc_temperature_dependence = std::max(std::min(std::exp(-thermal_bulk_viscosity_exponent*delta_temp/reference_T),1e4),1e-4);
+                  visc_temperature_dependence = std::clamp(std::exp(-thermal_bulk_viscosity_exponent*delta_temp/reference_T), 1e-4, 1e4);
                 }
               melt_out->compaction_viscosities[i] *= visc_temperature_dependence;
             }
@@ -420,15 +424,14 @@ namespace aspect
                              "Also note that the melting time scale has to be larger than or equal to the reaction "
                              "time step used in the operator splitting scheme, otherwise reactions can not be "
                              "computed. If the model does not use operator splitting, this parameter is not used. "
-                             "Units: yr or s, depending on the ``Use years "
-                             "in output instead of seconds'' parameter.");
+                             "Units: yr or s, depending on the ``Use years instead of seconds'' parameter.");
           prm.declare_entry ("Exponential depletion strengthening factor", "0.0",
                              Patterns::Double (0.),
                              "$\\alpha_F$: exponential dependency of viscosity on the depletion "
                              "field $F$ (called peridotite). "
                              "Dimensionless factor. With a value of 0.0 (the default) the "
-                             "viscosity does not depend on the depletion. The effective viscosity increase"
-                             "due to depletion is defined as $exp( \\alpha_F * F)$. "
+                             "viscosity does not depend on the depletion. The effective viscosity increase "
+                             "due to depletion is defined as $std::exp( \\alpha_F * F)$. "
                              "Rationale: melting dehydrates the source rock by removing most of the volatiles,"
                              "and makes it stronger. Hirth and Kohlstedt (1996) report typical values around a "
                              "factor 100 to 1000 viscosity contrast between wet and dry rocks, although some "
@@ -488,12 +491,13 @@ namespace aspect
 
           if (this->get_parameters().use_operator_splitting)
             {
-              AssertThrow(melting_time_scale >= this->get_parameters().reaction_time_step,
-                          ExcMessage("The reaction time step " + Utilities::to_string(this->get_parameters().reaction_time_step)
-                                     + " in the operator splitting scheme is too large to compute melting rates! "
-                                     "You have to choose it in such a way that it is smaller than the 'Melting time scale for "
-                                     "operator splitting' chosen in the material model, which is currently "
-                                     + Utilities::to_string(melting_time_scale) + "."));
+              if (this->get_parameters().reaction_solver_type == Parameters<dim>::ReactionSolverType::fixed_step)
+                AssertThrow(melting_time_scale >= this->get_parameters().reaction_time_step,
+                            ExcMessage("The reaction time step " + Utilities::to_string(this->get_parameters().reaction_time_step)
+                                       + " in the operator splitting scheme is too large to compute melting rates! "
+                                       "You have to choose it in such a way that it is smaller than the 'Melting time scale for "
+                                       "operator splitting' chosen in the material model, which is currently "
+                                       + Utilities::to_string(melting_time_scale) + "."));
               AssertThrow(melting_time_scale > 0,
                           ExcMessage("The Melting time scale for operator splitting must be larger than 0!"));
               AssertThrow(this->introspection().compositional_name_exists("porosity"),
@@ -526,7 +530,7 @@ namespace aspect
     MeltGlobal<dim>::create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const
     {
       if (this->get_parameters().use_operator_splitting
-          && out.template get_additional_output<ReactionRateOutputs<dim>>() == nullptr)
+          && out.template has_additional_output_object<ReactionRateOutputs<dim>>() == false)
         {
           const unsigned int n_points = out.n_evaluation_points();
           out.additional_outputs.push_back(

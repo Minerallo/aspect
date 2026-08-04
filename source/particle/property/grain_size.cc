@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2024 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -31,8 +31,8 @@ namespace aspect
       template <int dim>
       GrainSize<dim>::GrainSize ()
         :
-        material_inputs(1,0),
-        material_outputs(1,0)
+        material_inputs(0,0),
+        material_outputs(0,0)
       {}
 
 
@@ -41,8 +41,7 @@ namespace aspect
       void
       GrainSize<dim>::initialize ()
       {
-        material_inputs  = MaterialModel::MaterialModelInputs<dim>(1, this->n_compositional_fields());
-        material_outputs = MaterialModel::MaterialModelOutputs<dim>(1, this->n_compositional_fields());
+        CitationInfo::add("grainsize");
 
         AssertThrow(this->introspection().compositional_name_exists("grain_size"),
                     ExcMessage("This particle property only makes sense if "
@@ -66,39 +65,51 @@ namespace aspect
 
       template <int dim>
       void
-      GrainSize<dim>::update_particle_property(const unsigned int data_position,
-                                               const Vector<double> &solution,
-                                               const std::vector<Tensor<1,dim>> &gradients,
-                                               typename ParticleHandler<dim>::particle_iterator &particle) const
+      GrainSize<dim>::update_particle_properties(const ParticleUpdateInputs<dim> &inputs,
+                                                 typename ParticleHandler<dim>::particle_iterator_range &particles) const
       {
-        material_inputs.position[0] = particle->get_location();
-
-        material_inputs.current_cell = typename DoFHandler<dim>::active_cell_iterator(*particle->get_surrounding_cell(),
-                                                                                      &(this->get_dof_handler()));
-
-        material_inputs.temperature[0] = solution[this->introspection().component_indices.temperature];
-
-        material_inputs.pressure[0] = solution[this->introspection().component_indices.pressure];
-
-        for (unsigned int d = 0; d < dim; ++d)
-          material_inputs.velocity[0][d] = solution[this->introspection().component_indices.velocities[d]];
-
-        for (unsigned int n = 0; n < this->n_compositional_fields(); ++n)
-          material_inputs.composition[0][n] = solution[this->introspection().component_indices.compositional_fields[n]];
-
-        material_inputs.composition[0][grain_size_index] = particle->get_properties()[data_position];
-
-        Tensor<2,dim> grad_u;
-        for (unsigned int d=0; d<dim; ++d)
-          grad_u[d] = gradients[d];
-        material_inputs.strain_rate[0] = symmetrize (grad_u);
-
+        material_inputs.resize(inputs.solution.size(), this->n_compositional_fields());
+        material_outputs.resize(inputs.solution.size(), this->n_compositional_fields());
         material_inputs.requested_properties = MaterialModel::MaterialProperties::reaction_terms;
+        material_inputs.current_cell = inputs.current_cell;
+
+        unsigned int p = 0;
+        for (auto particle: particles)
+          {
+            // Make sure all particles are in the same cell
+            Assert(particle.get_surrounding_cell() == inputs.current_cell,
+                   ExcMessage("All particles must be in the same cell."));
+
+            material_inputs.position[p] = particle.get_location();
+            material_inputs.temperature[p] = inputs.solution[p][this->introspection().component_indices.temperature];
+            material_inputs.pressure[p] = inputs.solution[p][this->introspection().component_indices.pressure];
+
+            for (unsigned int d = 0; d < dim; ++d)
+              material_inputs.velocity[p][d] = inputs.solution[p][this->introspection().component_indices.velocities[d]];
+
+            for (unsigned int n = 0; n < this->n_compositional_fields(); ++n)
+              material_inputs.composition[p][n] = inputs.solution[p][this->introspection().component_indices.compositional_fields[n]];
+
+            material_inputs.composition[p][grain_size_index] = particle.get_properties()[this->data_position];
+
+            Tensor<2,dim> grad_u;
+            for (unsigned int d=0; d<dim; ++d)
+              grad_u[d] = inputs.gradients[p][this->introspection().component_indices.velocities[d]];
+
+            material_inputs.strain_rate[p] = symmetrize (grad_u);
+
+            ++p;
+          }
 
         this->get_material_model().evaluate(material_inputs,
                                             material_outputs);
 
-        particle->get_properties()[data_position] += material_outputs.reaction_terms[0][grain_size_index];
+        p = 0;
+        for (auto &particle: particles)
+          {
+            particle.get_properties()[this->data_position] += material_outputs.reaction_terms[p][grain_size_index];
+            ++p;
+          }
       }
 
 
@@ -108,6 +119,19 @@ namespace aspect
       GrainSize<dim>::late_initialization_mode () const
       {
         return interpolate_respect_boundary;
+      }
+
+
+
+      template <int dim>
+      AdvectionField
+      GrainSize<dim>::advection_field_for_boundary_initialization (const unsigned int property_component) const
+      {
+        (void) property_component;
+        Assert (property_component == 0,
+                ExcInternalError());
+
+        return AdvectionField::composition(grain_size_index);
       }
 
 
@@ -123,9 +147,12 @@ namespace aspect
 
       template <int dim>
       UpdateFlags
-      GrainSize<dim>::get_needed_update_flags () const
+      GrainSize<dim>::get_update_flags (const unsigned int component) const
       {
-        return update_values | update_gradients;
+        if (this->introspection().component_masks.velocities[component] == true)
+          return update_values | update_gradients;
+
+        return update_values;
       }
 
 

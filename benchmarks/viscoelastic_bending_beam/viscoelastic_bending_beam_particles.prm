@@ -6,28 +6,43 @@ include $ASPECT_SOURCE_DIR/benchmarks/viscoelastic_bending_beam/viscoelastic_ben
 
 set Output directory = output_viscoelastic_bending_beam_particles
 
+set Nonlinear solver scheme                = iterated Advection and Newton Stokes
+# On particles, the operator splitting is handled by the particle property elastic stress.
+set Use operator splitting                 = false
+
 # Number and name of compositional fields
 subsection Compositional fields
-  set Number of fields = 4
-  set Compositional field methods =           particles,           particles,           particles,         particles
-  set Names of fields             =           ve_stress_xx,        ve_stress_yy,        ve_stress_xy,      beam
-  set Mapped particle properties  = ve_stress_xx:ve_stress_xx, ve_stress_yy:ve_stress_yy, ve_stress_xy:ve_stress_xy, beam:initial beam
+  set Number of fields = 7
+  set Compositional field methods =           particles,           particles,           particles,         particles,           particles,           particles,         particles
+  set Names of fields             =           ve_stress_xx,        ve_stress_yy,        ve_stress_xy,      ve_stress_xx_old,    ve_stress_yy_old,    ve_stress_xy_old,  beam
+  set Types of fields             =           stress,              stress,              stress,            stress,              stress,              stress,            chemical composition
+  set Mapped particle properties  = ve_stress_xx:ve_stress_xx, ve_stress_yy:ve_stress_yy, ve_stress_xy:ve_stress_xy, ve_stress_xx_old:ve_stress_xx_old, ve_stress_yy_old:ve_stress_yy_old, ve_stress_xy_old:ve_stress_xy_old, beam:initial beam
 end
 
 # Post processing
 subsection Postprocess
-  set List of postprocessors = velocity statistics, basic statistics, particles, temperature statistics, visualization
+  set List of postprocessors = velocity statistics, basic statistics, particles, temperature statistics, visualization, maximum depth of field
 
   subsection Particles
-    set Number of particles = 4e5
-    set Minimum particles per cell  = 95
-    set Maximum particles per cell  = 105
-    set Load balancing strategy     = remove and add particles
-    set List of particle properties = initial composition, elastic stress
-    set Interpolation scheme        = nearest neighbor
-    set Update ghost particles      = true
-    set Particle generator name     = random uniform
     set Time between data output    = 0
     set Data output format          = vtu
+  end
+end
+
+subsection Particles
+  set Minimum particles per cell  = 95
+  set Maximum particles per cell  = 105
+  set Load balancing strategy     = remove and add particles
+  set List of particle properties = initial composition, elastic stress
+  set Interpolation scheme        = quadratic least squares
+  set Particle generator name     = random uniform
+  subsection Elastic stress
+    set Particle stress value weight = 0
+  end
+
+  subsection Generator
+    subsection Random uniform
+      set Number of particles = 4e5
+    end
   end
 end

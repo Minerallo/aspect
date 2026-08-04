@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -116,6 +116,49 @@ namespace aspect
                                                    this->introspection());
         MaterialModel::MaterialModelOutputs<dim> out(n_quadrature_points,
                                                      this->n_compositional_fields());
+        MeltHandler<dim>::create_material_model_outputs(out);
+
+        in.requested_properties
+          = MaterialModel::MaterialProperties::uninitialized;
+
+        for (const auto &property_name : property_names)
+          {
+            if (property_name == "viscosity")
+              in.requested_properties = in.requested_properties | MaterialModel::MaterialProperties::viscosity;
+
+            else if (property_name == "density")
+              in.requested_properties = in.requested_properties | MaterialModel::MaterialProperties::density;
+
+            else if (property_name == "thermal expansivity")
+              in.requested_properties = in.requested_properties | MaterialModel::MaterialProperties::thermal_expansion_coefficient;
+
+            else if (property_name == "specific heat")
+              in.requested_properties = in.requested_properties | MaterialModel::MaterialProperties::specific_heat;
+
+            else if (property_name == "thermal conductivity")
+              in.requested_properties = in.requested_properties | MaterialModel::MaterialProperties::thermal_conductivity;
+
+            else if (property_name == "thermal diffusivity")
+              in.requested_properties = in.requested_properties | MaterialModel::MaterialProperties::density
+                                        | MaterialModel::MaterialProperties::specific_heat
+                                        | MaterialModel::MaterialProperties::thermal_conductivity;
+
+            else if (property_name == "compressibility")
+              in.requested_properties = in.requested_properties | MaterialModel::MaterialProperties::compressibility;
+
+            else if (property_name == "entropy derivative pressure")
+              in.requested_properties = in.requested_properties | MaterialModel::MaterialProperties::entropy_derivative_pressure;
+
+            else if (property_name == "entropy derivative temperature")
+              in.requested_properties = in.requested_properties | MaterialModel::MaterialProperties::entropy_derivative_temperature;
+
+            else if (property_name == "reaction terms")
+              in.requested_properties = in.requested_properties | MaterialModel::MaterialProperties::reaction_terms;
+
+            // We don't know what a material model needs to compute the melt fraction.
+            else if (property_name == "melt fraction")
+              in.requested_properties = MaterialModel::MaterialProperties::all_properties;
+          }
 
         this->get_material_model().evaluate(in, out);
 
@@ -142,6 +185,7 @@ namespace aspect
                                                      input_data.template get_cell<dim>(),
                                                      Quadrature<dim>(),
                                                      this->get_mapping(),
+                                                     in.requested_properties,
                                                      out);
 
         std::vector<double> melt_fractions(n_quadrature_points);
@@ -157,36 +201,36 @@ namespace aspect
         for (unsigned int q=0; q<n_quadrature_points; ++q)
           {
             unsigned output_index = 0;
-            for (unsigned int i=0; i<property_names.size(); ++i, ++output_index)
+            for (const auto &property_name : property_names)
               {
-                if (property_names[i] == "viscosity")
+                if (property_name == "viscosity")
                   computed_quantities[q][output_index] = out.viscosities[q];
 
-                else if (property_names[i] == "density")
+                else if (property_name == "density")
                   computed_quantities[q][output_index] = out.densities[q];
 
-                else if (property_names[i] == "thermal expansivity")
+                else if (property_name == "thermal expansivity")
                   computed_quantities[q][output_index] = out.thermal_expansion_coefficients[q];
 
-                else if (property_names[i] == "specific heat")
+                else if (property_name == "specific heat")
                   computed_quantities[q][output_index] = out.specific_heat[q];
 
-                else if (property_names[i] == "thermal conductivity")
+                else if (property_name == "thermal conductivity")
                   computed_quantities[q][output_index] = out.thermal_conductivities[q];
 
-                else if (property_names[i] == "thermal diffusivity")
+                else if (property_name == "thermal diffusivity")
                   computed_quantities[q][output_index] = out.thermal_conductivities[q]/(out.densities[q]*out.specific_heat[q]);
 
-                else if (property_names[i] == "compressibility")
+                else if (property_name == "compressibility")
                   computed_quantities[q][output_index] = out.compressibilities[q];
 
-                else if (property_names[i] == "entropy derivative pressure")
+                else if (property_name == "entropy derivative pressure")
                   computed_quantities[q][output_index] = out.entropy_derivative_pressure[q];
 
-                else if (property_names[i] == "entropy derivative temperature")
+                else if (property_name == "entropy derivative temperature")
                   computed_quantities[q][output_index] = out.entropy_derivative_temperature[q];
 
-                else if (property_names[i] == "reaction terms")
+                else if (property_name == "reaction terms")
                   {
                     for (unsigned int k=0; k<this->n_compositional_fields(); ++k, ++output_index)
                       {
@@ -194,11 +238,13 @@ namespace aspect
                       }
                     --output_index;
                   }
-                else if (property_names[i] == "melt fraction")
+                else if (property_name == "melt fraction")
                   computed_quantities[q][output_index] = melt_fractions[q];
                 else
                   AssertThrow(false,
                               ExcMessage("Material property not implemented for this postprocessor."));
+
+                ++output_index;
               }
           }
       }

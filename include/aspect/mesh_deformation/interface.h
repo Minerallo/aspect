@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -37,11 +37,8 @@
 #include <deal.II/multigrid/mg_transfer_global_coarsening.templates.h>
 #include <aspect/simulator/assemblers/interface.h>
 
-
 namespace aspect
 {
-  using namespace dealii;
-
   namespace Assemblers
   {
     /**
@@ -85,37 +82,13 @@ namespace aspect
      * mesh vertices and store them in a AffineConstraints<double> object. The velocities
      * for all non-constrained vertices will be computed by solving a Laplace
      * problem with the given constraints.
+     *
+     * @ingroup MeshDeformation
      */
-    template<int dim>
-    class Interface
+    template <int dim>
+    class Interface : public Plugins::InterfaceBase
     {
       public:
-        /**
-         * Destructor. Made virtual to enforce that derived classes also have
-         * virtual destructors.
-         */
-        virtual ~Interface() = default;
-
-        /**
-         * Initialization function. This function is called once at the
-         * beginning of the program after parse_parameters is run and after
-         * the SimulatorAccess (if applicable) is initialized.
-         *
-         * The default implementation of this function does nothing.
-         */
-        virtual void initialize ();
-
-        /**
-         * A function that is called at the beginning of each time step and
-         * that allows the implementation to update internal data structures.
-         * This is useful, for example, if you have mesh deformation that
-         * depends on time, or on the solution of the previous step.
-         *
-         * The default implementation of this function does nothing.
-         */
-        virtual void update();
-
-
         /**
          * A function that will be called to check whether stabilization is needed.
          */
@@ -134,6 +107,24 @@ namespace aspect
         compute_initial_deformation_on_boundary(const types::boundary_id boundary_indicator,
                                                 const Point<dim> &position) const;
 
+
+        /**
+         * A function that creates constraints for the initial deformation of the mesh.
+         *
+         * This function gives an alternative way to determine the initial deformation
+         * instead of using the compute_initial_deformation_on_boundary function. The
+         * default implementation of this function calls compute_initial_deformation_on_boundary()
+         * with the coordinates of each point on the boundary. If you need lower level control
+         * over the initial deformation or it is more efficient to provide constraints directly,
+         * override this function.
+         */
+        virtual
+        void
+        compute_initial_deformation_as_constraints(const Mapping<dim> &mapping,
+                                                   const DoFHandler<dim> &mesh_deformation_dof_handler,
+                                                   const types::boundary_id boundary_indicator,
+                                                   AffineConstraints<double> &constraints) const;
+
         /**
          * A function that creates constraints for the velocity of certain mesh
          * vertices (e.g. the surface vertices) for a specific set of boundaries.
@@ -145,27 +136,7 @@ namespace aspect
         void
         compute_velocity_constraints_on_boundary(const DoFHandler<dim> &mesh_deformation_dof_handler,
                                                  AffineConstraints<double> &mesh_velocity_constraints,
-                                                 const std::set<types::boundary_id> &boundary_id) const;
-
-        /**
-         * Declare the parameters this class takes through input files. The
-         * default implementation of this function does not describe any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
-         */
-        static
-        void
-        declare_parameters (ParameterHandler &prm);
-
-        /**
-         * Read the parameters this class declares from the parameter file.
-         * The default implementation of this function does not read any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
-         */
-        virtual
-        void
-        parse_parameters (ParameterHandler &prm);
+                                                 const std::set<types::boundary_id> &boundary_ids) const;
     };
 
 
@@ -175,7 +146,7 @@ namespace aspect
      * of the surface, the internal nodes and computes the
      * Arbitrary-Lagrangian-Eulerian correction terms.
      */
-    template<int dim>
+    template <int dim>
     class MeshDeformationHandler: public SimulatorAccess<dim>
     {
       public:
@@ -239,6 +210,24 @@ namespace aspect
         void parse_parameters (ParameterHandler &prm);
 
         /**
+         * Write the data of this object to a stream for the purpose of
+         * serialization.
+         */
+        template <class Archive>
+        void save (Archive &ar,
+                   const unsigned int version) const;
+
+        /**
+         * Read the data of this object from a stream for the purpose of
+         * serialization.
+         */
+        template <class Archive>
+        void load (Archive &ar,
+                   const unsigned int version);
+
+        BOOST_SERIALIZATION_SPLIT_MEMBER()
+
+        /**
          * A function that is used to register mesh deformation objects in such
          * a way that the Manager can deal with all of them without having to
          * know them by name. This allows the files in which individual
@@ -283,6 +272,22 @@ namespace aspect
          */
         const std::set<types::boundary_id> &
         get_active_mesh_deformation_boundary_indicators () const;
+
+        /**
+         * Return a set of all the indicators of boundaries with
+         * mesh deformation objects on them that also have tangential
+         * velocity boundary conditions.
+         */
+        const std::set<types::boundary_id> &
+        get_tangential_velocity_with_active_mesh_deformation_boundary_indicators () const;
+
+        /**
+         * Return a set of all the indicators of boundaries without
+         * mesh deformation objects on them that have tangential
+         * velocity boundary conditions.
+         */
+        const std::set<types::boundary_id> &
+        get_tangential_velocity_without_active_mesh_deformation_boundary_indicators () const;
 
         /**
          * Return a set of all the indicators of boundaries that
@@ -352,7 +357,7 @@ namespace aspect
          * Go through the list of all mesh deformation objects that have been selected
          * in the input file (and are consequently currently active) and see
          * if one of them has the type specified by the template
-         * argument or can be casted to that type. If so, return a reference
+         * argument or can be cast to that type. If so, return a reference
          * to it. If no mesh deformation object is active that matches the given type,
          * throw an exception.
          *
@@ -430,6 +435,24 @@ namespace aspect
          * the current displacement vector based on the solution.
          */
         void compute_mesh_displacements_gmg ();
+
+        /**
+         * Return the polynomial degree to use for the mesh mapping.
+         *
+         * If the parameter ``Mesh deformation mapping order'' is set to
+         * ``auto'', this function chooses an order based on the geometry and
+         * mesh deformation finite element degree. Otherwise, it returns the
+         * user-provided explicit value.
+         */
+        unsigned int get_mapping_degree () const;
+
+        /**
+         * Compute mesh displacements using GMG solver
+         * for a specific mesh deformation finite element degree.
+         * This is the implementation called by compute_mesh_displacements_gmg().
+         */
+        template <unsigned int mesh_deformation_fe_degree>
+        void compute_mesh_displacements_gmg_for_degree();
 
         /**
          * Set up the vector with initial displacements of the mesh
@@ -557,6 +580,20 @@ namespace aspect
         std::set<types::boundary_id> prescribed_mesh_deformation_boundary_indicators;
 
         /**
+         * The set of boundary indicators for which mesh deformation
+         * objects are set and that also
+         * have tangential velocity boundary conditions.
+         */
+        std::set<types::boundary_id> tangential_velocity_with_prescribed_mesh_deformation_boundary_indicators;
+
+        /**
+         * The set of boundary indicators for which mesh deformation
+         * objects are not set and that
+         * have tangential velocity boundary conditions.
+         */
+        std::set<types::boundary_id> tangential_velocity_without_prescribed_mesh_deformation_boundary_indicators;
+
+        /**
          * A set of boundary indicators that denote those boundaries that are
          * allowed to move their mesh tangential to the boundary.
          */
@@ -589,8 +626,20 @@ namespace aspect
          * Stabilization parameter for the free surface. Should be between
          * zero and one. A value of zero means no stabilization.  See Kaus
          * et. al. 2010 for more details.
+         *
+         * This variable is read from the parameter file through a parameter called 'Free surface stabilization theta'.
          */
         double surface_theta;
+
+        /**
+         * Whether mapping order selection is automatic (``auto'').
+         */
+        bool use_automatic_mapping_order;
+
+        /**
+         * Explicit mapping order used when automatic selection is disabled.
+         */
+        unsigned int explicit_mapping_order;
 
         /**
          * If required, store a mapping for each multigrid level.
@@ -605,7 +654,7 @@ namespace aspect
         /**
          * Multigrid transfer operator for the displacements
          */
-        MGTransferMF<dim, double> mg_transfer;
+        MGTransferType<dim, double> mg_transfer;
 
         /**
          * Multigrid level constraints for the displacements
@@ -615,6 +664,42 @@ namespace aspect
         friend class Simulator<dim>;
         friend class SimulatorAccess<dim>;
     };
+
+
+    template <int dim>
+    template <class Archive>
+    void MeshDeformationHandler<dim>::save (Archive &ar,
+                                            const unsigned int) const
+    {
+      // let all the mesh deformation plugins save their data in a map and then
+      // serialize that
+      //TODO: for now we assume the same plugins are active before and after restart.
+      std::map<std::string,std::string> saved_text;
+      for (const auto &boundary_id_and_mesh_deformation_objects : mesh_deformation_objects)
+        for (const auto &p : boundary_id_and_mesh_deformation_objects.second)
+          p->save (saved_text);
+
+      ar &saved_text;
+    }
+
+
+    template <int dim>
+    template <class Archive>
+    void MeshDeformationHandler<dim>::load (Archive &ar,
+                                            const unsigned int)
+    {
+      // get the map back out of the stream; then let the mesh deformation plugins
+      // that we currently have get their data from there. note that this
+      // may not be the same set ofmesh deformation plugins we had when we saved
+      // their data
+      std::map<std::string,std::string> saved_text;
+      ar &saved_text;
+
+      for (const auto &boundary_id_and_mesh_deformation_objects : mesh_deformation_objects)
+        for (const auto &p : boundary_id_and_mesh_deformation_objects.second)
+          p->load (saved_text);
+    }
+
 
 
 
@@ -651,8 +736,8 @@ namespace aspect
           if (Plugins::plugin_type_matches<MeshDeformationType>(*p))
             return Plugins::get_plugin_as_type<MeshDeformationType>(*p);
 
-      typename std::vector<std::unique_ptr<Interface<dim>>>::const_iterator mesh_def;
       // We will never get here, because we had the Assert above. Just to avoid warnings.
+      typename std::vector<std::unique_ptr<Interface<dim>>>::const_iterator mesh_def;
       return Plugins::get_plugin_as_type<MeshDeformationType>(*(*mesh_def));
 
     }

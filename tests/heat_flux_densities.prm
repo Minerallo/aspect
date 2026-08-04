@@ -1,14 +1,13 @@
 # Compute heat flux densities, this is blankenbach case 2b
 
 set End time                               = 0.004
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set CFL number = 5.0
 
 subsection Adiabatic conditions model
   set Model name = function
 
   subsection Function
-    set Function constants  =
     set Function expression = 0; 0; 1
     set Variable names      = depth
   end
@@ -50,7 +49,7 @@ subsection Initial temperature model
 
   subsection Function
     set Variable names      = x,z
-    set Function constants  = p=0.01, L=1, pi=3.1415926536, k=1, ratio=2.5
+    set Function constants  = p=0.01, L=1, k=1, ratio=2.5
     set Function expression = 1* ((1.0-z/L) + p*cos(k*pi*x/L/ratio)*sin(pi*z/L))
   end
 end
@@ -105,6 +104,10 @@ subsection Postprocess
   subsection Visualization
     set Interpolate output = false
     set Time between graphical output = 0.002
-    set List of output variables      = material properties, adiabat, thermal conductivity, heating, artificial viscosity
+    set List of output variables      = material properties, adiabat, heating, artificial viscosity
+
+    subsection Material properties
+      set List of material properties = density, thermal expansivity, specific heat, viscosity, thermal conductivity
+    end
   end
 end

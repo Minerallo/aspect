@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2020 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2020 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -29,17 +29,16 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
-
   namespace MeshDeformation
   {
     /**
      * A plugin that computes the deformation of surface
      * vertices according to the solution of a dim-1 diffusion
      * problem.
+     *
+     * @ingroup MeshDeformation
      */
-    template<int dim>
+    template <int dim>
     class Diffusion : public Interface<dim>, public SimulatorAccess<dim>
     {
       public:
@@ -68,7 +67,7 @@ namespace aspect
         void
         compute_velocity_constraints_on_boundary(const DoFHandler<dim> &mesh_deformation_dof_handler,
                                                  AffineConstraints<double> &mesh_velocity_constraints,
-                                                 const std::set<types::boundary_id> &boundary_id) const override;
+                                                 const std::set<types::boundary_id> &boundary_ids) const override;
 
         /**
          * Returns whether or not the plugin requires surface stabilization
@@ -96,7 +95,7 @@ namespace aspect
                                const IndexSet &mesh_locally_owned,
                                const IndexSet &mesh_locally_relevant,
                                LinearAlgebra::Vector &output,
-                               const std::set<types::boundary_id> &boundary_id) const;
+                               const std::set<types::boundary_id> &boundary_ids) const;
 
         /**
          * Check that the size of the next time step is not larger than the conduction
@@ -111,11 +110,15 @@ namespace aspect
          * The hillslope transport coefficient or diffusivity [m2/s]
          * used in the hillslope diffusion of the deformed
          * surface.
+         *
+         * This variable is read from the parameter file through a parameter called 'Hillslope transport coefficient'.
          */
         double diffusivity;
 
         /**
          * Maximum number of steps between the application of diffusion.
+         *
+         * This variable is read from the parameter file through a parameter called 'Time steps between diffusion'.
          */
         unsigned int timesteps_between_diffusion;
 

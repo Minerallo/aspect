@@ -30,11 +30,29 @@ namespace aspect
 {
   namespace BoundaryTraction
   {
-    using namespace dealii;
-
     /**
-     * A class that implements prescribed traction boundary conditions determined
-     * from pressures given in an AsciiData input file.
+     * A class that implements prescribed traction boundary conditions from
+     * data given in an AsciiData input file.
+     *
+     * This class supports prescribing either:
+     * - Only pressure at the boundary (default behavior), where the traction is
+     *   computed as the negative pressure times the outward normal vector.
+     * - Full traction vector components on the boundary.
+     *
+     * The behavior is controlled by the input parameter
+     * "Prescribe pressure instead of full traction" (default: true).
+     * If true, only one component (pressure) is read from the input file and
+     * used to compute traction as -pressure * normal_vector.
+     * If false, the full traction vector components (equal to the spatial dimension)
+     * are read from the input file.
+     *
+     * Additionally, the traction vector components may be specified in either
+     * Cartesian coordinates or spherical coordinates, controlled by the
+     * "Use spherical unit vectors" parameter.
+     *
+     * This flexibility allows compatibility with existing models prescribing
+     * pressure boundary conditions, while enabling models requiring full traction
+     * vectors.
      *
      * @ingroup BoundaryTractions
      */
@@ -77,10 +95,7 @@ namespace aspect
         update () override;
 
         /**
-         * Declare the parameters this class takes through input files. The
-         * default implementation of this function does not describe any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
+         * Declare the parameters this class takes through input files.
          */
         static
         void
@@ -88,15 +103,29 @@ namespace aspect
 
         /**
          * Read the parameters this class declares from the parameter file.
-         * The default implementation of this function does not read any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
          */
         void
         parse_parameters (ParameterHandler &prm) override;
 
       private:
         std::set<types::boundary_id> boundary_ids;
+
+        /**
+         * Whether to specify traction in x, y, z components, or
+         * r, phi, theta components.
+         *
+         * This variable is read from the parameter file through a parameter called 'Use spherical unit vectors'.
+         */
+        bool use_spherical_unit_vectors;
+
+        /**
+        * Whether to prescribe pressure (default: true) or full traction vector (false)
+        * at the boundary. If true, only 1 component will be used for the boundary condition.
+        *
+        * This variable is read from the parameter file through a parameter called 'Prescribe pressure instead of full traction'.
+        */
+        bool prescribe_pressure_instead_of_full_traction;
+
     };
   }
 }

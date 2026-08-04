@@ -2,6 +2,8 @@
 # flow benchmark. This is used to test the velocity boundary conditions
 # of the Newton Stokes solver.
 
+# MPI: 2
+
 set Dimension = 2
 set CFL number                             = 1.0
 set Maximum time step                      = 1
@@ -9,7 +11,7 @@ set End time                               = 4
 set Start time                             = 0
 set Adiabatic surface temperature          = 0
 set Surface pressure                       = 0
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set Nonlinear solver scheme = iterated Advection and Newton Stokes
 set Max nonlinear iterations = 30
 set Nonlinear solver tolerance = 5e-12
@@ -23,7 +25,8 @@ subsection Solver parameters
   end
 
   subsection Stokes solver parameters
-    set Linear solver tolerance = 1e-8
+    set Linear solver tolerance = 1e-7
+    set Stokes solver type =  block AMG
   end
 end
 
@@ -64,6 +67,7 @@ end
 
 subsection Material model
   set Model name = simple nonlinear
+  set Material averaging = none
 
   subsection Simple nonlinear
     # Instead of the default of 1.96e-40, set the minimum

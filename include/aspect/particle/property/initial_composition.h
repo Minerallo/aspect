@@ -31,8 +31,10 @@ namespace aspect
     namespace Property
     {
       /**
-       * A class that initializes particle properties based on a
-       * functional description provided in the input file.
+       * A class that initializes particle properties based on
+       * the initial value of the compositional fields in
+       * the model. This can be used to track solid composition
+       * evolution over time.
        *
        * @ingroup ParticleProperties
        */
@@ -56,6 +58,13 @@ namespace aspect
                                             std::vector<double> &particle_properties) const override;
 
           /**
+           * @copydoc aspect::Particle::Property::Interface::update_particle_properties()
+           */
+          void
+          update_particle_properties (const ParticleUpdateInputs<dim> &inputs,
+                                      typename ParticleHandler<dim>::particle_iterator_range &particles) const override;
+
+          /**
            * Returns an enum, which determines how this particle property is
            * initialized for particles that are created later than the initial
            * particle generation. For this property the value of
@@ -67,6 +76,17 @@ namespace aspect
           late_initialization_mode () const override;
 
           /**
+           * A function that returns the advection field to be used
+           * when initializing the particle property at a boundary.
+           *
+           * For this property we use the compositional field corresponding
+           * to the particle property component, which is consistent with how the
+           * particles are initialized in initialize_one_particle_property().
+           */
+          AdvectionField
+          advection_field_for_boundary_initialization(const unsigned int property_component) const override;
+
+          /**
            * Set up the information about the names and number of components
            * this property requires.
            *
@@ -75,6 +95,27 @@ namespace aspect
            */
           std::vector<std::pair<std::string, unsigned int>>
           get_property_information() const override;
+
+
+          /**
+           * Declare the parameters this class takes through input files.
+           */
+          static
+          void
+          declare_parameters (ParameterHandler &prm);
+
+          /**
+           * Read the parameters this class declares from the parameter file.
+           */
+          void
+          parse_parameters (ParameterHandler &prm) override;
+
+
+        private:
+          /**
+           * A vector for storing the global indices of each property tracked by a given particle manager.
+           */
+          std::vector<unsigned int> selected_compositional_field_indices;
       };
     }
   }

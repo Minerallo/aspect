@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018-2024 by the authors of the World Builder code.
+  Copyright (C) 2018-2026 by the authors of the World Builder code.
 
   This file is part of the World Builder.
 
@@ -135,7 +135,7 @@ namespace WorldBuilder
                 }
               else
                 {
-                  const unsigned int index = std::distance(depths.begin(), upper);
+                  const unsigned int index = static_cast<unsigned int>(std::distance(depths.begin(), upper));
                   const double fraction = (depth - depths[index-1]) / (depths[index] - depths[index-1]);
 
                   center_temperature_local = (1-fraction) * center_temperatures[index-1] + fraction * center_temperatures[index];

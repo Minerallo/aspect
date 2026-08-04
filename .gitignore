@@ -1,5 +1,6 @@
 *#
 *~
+/.venv/
 /**/CMakeCache.txt
 /**/CMakeFiles/
 /**/cmake_install.cmake
@@ -9,6 +10,7 @@
 /compile_commands.json
 /.vscode/
 /.cache/
+**/.DS_Store
 /AspectConfig.cmake
 /CMakeLists.txt.user*
 /CTestTestfile.cmake
@@ -21,6 +23,8 @@
 /benchmarks/**/cmake_install.cmake
 /benchmarks/**/lib*.so
 /benchmarks/**/aspect
+/benchmarks/**/aspect-debug
+/benchmarks/**/aspect-release
 /benchmarks/**/temp.prm
 /benchmarks/tangurnis/*/*csv
 /benchmarks/tangurnis/*/solution*
@@ -30,6 +34,8 @@
 /cookbooks/**/lib*.so
 /cookbooks/**/Makefile
 /cookbooks/**/aspect
+/cookbooks/**/aspect-debug
+/cookbooks/**/aspect-release
 /detailed.log
 /doc/aspect.dox
 /doc/aspect.tag

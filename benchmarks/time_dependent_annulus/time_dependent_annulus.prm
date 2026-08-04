@@ -18,7 +18,7 @@ set Additional shared libraries = ./plugin/libtime_dependent_annulus.so
 set Dimension                              = 2
 set End time                               = 0.09817477042468103
 set Output directory                       = output-time_dependent_annulus
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 
 subsection Geometry model
   set Model name = spherical shell
@@ -34,7 +34,6 @@ subsection Boundary velocity model
   set Prescribed velocity boundary indicators = 0: function, 1: function
 
   subsection Function
-    set Function constants  = pi=3.1415926
     set Variable names      = x,y
     set Function expression = y*sqrt(x^2 + y^2)^6;-x*sqrt(x^2 + y^2)^6
   end
@@ -108,7 +107,6 @@ subsection Adiabatic conditions model
   set Model name = function
 
   subsection Function
-    set Function constants  =
     set Function expression = 0; 0; 0
     set Variable names      = depth
   end
@@ -137,33 +135,19 @@ end
 subsection Postprocess
   set List of postprocessors = time dependent annulus, particles, visualization
 
-  subsection Particles
-    set Time between data output = 0.0009817477042468104
-    set Integration scheme = rk2 # or rk4
-    set Interpolation scheme = bilinear least squares # or cell average
-    set List of particle properties = function
-    set Update ghost particles = true
-    set Particle generator name = reference cell
-    set Load balancing strategy = none # not necessary for uniform mesh
-
-    subsection Generator
-      subsection Reference cell
-        set Number of particles per cell per direction = 4 # or 5, 6, 7, 10, 15, 20, 32, 45, 64, 80
-      end
-    end
-
-    subsection Function
-      set Number of components = 2
-      set Variable names      = x,y
-      set Function expression = 48*sqrt(x^2 + y^2)^5;if(0<y,if(y<1/4,1,0),0)
-    end
-  end
-
   subsection Visualization
     set Output format                 = vtu
     set Number of grouped files       = 1
     set Time between graphical output = 0.0009817477042468104
-    set List of output variables      = density, gravity
+    set List of output variables      = material properties, gravity
+
+    subsection Material properties
+      set List of material properties = density
+    end
+  end
+
+  subsection Particles
+    set Time between data output = 0.0009817477042468104
   end
 end
 
@@ -173,4 +157,24 @@ end
 
 subsection Checkpointing
   set Time between checkpoint  = 7200
+end
+
+subsection Particles
+  set Integration scheme = rk2 # or rk4
+  set Interpolation scheme = linear least squares # or cell average
+  set List of particle properties = function
+  set Particle generator name = reference cell
+  set Load balancing strategy = none # not necessary for uniform mesh
+
+  subsection Generator
+    subsection Reference cell
+      set Number of particles per cell per direction = 4 # or 5, 6, 7, 10, 15, 20, 32, 45, 64, 80
+    end
+  end
+
+  subsection Function
+    set Number of components = 2
+    set Variable names      = x,y
+    set Function expression = 48*sqrt(x^2 + y^2)^5;if(0<y,if(y<1/4,1,0),0)
+  end
 end

@@ -1,0 +1,1435 @@
+/*
+  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
+
+  This file is part of ASPECT.
+
+  ASPECT is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2, or (at your option)
+  any later version.
+
+  ASPECT is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with ASPECT; see the file LICENSE.  If not see
+  <http://www.gnu.org/licenses/>.
+*/
+
+#include <aspect/particle/manager.h>
+#include <aspect/global.h>
+#include <aspect/utilities.h>
+#include <aspect/simulator.h>
+#include <aspect/melt.h>
+
+#include <deal.II/base/quadrature_lib.h>
+#include <deal.II/fe/fe_values.h>
+#include <deal.II/grid/grid_tools.h>
+
+#include <deal.II/fe/mapping_cartesian.h>
+
+#include <boost/serialization/map.hpp>
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+#include <aspect/particle/distribution.h>
+
+namespace aspect
+{
+  namespace Particle
+  {
+    template <int dim>
+    Manager<dim>::Manager()
+    // Set the manager index to an invalid value, but otherwise do what the other
+    // constructor does. This is necessary to allow for default construction of
+    // the class, which is required to be able to de-serialize objects.
+      : Manager(numbers::invalid_unsigned_int)
+    {}
+
+
+
+    template <int dim>
+    Manager<dim>::Manager(const unsigned int particle_manager_index)
+      : particle_manager_index(particle_manager_index)
+    {}
+
+
+
+    template <int dim>
+    Manager<dim>::~Manager()
+      = default;
+
+    template <int dim>
+    Manager<dim>::Manager(Manager &&other) noexcept
+  :
+    particle_manager_index(other.particle_manager_index),
+                           generator(std::move(other.generator)),
+                           integrator(std::move(other.integrator)),
+                           interpolator(std::move(other.interpolator)),
+                           particle_handler(std::move(other.particle_handler)),
+                           particle_handler_backup(), // can not move
+                           property_manager(std::move(other.property_manager)),
+                           particle_load_balancing(other.particle_load_balancing),
+                           min_particles_per_cell(other.min_particles_per_cell),
+                           max_particles_per_cell(other.max_particles_per_cell),
+                           particle_weight(other.particle_weight)
+    {}
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::initialize()
+    {
+      // Verify that the object was either created by the constructor
+      // that creates a valid object right away, or that the particle
+      // manager index was set to a valid value through de-serialization.
+      // If not, we have an invalid object that we shouldn't be using.
+      Assert (particle_manager_index != numbers::invalid_unsigned_int,
+              ExcInternalError());
+
+      CitationInfo::add("particles");
+
+      // Create a particle handler that stores the future particles.
+      // If we restarted from a checkpoint we will fill this particle handler
+      // later with its serialized variables and stored particles
+      particle_handler = std::make_unique<ParticleHandler<dim>>(this->get_triangulation(),
+                                                                 this->get_mapping(),
+                                                                 property_manager->get_n_property_components());
+
+      particle_handler_backup.initialize(this->get_triangulation(),
+                                         this->get_mapping(),
+                                         property_manager->get_n_property_components());
+
+      connect_to_signals(this->get_signals());
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::update()
+    {
+      // Verify that the object was either created by the constructor
+      // that creates a valid object right away, or that the particle
+      // manager index was set to a valid value through de-serialization.
+      // If not, we have an invalid object that we shouldn't be using.
+      Assert (particle_manager_index != numbers::invalid_unsigned_int,
+              ExcInternalError());
+
+      // Give the random number generator a deterministic state at
+      // the beginning of each time step so that we don't have to serialize
+      // it. This is relevant because the random number generator is used
+      // to generate new particles and so might be used different numbers
+      // of times on different processes, which would lead to different
+      // states of the random number generator on different MPI ranks.
+      // We could serialize the random number generators from all processes,
+      // but this would require (i) a global MPI operation, and (ii) we
+      // wouldn't quite know what to do if we restart with a different
+      // number of MPI processes than we had when we created the checkpoint.
+      // The work-around to both issues is to set the state of the random
+      // number generator to a deterministic value at the beginning of
+      // each time step.
+      random_number_generator.seed(this->get_timestep_number() * 1000000  +
+                                   particle_manager_index * 100000 +
+                                   Utilities::MPI::this_mpi_process(this->get_mpi_communicator()));
+
+      generator->update();
+      integrator->update();
+      interpolator->update();
+      property_manager->update();
+    }
+
+
+
+    template <int dim>
+    const Property::Manager<dim> &
+    Manager<dim>::get_property_manager() const
+    {
+      return *property_manager;
+    }
+
+
+
+    template <int dim>
+    const Particles::ParticleHandler<dim> &
+    Manager<dim>::get_particle_handler() const
+    {
+      return *particle_handler.get();
+    }
+
+
+
+    template <int dim>
+    Particles::ParticleHandler<dim> &
+    Manager<dim>::get_particle_handler()
+    {
+      return *particle_handler.get();
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::copy_particle_handler (const Particles::ParticleHandler<dim> &from_particle_handler,
+                                         Particles::ParticleHandler<dim> &to_particle_handler) const
+    {
+      {
+        this->get_computing_timer().enter_subsection("Particles: Copy");
+        to_particle_handler.copy_from(from_particle_handler);
+        this->get_computing_timer().leave_subsection("Particles: Copy");
+      }
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::backup_particles ()
+    {
+      copy_particle_handler (*particle_handler.get(), particle_handler_backup);
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::restore_particles ()
+    {
+      copy_particle_handler (particle_handler_backup, *particle_handler.get());
+    }
+
+
+
+    template <int dim>
+    const Interpolator::Interface<dim> &
+    Manager<dim>::get_interpolator() const
+    {
+      return *interpolator;
+    }
+
+
+
+    template <int dim>
+    types::particle_index
+    Manager<dim>::n_global_particles() const
+    {
+      return particle_handler->n_global_particles();
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::connect_to_signals(aspect::SimulatorSignals<dim> &signals)
+    {
+      signals.post_set_initial_state.connect(
+        [&] (const SimulatorAccess<dim> &)
+      {
+        this->setup_initial_state();
+      });
+
+      connect_particle_handler_signals(signals,*particle_handler);
+      // Particle handler backup will not be stored for checkpointing
+      connect_particle_handler_signals(signals, particle_handler_backup, false);
+
+      signals.post_refinement_load_user_data.connect(
+        [&] (typename parallel::distributed::Triangulation<dim> &)
+      {
+        this->apply_particle_per_cell_bounds();
+      });
+
+      signals.post_resume_load_user_data.connect(
+        [&] (typename parallel::distributed::Triangulation<dim> &)
+      {
+        this->apply_particle_per_cell_bounds();
+      });
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::connect_particle_handler_signals(aspect::SimulatorSignals<dim> &signals,
+                                                   ParticleHandler<dim> &particle_handler_,
+                                                   const bool connect_to_checkpoint_signals) const
+    {
+      signals.pre_refinement_store_user_data.connect(
+        [&] (typename parallel::distributed::Triangulation<dim> &)
+      {
+        particle_handler_.prepare_for_coarsening_and_refinement();
+      });
+
+      signals.post_refinement_load_user_data.connect(
+        [&] (typename parallel::distributed::Triangulation<dim> &)
+      {
+        particle_handler_.unpack_after_coarsening_and_refinement();
+      });
+
+      // Only connect to checkpoint signals if requested
+      if (connect_to_checkpoint_signals)
+        {
+          signals.pre_checkpoint_store_user_data.connect(
+            [&] (typename parallel::distributed::Triangulation<dim> &)
+          {
+            particle_handler_.prepare_for_serialization();
+          });
+
+          signals.post_resume_load_user_data.connect(
+            [&] (typename parallel::distributed::Triangulation<dim> &)
+          {
+            particle_handler_.deserialize();
+          });
+        }
+
+      if (dealii::Utilities::MPI::n_mpi_processes(this->get_mpi_communicator()) > 1)
+        {
+          auto do_ghost_exchange = [&] (typename parallel::distributed::Triangulation<dim> &)
+          {
+            particle_handler_.exchange_ghost_particles();
+          };
+          signals.post_refinement_load_user_data.connect(do_ghost_exchange);
+          signals.post_resume_load_user_data.connect(do_ghost_exchange);
+        }
+
+      signals.post_mesh_deformation.connect(
+        [&] (const SimulatorAccess<dim> &)
+      {
+        particle_handler->sort_particles_into_subdomains_and_cells();
+      },
+      boost::signals2::at_front);
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::apply_particle_per_cell_bounds()
+    {
+      // If any load balancing technique is selected that creates/destroys particles
+      if (particle_load_balancing & ParticleLoadBalancing::remove_and_add_particles)
+        {
+          GridTools::Cache<dim> grid_cache(this->get_triangulation(), this->get_mapping());
+          // First do some preparation for particle generation in poorly
+          // populated areas. For this we need to know which particle ids to
+          // generate so that they are globally unique.
+          // Ensure this by communicating the number of particles that every
+          // process is going to generate.
+          particle_handler->update_cached_numbers();
+          types::particle_index local_next_particle_index = particle_handler->get_next_free_particle_index();
+          if (particle_load_balancing & ParticleLoadBalancing::add_particles)
+            {
+              types::particle_index particles_to_add_locally = 0;
+
+              // Loop over all cells and determine the number of particles to generate
+              for (const auto &cell : this->get_dof_handler().active_cell_iterators())
+                if (cell->is_locally_owned())
+                  {
+                    const unsigned int particles_in_cell = particle_handler->n_particles_in_cell(cell);
+
+                    if (particles_in_cell < min_particles_per_cell)
+                      particles_to_add_locally += static_cast<types::particle_index> (min_particles_per_cell - particles_in_cell);
+                  }
+
+              // Determine the starting particle index of this process, which
+              // is the highest currently existing particle index plus the sum
+              // of the number of newly generated particles of all
+              // processes with a lower rank.
+
+
+              const std::pair<types::particle_index,types::particle_index>
+              partial_and_total_sum = Utilities::MPI::partial_and_total_sum (particles_to_add_locally, this->get_mpi_communicator());
+
+              const types::particle_index local_start_index = partial_and_total_sum.first;
+              local_next_particle_index += local_start_index;
+
+              const types::particle_index globally_generated_particles =
+                partial_and_total_sum.second;
+
+
+              AssertThrow (particle_handler->get_next_free_particle_index()
+                           <= std::numeric_limits<types::particle_index>::max() - globally_generated_particles,
+                           ExcMessage("There is no free particle index left to generate a new particle id. Please check if your "
+                                      "model generates unusually many new particles (by repeatedly deleting and regenerating particles), or "
+                                      "recompile deal.II with the DEAL_II_WITH_64BIT_INDICES option enabled, to use 64-bit integers for "
+                                      "particle ids."));
+            }
+
+          // Loop over all cells and generate or remove the particles cell-wise
+          for (const auto &cell : this->get_dof_handler().active_cell_iterators())
+            if (cell->is_locally_owned())
+              {
+                const unsigned int n_particles_in_cell = particle_handler->n_particles_in_cell(cell);
+
+                // Add particles if necessary
+                if ((particle_load_balancing & ParticleLoadBalancing::add_particles) &&
+                    (n_particles_in_cell < min_particles_per_cell))
+                  {
+                    for (unsigned int i = n_particles_in_cell; i < min_particles_per_cell; ++i,++local_next_particle_index)
+                      {
+                        const unsigned int current_n_particles_in_cell = particle_handler->n_particles_in_cell(cell);
+                        if (addition_algorithm == AdditionAlgorithm::random)
+                          {
+
+                            std::pair<Particles::internal::LevelInd,Particles::Particle<dim>> new_particle = generator->generate_particle(cell,local_next_particle_index);
+
+                            const std::vector<double> particle_properties =
+                              property_manager->initialize_late_particle(new_particle.second.get_location(),
+                                                                         *particle_handler,
+                                                                         *interpolator,
+                                                                         cell);
+
+                            typename ParticleHandler<dim>::particle_iterator particle = particle_handler->insert_particle(new_particle.second,
+                                                                                        typename parallel::distributed::Triangulation<dim>::cell_iterator (&this->get_triangulation(),
+                                                                                            new_particle.first.first,
+                                                                                            new_particle.first.second));
+                            particle->set_properties(particle_properties);
+
+                          }
+                        else if (addition_algorithm == AdditionAlgorithm::point_density_function)
+                          {
+                            ParticlePDF<dim> pdf(addition_granularity_pdf,bandwidth,kernel_function);
+                            const std::vector<typename Particles::ParticleHandler<dim>::particle_iterator_range>
+                            particle_ranges_to_sum_over = get_neighboring_particle_ranges(cell,get_particle_handler(),grid_cache);
+
+                            pdf.fill_from_particle_range(particle_handler->particles_in_cell(cell),
+                                                         particle_ranges_to_sum_over,
+                                                         current_n_particles_in_cell,
+                                                         this->get_mapping(),
+                                                         cell);
+                            pdf.compute_statistical_values();
+
+                            const std::vector<Point<dim>> min_density_positions = pdf.get_min_positions();
+                            const int min_density_position_index = std::uniform_int_distribution<unsigned int>(0,min_density_positions.size()-1)(random_number_generator);
+                            const Point<dim> selected_min_density_position = min_density_positions[min_density_position_index];
+
+                            std::pair<Particles::internal::LevelInd,Particles::Particle<dim>> new_particle =
+                              generator->generate_particle(cell,local_next_particle_index,selected_min_density_position);
+
+                            const std::vector<double> particle_properties =
+                              property_manager->initialize_late_particle(new_particle.second.get_location(),
+                                                                         *particle_handler,
+                                                                         *interpolator,
+                                                                         cell);
+
+                            typename ParticleHandler<dim>::particle_iterator particle = particle_handler->insert_particle(new_particle.second,
+                                                                                        typename parallel::distributed::Triangulation<dim>::cell_iterator (&this->get_triangulation(),
+                                                                                            new_particle.first.first,
+                                                                                            new_particle.first.second));
+                            particle->set_properties(particle_properties);
+                          }
+                        else if (addition_algorithm == AdditionAlgorithm::histogram)
+                          {
+                            Table<dim,unsigned int> buckets;
+                            TableIndices<dim> bucket_sizes;
+                            const double granularity_double = static_cast<double>(addition_granularity_histogram);
+
+                            for (unsigned int i=0; i<dim; ++i)
+                              bucket_sizes[i] = addition_granularity_histogram;
+
+                            buckets.reinit(bucket_sizes);
+                            const double bucket_width = 1.0/granularity_double;
+                            unsigned int min_particles_in_bucket = std::numeric_limits<unsigned int>::max();
+
+                            for (const auto &particle: particle_handler->particles_in_cell(cell))
+                              {
+                                const double particle_x = particle.get_reference_location()[0];
+                                const double particle_y = particle.get_reference_location()[1];
+
+                                const double x_ratio = (particle_x) / (bucket_width);
+                                const double y_ratio = (particle_y) / (bucket_width);
+
+                                unsigned int x_index = static_cast<unsigned int>(std::floor(x_ratio));
+                                unsigned int y_index = static_cast<unsigned int>(std::floor(y_ratio));
+
+                                /*
+                                If a particle is exactly on the boundary of two cells its
+                                reference location will equal 1, and if this is the case,
+                                the "x/y/z_index" will be outside of the range of the table without
+                                these checks. The table has a number of entries equal to "granularity" in each dimension,
+                                and the table is indexed at 0, so if the "x/y/z_indez" equals "granularity" it
+                                will be out of range.
+                                */
+                                if (x_index == addition_granularity_histogram)
+                                  x_index = addition_granularity_histogram-1;
+                                if (y_index == addition_granularity_histogram)
+                                  y_index = addition_granularity_histogram-1;
+
+                                TableIndices<dim> entry_index;
+                                entry_index[0] = x_index;
+                                entry_index[1] = y_index;
+                                if (dim == 3)
+                                  {
+                                    const double particle_z = particle.get_reference_location()[2];
+                                    const double z_ratio = (particle_z) / (bucket_width);
+                                    unsigned int z_index = static_cast<unsigned int>(std::floor(z_ratio));
+                                    if (z_index == addition_granularity_histogram)
+                                      z_index = addition_granularity_histogram-1;
+                                    entry_index[2] = z_index;
+                                  }
+                                ++buckets(entry_index);
+                              }
+
+                            // Find the bucket with the least particles
+
+                            /*
+                            Remember which bucket has the fewest particles so we can add particles to that bucket.
+                            In the case that multiple buckets have the fewest particles, (which is commonly zero particles)
+                            we need to keep track of all buckets with the same amount of particles so that we can randomly
+                            choose a bucket to add particles to. If this isn't done, particles will always be added to the
+                            last bucket in the nested loop with 0 particles (or whatever the lowest count is), defeating the
+                            purpose of this algorithm by causing unphysical clustering.
+                            */
+                            std::vector<TableIndices<dim>> min_bucket_indices;
+
+                            for (unsigned int x=0; x<addition_granularity_histogram; ++x)
+                              {
+                                for (unsigned int y=0; y<addition_granularity_histogram; ++y)
+                                  {
+                                    TableIndices<dim> entry_index;
+                                    entry_index[0] = x;
+                                    entry_index[1] = y;
+                                    // Do another loop if in 3d
+                                    if (dim == 3)
+                                      {
+                                        for (unsigned int z=0; z<addition_granularity_histogram; ++z)
+                                          {
+                                            entry_index[2] = z;
+                                            const unsigned int particles_in_bucket = buckets(entry_index);
+                                            if (particles_in_bucket < min_particles_in_bucket)
+                                              {
+                                                min_particles_in_bucket = particles_in_bucket;
+                                                // We found a new minimum bucket, clear the list
+                                                min_bucket_indices.clear();
+                                                min_bucket_indices.push_back(entry_index);
+                                              }
+                                            else if (particles_in_bucket == min_particles_in_bucket)
+                                              {
+                                                // Add this bucket to the list of buckets with identically small particle numbers
+                                                min_bucket_indices.push_back(entry_index);
+                                              }
+                                          }
+                                      }
+                                    else
+                                      {
+                                        const unsigned int particles_in_bucket = buckets(entry_index);
+                                        if (particles_in_bucket < min_particles_in_bucket)
+                                          {
+                                            min_particles_in_bucket = particles_in_bucket;
+                                            // We found a new minimum bucket, clear the list
+                                            min_bucket_indices.clear();
+                                            min_bucket_indices.push_back(entry_index);
+                                          }
+                                        else if (particles_in_bucket == min_particles_in_bucket)
+                                          {
+                                            // Add this bucket to the list of buckets with identically small particle numbers
+                                            min_bucket_indices.push_back(entry_index);
+                                          }
+                                      }
+                                  }
+                              }
+
+                            // Select from the buckets with the minimum number of particles
+                            TableIndices<dim> lowest_bucket = min_bucket_indices[std::uniform_int_distribution<unsigned int>
+                                                                                 (0,min_bucket_indices.size()-1)(random_number_generator)];
+
+                            // Generate a particle in the bucket with the least particles
+                            const double min_x = lowest_bucket[0]/granularity_double;
+                            const double min_y = lowest_bucket[1]/granularity_double;
+                            std::uniform_real_distribution<double> uniform_distribution_01(0, 1./granularity_double);
+                            const double new_particle_x = min_x + uniform_distribution_01(random_number_generator);
+                            const double new_particle_y = min_y + uniform_distribution_01(random_number_generator);
+
+                            Point<dim> new_particle_location;
+                            if (dim == 3)
+                              {
+                                const double min_z = lowest_bucket[2]/granularity_double;
+                                const double new_particle_z = min_z + uniform_distribution_01(random_number_generator);
+                                new_particle_location[0] = new_particle_x;
+                                new_particle_location[1] = new_particle_y;
+                                new_particle_location[2] = new_particle_z;
+                              }
+                            else
+                              {
+                                new_particle_location[0] = new_particle_x;
+                                new_particle_location[1] = new_particle_y;
+                              }
+
+                            std::pair<Particles::internal::LevelInd,Particles::Particle<dim>> new_particle =
+                              generator->generate_particle(cell,local_next_particle_index,new_particle_location);
+
+                            const std::vector<double> particle_properties =
+                              property_manager->initialize_late_particle(new_particle.second.get_location(),
+                                                                         *particle_handler,
+                                                                         *interpolator,
+                                                                         cell);
+
+                            typename ParticleHandler<dim>::particle_iterator particle = particle_handler->insert_particle(new_particle.second,
+                                                                                        typename parallel::distributed::Triangulation<dim>::cell_iterator (&this->get_triangulation(),
+                                                                                            new_particle.first.first,
+                                                                                            new_particle.first.second));
+                            particle->set_properties(particle_properties);
+
+                          }
+                      }
+                  }
+
+                // Remove particles if necessary
+                else if ((particle_load_balancing & ParticleLoadBalancing::remove_particles) &&
+                         (n_particles_in_cell > max_particles_per_cell))
+                  {
+                    const unsigned int n_particles_to_remove = n_particles_in_cell - max_particles_per_cell;
+                    for (unsigned int i=0; i < n_particles_to_remove; ++i)
+                      {
+                        const unsigned int current_n_particles_in_cell = particle_handler->n_particles_in_cell(cell);
+
+                        if (deletion_algorithm == DeletionAlgorithm::point_density_function)
+                          {
+                            ParticlePDF<dim> pdf(bandwidth,kernel_function);
+                            /*
+                            'particle_ranges_to_sum_over' includes this cell's and neighboring cell's particles.
+                            If neighboring cell's particles are not included in the KDE, particles at cell boundaries will
+                            have artificially low point density values.
+                            */
+                            std::vector<typename Particles::ParticleHandler<dim>::particle_iterator_range>
+                            particle_ranges_to_sum_over = get_neighboring_particle_ranges(cell,get_particle_handler(),grid_cache);
+
+                            pdf.fill_from_particle_range(particle_handler->particles_in_cell(cell),
+                                                         particle_ranges_to_sum_over,
+                                                         current_n_particles_in_cell,
+                                                         this->get_mapping(),
+                                                         cell);
+                            pdf.compute_statistical_values();
+
+                            const types::particle_index index_max = pdf.get_max_particle();
+                            auto particle_to_remove = particle_handler->particles_in_cell(cell).begin();
+                            while (particle_to_remove->get_id() != index_max && particle_to_remove != particle_handler->particles_in_cell(cell).end())
+                              {
+                                ++particle_to_remove;
+                              }
+                            particle_handler->remove_particle(particle_to_remove);
+                          }
+                        else if (deletion_algorithm == DeletionAlgorithm::random)
+                          {
+                            const unsigned int current_n_particles_in_cell = particle_handler->n_particles_in_cell(cell);
+                            const unsigned int index_to_remove = std::uniform_int_distribution<unsigned int>
+                                                                 (0,current_n_particles_in_cell-1)(random_number_generator);
+
+                            auto particle_to_remove = particle_handler->particles_in_cell(cell).begin();
+                            std::advance(particle_to_remove, index_to_remove);
+                            particle_handler->remove_particle(particle_to_remove);
+                          }
+                        else
+                          AssertThrow(false, ExcNotImplemented());
+                      }
+                  }
+              }
+
+          particle_handler->update_cached_numbers();
+        }
+    }
+
+    template <int dim>
+    unsigned int
+    Manager<dim>::cell_weight(const typename parallel::distributed::Triangulation<dim>::cell_iterator &cell,
+                              const CellStatus status
+                             )
+    {
+      if (cell->is_active() && !cell->is_locally_owned())
+        return 0;
+
+      unsigned int n_particles_in_cell = 0;
+      switch (status)
+        {
+          case CellStatus::cell_will_persist:
+          case CellStatus::cell_will_be_refined:
+            n_particles_in_cell = particle_handler->n_particles_in_cell(cell);
+            break;
+
+          case CellStatus::cell_invalid:
+            break;
+
+          case CellStatus::children_will_be_coarsened:
+            for (const auto &child : cell->child_iterators())
+              n_particles_in_cell += particle_handler->n_particles_in_cell(child);
+            break;
+
+          default:
+            Assert(false, ExcInternalError());
+            break;
+        }
+      return n_particles_in_cell * particle_weight;
+    }
+
+
+    template <int dim>
+    std::map<types::subdomain_id, unsigned int>
+    Manager<dim>::get_subdomain_id_to_neighbor_map() const
+    {
+      std::map<types::subdomain_id, unsigned int> subdomain_id_to_neighbor_map;
+      const std::set<types::subdomain_id> ghost_owners = this->get_triangulation().ghost_owners();
+      std::set<types::subdomain_id>::const_iterator ghost_owner = ghost_owners.begin();
+
+      for (unsigned int neighbor_id=0; neighbor_id<ghost_owners.size(); ++neighbor_id,++ghost_owner)
+        {
+          subdomain_id_to_neighbor_map.insert(std::make_pair(*ghost_owner,neighbor_id));
+        }
+      return subdomain_id_to_neighbor_map;
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::local_initialize_particles(const typename ParticleHandler<dim>::particle_iterator &begin_particle,
+                                             const typename ParticleHandler<dim>::particle_iterator &end_particle)
+    {
+      for (auto it = begin_particle; it != end_particle; ++it)
+        property_manager->initialize_one_particle(it);
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::local_update_particles(Property::ParticleUpdateInputs<dim> &inputs,
+                                         small_vector<Point<dim>> &positions,
+                                         const std::vector<EvaluationFlags::EvaluationFlags> &evaluation_flags,
+                                         SolutionEvaluator<dim> &evaluator)
+    {
+      const unsigned int n_particles = particle_handler->n_particles_in_cell(inputs.current_cell);
+
+      typename ParticleHandler<dim>::particle_iterator_range particles = particle_handler->particles_in_cell(inputs.current_cell);
+
+      positions.resize(n_particles);
+      unsigned int p = 0;
+      for (const auto &particle : particles)
+        {
+          positions[p] = particle.get_reference_location();
+          ++p;
+        }
+
+      small_vector<double> solution_values(this->get_fe().dofs_per_cell);
+
+      inputs.current_cell->get_dof_values(this->get_solution(),
+                                          solution_values.begin(),
+                                          solution_values.end());
+
+      EvaluationFlags::EvaluationFlags evaluation_flags_union = EvaluationFlags::nothing;
+      for (const auto &flag : evaluation_flags)
+        evaluation_flags_union |= flag;
+
+      if (evaluation_flags_union & (EvaluationFlags::values | EvaluationFlags::gradients))
+        {
+          // Reinitialize and evaluate the requested solution values and gradients
+          evaluator.reinit(inputs.current_cell,
+          {positions.data(), positions.size()});
+
+          evaluator.evaluate({solution_values.data(),solution_values.size()},
+                             evaluation_flags);
+        }
+
+      if (evaluation_flags_union & EvaluationFlags::values)
+        inputs.solution.resize(n_particles,small_vector<double,50>(evaluator.n_components(), numbers::signaling_nan<double>()));
+
+      if (evaluation_flags_union & EvaluationFlags::gradients)
+        inputs.gradients.resize(n_particles,small_vector<Tensor<1,dim>,50>(evaluator.n_components(), numbers::signaling_nan<Tensor<1,dim>>()));
+
+      for (unsigned int i = 0; i<n_particles; ++i)
+        {
+          // Evaluate the solution, but only if it is requested in the update_flags
+          if (evaluation_flags_union & EvaluationFlags::values)
+            evaluator.get_solution(i, {&inputs.solution[i][0],inputs.solution[i].size()}, evaluation_flags);
+
+          // Evaluate the gradients, but only if they are requested in the update_flags
+          if (evaluation_flags_union & EvaluationFlags::gradients)
+            evaluator.get_gradients(i, {&inputs.gradients[i][0],inputs.gradients[i].size()}, evaluation_flags);
+        }
+
+      property_manager->update_particles(inputs,particles);
+    }
+
+
+
+    template<int dim>
+    typename Manager<dim>::ParticleVelocity
+    Manager<dim>::get_particle_velocity_choice() const
+    {
+      return particle_velocity;
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::local_advect_particles(const typename DoFHandler<dim>::active_cell_iterator &cell,
+                                         const typename ParticleHandler<dim>::particle_iterator &begin_particle,
+                                         const typename ParticleHandler<dim>::particle_iterator &end_particle,
+                                         SolutionEvaluator<dim> &evaluator)
+    {
+      const unsigned int n_particles_in_cell = particle_handler->n_particles_in_cell(cell);
+
+      small_vector<Point<dim>> positions;
+      positions.reserve(n_particles_in_cell);
+      for (auto particle = begin_particle; particle!=end_particle; ++particle)
+        positions.push_back(particle->get_reference_location());
+
+      const std::array<bool, 3> required_solution_vectors = integrator->required_solution_vectors();
+
+      AssertThrow (required_solution_vectors[0] == false,
+                   ExcMessage("The integrator requires the old old solution vector, but it is not available."));
+
+
+
+      const bool use_fluid_velocity = (particle_velocity == ParticleVelocity::fluid);
+      auto &velocity_evaluator = evaluator.get_velocity_or_fluid_velocity_evaluator(use_fluid_velocity);
+      auto &mapping_info = evaluator.get_mapping_info();
+      mapping_info.reinit(cell, {positions.data(),positions.size()});
+
+      std::vector<Tensor<1,dim>> velocities;
+      std::vector<Tensor<1,dim>> old_velocities;
+
+      if (required_solution_vectors[1] == true)
+        {
+          small_vector<double> old_solution_values(this->get_fe().dofs_per_cell);
+          cell->get_dof_values(this->get_old_solution(),
+                               old_solution_values.begin(),
+                               old_solution_values.end());
+
+          velocity_evaluator.evaluate({old_solution_values.data(),old_solution_values.size()},
+                                      EvaluationFlags::values);
+
+          old_velocities.resize(n_particles_in_cell);
+          for (unsigned int i=0; i<n_particles_in_cell; ++i)
+            old_velocities[i] = velocity_evaluator.get_value(i);
+        }
+
+      if (required_solution_vectors[2] == true)
+        {
+          small_vector<double> solution_values(this->get_fe().dofs_per_cell);
+          cell->get_dof_values(this->get_current_linearization_point(),
+                               solution_values.begin(),
+                               solution_values.end());
+          velocity_evaluator.evaluate({solution_values.data(),solution_values.size()},
+                                      EvaluationFlags::values);
+
+          velocities.resize(n_particles_in_cell);
+          for (unsigned int i=0; i<n_particles_in_cell; ++i)
+            velocities[i] = velocity_evaluator.get_value(i);
+        }
+
+      integrator->local_integrate_step(begin_particle,
+                                       end_particle,
+                                       old_velocities,
+                                       velocities,
+                                       this->get_timestep());
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::setup_initial_state ()
+    {
+      // We want to generate a new set of particles in each adaptive refinement
+      // cycle to get the right number of particles per cell and to accurately
+      // initialize their properties. Delete existing particles beforehand.
+      if (this->get_pre_refinement_step() > 0)
+        particle_handler->clear();
+
+      // Generate particles in each adaptive refinement cycle
+      generate_particles();
+
+      // And initialize the particle properties according to the initial
+      // conditions on the current mesh
+      initialize_particles();
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::generate_particles()
+    {
+      this->get_computing_timer().enter_subsection("Particles: Generate");
+      generator->generate_particles(*particle_handler);
+      this->get_computing_timer().leave_subsection("Particles: Generate");
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::initialize_particles()
+    {
+      // TODO: Change this loop over all cells to use the WorkStream interface
+      if (property_manager->get_n_property_components() > 0)
+        {
+          this->get_computing_timer().enter_subsection("Particles: Initialize properties");
+
+          particle_handler->get_property_pool().reserve(2 * particle_handler->n_locally_owned_particles());
+
+
+          if (particle_handler->n_locally_owned_particles() > 0)
+            local_initialize_particles(particle_handler->begin(),
+                                       particle_handler->end());
+
+          if (dealii::Utilities::MPI::n_mpi_processes(this->get_mpi_communicator()) > 1)
+            {
+              this->get_computing_timer().enter_subsection("Particles: Exchange ghosts");
+              particle_handler->exchange_ghost_particles();
+              this->get_computing_timer().leave_subsection("Particles: Exchange ghosts");
+            }
+
+          this->get_computing_timer().leave_subsection("Particles: Initialize properties");
+        }
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::update_particles()
+    {
+      // TODO: Change this loop over all cells to use the WorkStream interface
+
+      if (property_manager->get_n_property_components() > 0)
+        {
+          this->get_computing_timer().enter_subsection("Particles: Update properties");
+
+          Assert(dealii::internal::FEPointEvaluation::is_fast_path_supported(this->get_mapping()) == true,
+                 ExcMessage("The particle system was optimized for deal.II mappings that support the fast evaluation path "
+                            "of the class FEPointEvaluation. The mapping currently in use does not support this path. "
+                            "It is safe to uncomment this assertion, but you can expect a performance penalty."));
+
+          const std::vector<UpdateFlags> update_flags = property_manager->get_update_flags();
+
+          // combine all update flags to a single flag, which is the required information
+          // for the mapping inside the solution evaluator
+          UpdateFlags mapping_flags = update_flags[0];
+          for (unsigned int i=1; i<update_flags.size(); ++i)
+            mapping_flags |= update_flags[i];
+
+          std::unique_ptr<SolutionEvaluator<dim>> evaluator = construct_solution_evaluator(*this,
+                                                               mapping_flags);
+
+          // FEPointEvaluation uses different evaluation flags than the common UpdateFlags.
+          // Translate between the two.
+          std::vector<EvaluationFlags::EvaluationFlags> evaluation_flags (update_flags.size(), EvaluationFlags::nothing);
+
+          for (unsigned int i=0; i<update_flags.size(); ++i)
+            {
+              if (update_flags[i] & update_values)
+                evaluation_flags[i] |= EvaluationFlags::values;
+
+              if (update_flags[i] & update_gradients)
+                evaluation_flags[i] |= EvaluationFlags::gradients;
+            }
+
+          Property::ParticleUpdateInputs<dim> inputs;
+          small_vector<Point<dim>> positions;
+
+          // Loop over all cells and update the particles cell-wise
+          for (const auto &cell : this->get_dof_handler().active_cell_iterators())
+            if (cell->is_locally_owned())
+              {
+                // Only update particles if there are any in this cell
+                if (particle_handler->n_particles_in_cell(cell) > 0)
+                  {
+                    inputs.current_cell = cell;
+                    local_update_particles(inputs,
+                                           positions,
+                                           evaluation_flags,
+                                           *evaluator);
+                  }
+
+              }
+
+          this->get_computing_timer().leave_subsection("Particles: Update properties");
+        }
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::advect_particles()
+    {
+      {
+        // TODO: Change this loop over all cells to use the WorkStream interface
+        this->get_computing_timer().enter_subsection("Particles: Advect");
+
+        Assert(dealii::internal::FEPointEvaluation::is_fast_path_supported(this->get_mapping()) == true,
+               ExcMessage("The particle system was optimized for deal.II mappings that support the fast evaluation path "
+                          "of the class FEPointEvaluation. The mapping currently in use does not support this path. "
+                          "It is safe to uncomment this assertion, but you can expect a performance penalty."));
+
+        std::unique_ptr<SolutionEvaluator<dim>> evaluator = construct_solution_evaluator(*this,
+                                                             update_values);
+
+        // Loop over all cells and advect the particles cell-wise
+        for (const auto &cell : this->get_dof_handler().active_cell_iterators())
+          if (cell->is_locally_owned())
+            {
+              const typename ParticleHandler<dim>::particle_iterator_range
+              particles_in_cell = particle_handler->particles_in_cell(cell);
+
+              // Only advect particles, if there are any in this cell
+              if (particles_in_cell.begin() != particles_in_cell.end())
+                {
+                  local_advect_particles(cell,
+                                         particles_in_cell.begin(),
+                                         particles_in_cell.end(),
+                                         *evaluator);
+                }
+            }
+
+        this->get_computing_timer().leave_subsection("Particles: Advect");
+      }
+
+      {
+        this->get_computing_timer().enter_subsection("Particles: Sort");
+        // Find the cells that the particles moved to
+        particle_handler->sort_particles_into_subdomains_and_cells();
+
+        this->get_computing_timer().leave_subsection("Particles: Sort");
+      }
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::advance_timestep()
+    {
+      this->get_pcout() << "   Advecting particles... " << std::flush;
+      do
+        {
+          advect_particles();
+        }
+      // Keep calling the integrator until it indicates it is finished
+      while (integrator->new_integration_step());
+
+      apply_particle_per_cell_bounds();
+
+      // Update particle properties
+      if (property_manager->need_update() == Property::update_time_step)
+        update_particles();
+
+      // Now that all particle information was updated, exchange the new
+      // ghost particles.
+      if (dealii::Utilities::MPI::n_mpi_processes(this->get_mpi_communicator()) > 1)
+        {
+          this->get_computing_timer().enter_subsection("Particles: Exchange ghosts");
+          particle_handler->exchange_ghost_particles();
+          this->get_computing_timer().leave_subsection("Particles: Exchange ghosts");
+        }
+      this->get_pcout() << " done." << std::endl;
+    }
+
+
+
+    template <int dim>
+    std::vector<typename Particles::ParticleHandler<dim>::particle_iterator_range>
+    Manager<dim>::get_neighboring_particle_ranges(
+      const typename Triangulation<dim>::active_cell_iterator &cell,
+      const typename Particles::ParticleHandler<dim> &particle_handler,
+      typename GridTools::Cache<dim> &grid_cache)
+    {
+      // First populate the result vector with particles from the given cell
+      std::vector<typename Particles::ParticleHandler<dim>::particle_iterator_range> particle_ranges_to_sum_over = {particle_handler.particles_in_cell(cell)};
+
+      // Find the cells neighboring the given cell
+      std::set<typename Triangulation<dim>::active_cell_iterator> neighboring_cells;
+      const auto &vertex_to_cell_map = grid_cache.get_vertex_to_cell_map();
+      for (const auto v : cell->vertex_indices())
+        {
+          const unsigned int vertex_index = cell->vertex_index(v);
+          neighboring_cells.insert(vertex_to_cell_map[vertex_index].begin(),
+                                   vertex_to_cell_map[vertex_index].end());
+        }
+
+      // Add the particles from neighboring cells to the vector of particles ranges being returned
+      for (const auto &neighbor_cell: neighboring_cells)
+        {
+          particle_ranges_to_sum_over.push_back(particle_handler.particles_in_cell(neighbor_cell));
+        }
+
+      return particle_ranges_to_sum_over;
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::save (std::ostringstream &os) const
+    {
+      aspect::oarchive oa (os);
+      oa << (*this);
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::load (std::istringstream &is)
+    {
+      aspect::iarchive ia (is);
+      ia >> (*this);
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::declare_parameters (ParameterHandler &prm)
+    {
+      constexpr unsigned int number_of_particle_managers = ASPECT_MAX_NUM_PARTICLE_SYSTEMS;
+      for (unsigned int particle_manager = 0; particle_manager < number_of_particle_managers; ++particle_manager)
+        {
+          if (particle_manager == 0)
+            {
+              prm.enter_subsection("Particles");
+            }
+          else
+            {
+              prm.enter_subsection("Particles " + std::to_string(particle_manager+1));
+            }
+          {
+            prm.declare_entry ("Load balancing strategy", "repartition",
+                               Patterns::MultipleSelection ("none|remove particles|add particles|"
+                                                            "remove and add particles|repartition"),
+                               "Strategy that is used to balance the computational "
+                               "load across processors for adaptive meshes.");
+            prm.declare_entry ("Particle removal algorithm", "random",
+                               Patterns::Selection ("random|point density function"),
+                               "Algorithm used to delete excess particles from cells. If point density function "
+                               "is chosen, the particle manager "
+                               "will generate a point density function from the locations of each particle and remove "
+                               "the particle whose position is at the maximum of the point density function.");
+            prm.declare_entry ("Particle addition algorithm", "random",
+                               Patterns::Selection ("random|histogram|point density function"),
+                               "Algorithm used to add particles to cells. ");
+            prm.declare_entry ("Point density kernel function", "cutoff c1 dealii",
+                               Patterns::Selection ("epanechnikov|cutoff c1 dealii|cutoff w1 dealii|uniform|triangular|gaussian"),
+                               "The kernel function is summed at each particle location to generate a point "
+                               "density function of the particle locations according to a process known as "
+                               "kernel density estimation. Because kernel density estimation sums the value of "
+                               "a kernel function centered on each point of interest to every other point in the dataset, "
+                               "the only parameter of each kernel function is the distance between the particles, "
+                               "and each kernel function only returns a single value depending on this distance. "
+                               "The return value of each function is also scaled by the selected bandwidth value."
+                               "The gaussian function uses the gaussian distribution to generate an output from the "
+                               "input distance. The output of the triangular function decreases at a constant rate "
+                               "with increasing distance between the particles. The uniform function returns a constant "
+                               "value as long as the distance between particles is less than the selected bandwidth."
+                               "The cutoff w1 and cutoff c1 dealii options call the deal.II functions called cutoffW1 and cutoffC1 respectively. "
+                               "These are functions whose return values decrease with distance. A more detailed explanation on these two "
+                               "function are available in the deal.II documentation. The epanechnikov function is a parabolic function "
+                               "which also returns a lower value as distance increases. The epanechnikov kernel is theoretically "
+                               "the most efficient possible kernel to use in kernel density estimation.");
+            prm.declare_entry ("Bandwidth", "0.3",
+                               Patterns::Double (0.3),"The bandwidth value is used to scale the kernel "
+                               "function when generating the point density function of particles. "
+                               "The bandwidth is measured as a fraction of the cells extent in one spatial "
+                               "dimension. For example, the default bandwidth of 0.3 represents a size "
+                               "equal to 30 percent of the cells size in one spatial dimension.");
+            prm.declare_entry("Addition histogram granularity","3",
+                              Patterns::Integer(2),
+                              "The number of subdivisions of each cell in each spatial dimension when adding particles using histogram "
+                              "based methods. Lower granularities are generally better for histogram methods.");
+            prm.declare_entry("Addition point density function granularity","6",
+                              Patterns::Integer(2),
+                              "The number of subdivisions of each cell in each spatial dimension when adding particles using point "
+                              "density function based methods. Higher granularities are generally better for "
+                              "point density function based methods but might be slower.");
+            prm.declare_entry ("Minimum particles per cell", "0",
+                               Patterns::Integer (0),
+                               "Lower limit for particle number per cell. This limit is "
+                               "useful for adaptive meshes to prevent fine cells from being empty "
+                               "of particles. It will be checked and enforced after mesh "
+                               "refinement and after particle movement. "
+                               "If there are "
+                               "\\texttt{n\\_number\\_of\\_particles} $<$ \\texttt{min\\_particles\\_per\\_cell} "
+                               "particles in one cell then "
+                               "\\texttt{min\\_particles\\_per\\_cell} - \\texttt{n\\_number\\_of\\_particles} "
+                               "particles are generated and randomly placed in "
+                               "this cell. If the particles carry properties the "
+                               "individual property plugins control how the "
+                               "properties of the new particles are initialized.");
+            prm.declare_entry ("Maximum particles per cell", "100",
+                               Patterns::Integer (0),
+                               "Upper limit for particle number per cell. This limit is "
+                               "useful for adaptive meshes to prevent coarse cells from slowing down "
+                               "the whole model. It will be checked and enforced after mesh "
+                               "refinement, after MPI transfer of particles and after particle "
+                               "movement. If there are "
+                               "\\texttt{n\\_number\\_of\\_particles} $>$ \\texttt{max\\_particles\\_per\\_cell} "
+                               "particles in one cell then "
+                               "\\texttt{n\\_number\\_of\\_particles} - \\texttt{max\\_particles\\_per\\_cell} "
+                               "particles in this cell are randomly chosen and destroyed.");
+            prm.declare_entry ("Particle weight", "10",
+                               Patterns::Integer (0),
+                               "Weight that is associated with the computational load of "
+                               "a single particle. The sum of particle weights will be added "
+                               "to the sum of cell weights to determine the partitioning of "
+                               "the mesh if the `repartition' particle load balancing strategy "
+                               "is selected. The optimal weight depends on the used "
+                               "integrator and particle properties. In general for a more "
+                               "expensive integrator and more expensive properties a larger "
+                               "particle weight is recommended. Before adding the weights "
+                               "of particles, each cell already carries a weight of 1000 to "
+                               "account for the cost of field-based computations.");
+            prm.declare_entry ("Update ghost particles", "true",
+                               Patterns::Bool (),
+                               "Some particle interpolation algorithms require knowledge "
+                               "about particles in neighboring cells. To allow this, "
+                               "particles in ghost cells need to be exchanged between the "
+                               "processes neighboring this cell. This parameter determines "
+                               "whether this transport is happening. This parameter is "
+                               "deprecated and will be removed in the future. Ghost particle "
+                               "updates are always performed. Please set the parameter to `true'.");
+            prm.declare_entry ("Particle advection velocity", "automatic",
+                               Patterns::Selection ("automatic|fluid|solid"),
+                               "This parameter determines which velocity will be used "
+                               "to advect a particular particle manager. This can be the solid velocity "
+                               "(if option 'solid' is chosen), or the fluid velocity obtained by solving "
+                               "the coupled Stokes/Darcy equations in simulations with melt transport "
+                               "(if 'fluid' is chosen). If 'automatic' is chosen, particles are advected with "
+                               "the melt velocity in case both melt transport is turned on and the "
+                               "particle property 'melt particle' is used in the simulation.)");
+
+
+            Generator::declare_parameters<dim>(prm);
+            Integrator::declare_parameters<dim>(prm);
+            Interpolator::declare_parameters<dim>(prm);
+
+            Property::Manager<dim>::declare_parameters(prm);
+          }
+          prm.leave_subsection ();
+        }
+
+    }
+
+
+
+    template <int dim>
+    void
+    Manager<dim>::parse_parameters (ParameterHandler &prm)
+    {
+      // First do some error checking. The current algorithm does not find
+      // the cells around particles, if the particles moved more than one
+      // cell in one timestep and we are running in parallel, because they
+      // skip the layer of ghost cells around our local domain. Assert this
+      // is not possible.
+      const double CFL_number = prm.get_double ("CFL number");
+      const unsigned int n_processes = Utilities::MPI::n_mpi_processes(this->get_mpi_communicator());
+
+      AssertThrow((n_processes == 1) || (CFL_number <= 1.0),
+                  ExcMessage("The current particle algorithm does not work in "
+                             "parallel if the CFL number is larger than 1.0, because "
+                             "in this case particles can move more than one cell "
+                             "diameter in one time step and therefore skip the layer "
+                             "of ghost cells around the local subdomain."));
+
+      if (particle_manager_index == 0)
+        {
+          prm.enter_subsection("Particles");
+        }
+      else
+        {
+          prm.enter_subsection("Particles " + std::to_string(particle_manager_index+1));
+        }
+      {
+        min_particles_per_cell = prm.get_integer("Minimum particles per cell");
+        max_particles_per_cell = prm.get_integer("Maximum particles per cell");
+
+        AssertThrow(min_particles_per_cell <= max_particles_per_cell,
+                    ExcMessage("Please select a 'Minimum particles per cell' parameter "
+                               "that is smaller than or equal to the 'Maximum particles per cell' parameter."));
+
+        particle_weight = prm.get_integer("Particle weight");
+
+        const bool update_ghost_particles = prm.get_bool("Update ghost particles");
+        AssertThrow(update_ghost_particles == true,
+                    ExcMessage("The 'Update ghost particles' parameter is deprecated and will be removed in the future. "
+                               "Ghost particle updates are always performed. Please set the parameter to `true'."));
+
+        const std::vector<std::string> strategies = Utilities::split_string_list(prm.get ("Load balancing strategy"));
+        AssertThrow(Utilities::has_unique_entries(strategies),
+                    ExcMessage("The list of strings for the parameter "
+                               "'Particles/Load balancing strategy' contains entries more than once. "
+                               "This is not allowed. Please check your parameter file."));
+
+        particle_load_balancing = ParticleLoadBalancing::no_balancing;
+
+        for (std::vector<std::string>::const_iterator strategy = strategies.begin(); strategy != strategies.end(); ++strategy)
+          {
+            if (*strategy == "remove particles")
+              particle_load_balancing = typename ParticleLoadBalancing::Kind(particle_load_balancing | ParticleLoadBalancing::remove_particles);
+            else if (*strategy == "add particles")
+              particle_load_balancing = typename ParticleLoadBalancing::Kind(particle_load_balancing | ParticleLoadBalancing::add_particles);
+            else if (*strategy == "remove and add particles")
+              particle_load_balancing = typename ParticleLoadBalancing::Kind(particle_load_balancing | ParticleLoadBalancing::remove_and_add_particles);
+            else if (*strategy == "repartition")
+              particle_load_balancing = typename ParticleLoadBalancing::Kind(particle_load_balancing | ParticleLoadBalancing::repartition);
+            else if (*strategy == "none")
+              {
+                particle_load_balancing = ParticleLoadBalancing::no_balancing;
+                AssertThrow(strategies.size() == 1,
+                            ExcMessage("The particle load balancing strategy `none' is not compatible "
+                                       "with any other strategy, yet it seems another is selected as well. "
+                                       "Please check the parameter file."));
+              }
+            else
+              AssertThrow(false,
+                          ExcMessage("The 'Load balancing strategy' parameter contains an unknown value: <" + *strategy
+                                     + ">. This value does not correspond to any known load balancing strategy. Possible values "
+                                     "are listed in the corresponding manual subsection."));
+          }
+
+        if (particle_load_balancing & ParticleLoadBalancing::repartition)
+          this->get_triangulation().signals.weight.connect(
+            [&] (const typename parallel::distributed::Triangulation<dim>::cell_iterator &cell,
+                 const CellStatus status)
+            -> unsigned int
+          {
+            // Only add the base weight of cells in particle manager 0, because all weights will be summed
+            // across all particle managers.
+            return (particle_manager_index == 0) ? 1000 + this->cell_weight(cell, status) : this->cell_weight(cell, status);
+          });
+
+        // The bandwidth to use with the kernel function
+        bandwidth = prm.get_double("Bandwidth");
+
+        // The particle removal algorithm to use when there are too many particles in a cell
+        std::string deletion_algorithm_string = prm.get("Particle removal algorithm");
+
+        if (deletion_algorithm_string == "point density function")
+          deletion_algorithm = DeletionAlgorithm::point_density_function;
+        else if (deletion_algorithm_string == "random")
+          deletion_algorithm = DeletionAlgorithm::random;
+        else
+          {
+            AssertThrow(false, ExcNotImplemented());
+          }
+
+        // The kernel function to use when using the point density function particle removal algorithm
+        std::string kernel_function_string = prm.get("Point density kernel function");
+
+        if (kernel_function_string == "cutoff w1 dealii")
+          kernel_function = ParticlePDF<dim>::KernelFunction::cutoff_function_w1_dealii;
+        else if (kernel_function_string == "cutoff c1 dealii")
+          kernel_function = ParticlePDF<dim>::KernelFunction::cutoff_function_c1_dealii;
+        else if (kernel_function_string == "uniform")
+          kernel_function = ParticlePDF<dim>::KernelFunction::uniform;
+        else if (kernel_function_string == "triangular")
+          kernel_function = ParticlePDF<dim>::KernelFunction::triangular;
+        else if (kernel_function_string == "epanechnikov")
+          kernel_function = ParticlePDF<dim>::KernelFunction::epanechnikov;
+        else if (kernel_function_string == "gaussian")
+          kernel_function = ParticlePDF<dim>::KernelFunction::gaussian;
+        else
+          {
+            AssertThrow(false, ExcNotImplemented());
+          }
+
+        // The granularity to use when adding new particles using histogram methods
+        addition_granularity_histogram = prm.get_integer("Addition histogram granularity");
+
+        // The granularity to use when adding new particles using PDF methods
+        addition_granularity_pdf = prm.get_integer("Addition point density function granularity");
+
+        // The particle addition algorithm to use when there are not enough particles in a cell
+        std::string addition_algorithm_string = prm.get("Particle addition algorithm");
+
+        if (addition_algorithm_string == "random")
+          addition_algorithm = AdditionAlgorithm::random;
+        else if (addition_algorithm_string == "histogram")
+          addition_algorithm = AdditionAlgorithm::histogram;
+        else if (addition_algorithm_string == "point density function")
+          addition_algorithm = AdditionAlgorithm::point_density_function;
+        else
+          {
+            AssertThrow(false, ExcNotImplemented());
+          }
+
+
+        this->get_computing_timer().enter_subsection("Particles: Initialization");
+
+        // Create a generator object depending on what the parameters specify
+        generator = Generator::create_particle_generator<dim> (prm);
+        if (SimulatorAccess<dim> *sim = dynamic_cast<SimulatorAccess<dim>*>(generator.get()))
+          sim->initialize_simulator (this->get_simulator());
+        generator->set_particle_manager_index(particle_manager_index);
+        generator->parse_parameters(prm);
+        generator->initialize();
+
+        // Create a property_manager object and initialize its properties
+        property_manager = std::make_unique<Property::Manager<dim>> ();
+        SimulatorAccess<dim> *sim = dynamic_cast<SimulatorAccess<dim>*>(property_manager.get());
+        sim->initialize_simulator (this->get_simulator());
+        property_manager->set_particle_manager_index(particle_manager_index);
+        property_manager->parse_parameters(prm);
+        property_manager->initialize();
+
+        // Create an integrator object depending on the specified parameter
+        integrator = Integrator::create_particle_integrator<dim> (prm);
+        if (SimulatorAccess<dim> *sim = dynamic_cast<SimulatorAccess<dim>*>(integrator.get()))
+          sim->initialize_simulator (this->get_simulator());
+        integrator->set_particle_manager_index(particle_manager_index);
+        integrator->parse_parameters(prm);
+        integrator->initialize();
+
+        // Create an interpolator object depending on the specified parameter
+        interpolator = Interpolator::create_particle_interpolator<dim> (prm);
+        if (SimulatorAccess<dim> *sim = dynamic_cast<SimulatorAccess<dim>*>(interpolator.get()))
+          sim->initialize_simulator (this->get_simulator());
+        interpolator->set_particle_manager_index(particle_manager_index);
+        interpolator->parse_parameters(prm);
+        interpolator->initialize();
+
+        this->get_computing_timer().leave_subsection("Particles: Initialization");
+
+        // Particle velocity which will be used to advect particles
+        const std::string particle_velocity_string = prm.get("Particle advection velocity");
+        if (particle_velocity_string == "automatic")
+          {
+            // If "Particle advection velocity" is not explicitly defined by user, it reverts to old behaviour for backward compatibility
+            if (this->include_melt_transport() && property_manager->get_data_info().fieldname_exists("melt_presence"))
+              {
+                particle_velocity = ParticleVelocity::fluid;
+              }
+            else
+              particle_velocity = ParticleVelocity::solid;
+          }
+        else if (particle_velocity_string == "fluid")
+          {
+            AssertThrow(this->include_melt_transport(), ExcMessage("The particle velocity is set to 'fluid', but melt transport is not included in the simulation."));
+            particle_velocity = ParticleVelocity::fluid;
+          }
+        else
+          {
+            particle_velocity = ParticleVelocity::solid;
+          }
+      }
+      prm.leave_subsection ();
+    }
+  }
+}
+
+
+// explicit instantiation of the functions we implement in this file
+namespace aspect
+{
+  namespace Particle
+  {
+#define INSTANTIATE(dim) \
+  template class Manager<dim>;
+
+    ASPECT_INSTANTIATE(INSTANTIATE)
+
+#undef INSTANTIATE
+  }
+}

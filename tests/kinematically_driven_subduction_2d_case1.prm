@@ -14,7 +14,7 @@ set Dimension                              = 2
 set Start time                             = 0
 set End time                               = 1.e5
 set CFL number                             = 0.5
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 
 # Linear solver
 set Nonlinear solver scheme                = single Advection, single Stokes
@@ -121,7 +121,6 @@ subsection Initial temperature model
   set List of model names = function
 
   subsection Function
-    set Function constants  =
     set Function expression = 0
     set Variable names      = x,y,t
   end
@@ -157,8 +156,12 @@ subsection Postprocess
   set List of postprocessors = visualization, velocity statistics, heating statistics, maximum depth of field, composition velocity statistics, viscous dissipation statistics
 
   subsection Visualization
-    set List of output variables      = density, viscosity, strain rate, error indicator
+    set List of output variables      = material properties, strain rate, error indicator
     set Time between graphical output = 5e5
+
+    subsection Material properties
+      set List of material properties = density, viscosity
+    end
   end
 
   subsection Composition velocity statistics

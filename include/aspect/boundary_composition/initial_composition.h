@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2013 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2013 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -95,8 +95,16 @@ namespace aspect
       private:
         /**
          * Compositions at the inner and outer boundaries.
+         *
+         * This variable is read from the parameter file through a parameter called 'Minimal composition'.
          */
         double min_composition;
+
+        /**
+         * Compositions at the inner and outer boundaries.
+         *
+         * This variable is read from the parameter file through a parameter called 'Maximal composition'.
+         */
         double max_composition;
 
         /**

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,11 +18,10 @@
   <http://www.gnu.org/licenses/>.
 */
 
-
+#include <algorithm>
 #include <aspect/geometry_model/spherical_shell.h>
 #include <aspect/geometry_model/initial_topography_model/zero_topography.h>
 
-#include <aspect/compat.h>
 
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/grid_tools.h>
@@ -47,6 +46,52 @@ namespace aspect
       {
         subcell_data.boundary_quads.push_back(face);
       }
+
+
+
+      template <int dim>
+      Tensor<2, dim>
+      phi_periodicity_rotation_tensor(const double phi)
+      {
+        Tensor<2, dim> rotation_matrix;
+
+        if constexpr (dim == 2)
+          {
+            Assert(phi == 90 || phi == 180, ExcInternalError());
+            if (phi == 90)
+              {
+                rotation_matrix[0][1] = 1.;
+                rotation_matrix[1][0] = -1.;
+              }
+            else
+              {
+                rotation_matrix[0][0] = -1.;
+                rotation_matrix[1][1] = -1.;
+              }
+          }
+        else
+          {
+            Assert(false, ExcInternalError());
+          }
+
+        return rotation_matrix;
+      }
+
+
+
+      template <int dim>
+      FullMatrix<double>
+      phi_periodicity_rotation_matrix(const double phi)
+      {
+        FullMatrix<double> rotation_matrix(dim);
+        const Tensor<2, dim> rotation_tensor = phi_periodicity_rotation_tensor<dim>(phi);
+
+        for (unsigned int i=0; i<dim; ++i)
+          for (unsigned int j=0; j<dim; ++j)
+            rotation_matrix[i][j] = rotation_tensor[i][j];
+
+        return rotation_matrix;
+      }
     }
 
 
@@ -54,12 +99,12 @@ namespace aspect
     {
       template <int dim>
       SphericalManifoldWithTopography<dim>::
-      SphericalManifoldWithTopography(const InitialTopographyModel::Interface<dim> &topography,
+      SphericalManifoldWithTopography(const std::shared_ptr<const InitialTopographyModel::Interface<dim>> topography,
                                       const double inner_radius,
                                       const double outer_radius)
         :
         SphericalManifold<dim>(Point<dim>()),
-        topo (&topography),
+        topo (topography),
         R0 (inner_radius),
         R1 (outer_radius)
       {}
@@ -79,12 +124,10 @@ namespace aspect
       SphericalManifoldWithTopography<dim>::
       topography_for_point(const Point<dim> &x_y_z) const
       {
-        if (dynamic_cast<const InitialTopographyModel::ZeroTopography<dim>*>(topo) != nullptr)
+        if (dynamic_cast<const InitialTopographyModel::ZeroTopography<dim>*>(topo.get()) != nullptr)
           return 0;
         else
           {
-            Assert (dim==3, ExcNotImplemented());
-
             // The natural coordinate system of the sphere geometry is r/phi/theta.
             // This is what we need to query the topography with. So start by
             // converting into this coordinate system
@@ -210,7 +253,12 @@ namespace aspect
       normal_vector(const typename Triangulation<dim, dim>::face_iterator &face,
                     const Point<dim> &p) const
       {
-        // TODO: Deal with pull back and push forward
+        // We calculate radial, rather than *normal*, vectors here if a face is
+        // at the boundary. This is as described in the documentation of this
+        // function.
+
+        // TODO: Add an input parameter that determines whether we use this
+        //   or the "geometrically correct" behavior.
         return SphericalManifold<dim>::normal_vector (face, p);
       }
 
@@ -281,7 +329,7 @@ namespace aspect
     void
     SphericalShell<dim>::initialize ()
     {
-      manifold = std::make_unique<internal::SphericalManifoldWithTopography<dim>>(this->get_initial_topography_model(),
+      manifold = std::make_unique<internal::SphericalManifoldWithTopography<dim>>(this->get_initial_topography_model_pointer(),
                                                                                    R0, R1);
     }
 
@@ -444,14 +492,23 @@ namespace aspect
                                               0,
                                               true);
 
+          // there was a bug with boundary colorization of thin shells
+          // before deal.II 9.7. Use a fixed version of that function,
+          // for deal.II versions that need it.
+#if !DEAL_II_VERSION_GTE(9,7,0)
+          if (dim == 3)
+            colorize_quarter_hyper_shell(coarse_grid,
+                                         Point<dim>(),
+                                         R0,
+                                         R1);
+#endif
+
           if (periodic)
             {
               // Tell p4est about the periodicity of the mesh.
               std::vector<GridTools::PeriodicFacePair<typename parallel::distributed::Triangulation<dim>::cell_iterator>>
               matched_pairs;
-              FullMatrix<double> rotation_matrix(dim);
-              rotation_matrix[0][1] = 1.;
-              rotation_matrix[1][0] = -1.;
+              const FullMatrix<double> rotation_matrix = phi_periodicity_rotation_matrix<dim>(phi);
 
               GridTools::collect_periodic_faces(coarse_grid, /*b_id1*/ 2, /*b_id2*/ 3,
                                                 /*direction*/ 1, matched_pairs,
@@ -469,6 +526,20 @@ namespace aspect
                                            R1,
                                            0,
                                            true);
+
+          if (periodic)
+            {
+              std::vector<GridTools::PeriodicFacePair<typename parallel::distributed::Triangulation<dim>::cell_iterator>>
+              matched_pairs;
+              const FullMatrix<double> rotation_matrix = phi_periodicity_rotation_matrix<dim>(phi);
+
+              GridTools::collect_periodic_faces(coarse_grid, /*b_id1*/ 2, /*b_id2*/ 3,
+                                                /*direction*/ 1, matched_pairs,
+                                                Tensor<1, dim>(), rotation_matrix);
+
+              if (matched_pairs.size() > 0)
+                coarse_grid.add_periodicity (matched_pairs);
+            }
         }
       else
         {
@@ -608,26 +679,27 @@ namespace aspect
                                                            const ArrayView<Tensor<1, dim>> &connected_velocities) const
     {
       AssertThrow(dim == 2,
-                  ExcMessage("Periodic boundaries currently "
-                             "only work with 2d spherical shell."));
-      AssertThrow(phi == 90,
-                  ExcMessage("Periodic boundaries currently "
-                             "only work with 90 degree opening angle in spherical shell."));
+                  ExcMessage("Periodic boundaries currently only work with "
+                             "2d spherical shells."));
+      AssertThrow(phi == 90 || phi == 180,
+                  ExcMessage("Periodic boundaries currently only work with "
+                             "90 or 180 degree opening angles in spherical shell."));
 
       if (periodic)
         {
-          // define a rotation matrix for the new position depending on the boundary
           Tensor<2,dim> rotation_matrix;
 
-          if (position[0] < 0.)
+          // half_hyper_shell creates the 180 degree shell in the positive
+          // x half-plane. Points that crossed a periodic boundary therefore
+          // need a 180 degree rotation only if they left this half-plane.
+          if (phi == 180 && position[0] < 0.)
+            rotation_matrix = phi_periodicity_rotation_tensor<dim>(phi);
+          else if (phi == 90 && position[0] < 0.)
+            rotation_matrix = phi_periodicity_rotation_tensor<dim>(phi);
+          else if (phi == 90 && position[1] < 0.)
             {
-              rotation_matrix[0][1] = 1.;
-              rotation_matrix[1][0] = -1.;
-            }
-          else if (position[1] < 0.)
-            {
-              rotation_matrix[0][1] = -1.;
-              rotation_matrix[1][0] = 1.;
+              rotation_matrix = phi_periodicity_rotation_tensor<dim>(phi);
+              rotation_matrix *= -1.;
             }
           else
             return;
@@ -668,7 +740,11 @@ namespace aspect
     double
     SphericalShell<dim>::depth(const Point<dim> &position) const
     {
-      return std::min (std::max (R1-position.norm(), 0.), maximal_depth());
+      if (this->simulator_is_past_initialization() &&
+          !Plugins::plugin_type_matches<const InitialTopographyModel::ZeroTopography<dim>>(this->get_initial_topography_model()))
+        return std::clamp(R1 + manifold->topography_for_point(position) - position.norm(), 0., maximal_depth());
+      else
+        return std::clamp(R1 - position.norm(), 0., maximal_depth());
     }
 
 
@@ -694,10 +770,9 @@ namespace aspect
       // Choose a point along the axes toward the north pole, at the
       // requested depth.
       Point<dim> p;
-      p[dim-1] = std::min (std::max(R1 - depth, R0), R1);
 
-      // Return this point. This ignores the surface topography,
-      // but that is as documented.
+      p[dim-1] = std::clamp(R1 + manifold->topography_for_point(p) - depth, R0, R1);
+
       return p;
     }
 
@@ -707,12 +782,7 @@ namespace aspect
     double
     SphericalShell<dim>::maximal_depth() const
     {
-      // The depth is defined as relative to a reference surface (without
-      // topography) and since we don't apply topography on the CMB,
-      // the maximal depth really is R1-R0 unless one applies a
-      // topography that is always strictly below zero (i.e., where the
-      // actual surface lies strictly below the reference surface).
-      return R1-R0;
+      return R1 + this->get_initial_topography_model().max_topography() - R0;
     }
 
 
@@ -758,14 +828,15 @@ namespace aspect
                   this->simulator_is_past_initialization() == false,
                   ExcMessage("After displacement of the free surface, this function can no longer be used to determine whether a point lies in the domain or not."));
 
-      AssertThrow(Plugins::plugin_type_matches<const InitialTopographyModel::ZeroTopography<dim>>(this->get_initial_topography_model()),
-                  ExcMessage("After adding topography, this function can no longer be used to determine whether a point lies in the domain or not."));
-
       const std::array<double, dim> spherical_point = Utilities::Coordinates::cartesian_to_spherical_coordinates(point);
 
       std::array<double, dim> point1, point2;
       point1[0] = R0;
-      point2[0] = R1;
+      if (this->simulator_is_past_initialization() &&
+          !Plugins::plugin_type_matches<const InitialTopographyModel::ZeroTopography<dim>>(this->get_initial_topography_model()))
+        point2[0] =  R1 + manifold->topography_for_point(point);
+      else
+        point2[0] = R1;
       point1[1] = 0.0;
       point2[1] = phi * constants::degree_to_radians;
       if (dim == 3)
@@ -785,8 +856,6 @@ namespace aspect
             spherical_point[d] < point1[d]-std::numeric_limits<double>::epsilon()*std::abs(point2[d]))
           return false;
 
-      // TODO: Take into account topography
-
       return true;
     }
 
@@ -796,7 +865,6 @@ namespace aspect
     std::array<double,dim>
     SphericalShell<dim>::cartesian_to_natural_coordinates(const Point<dim> &position) const
     {
-      // TODO: Take into account topography
       return Utilities::Coordinates::cartesian_to_spherical_coordinates<dim>(position);
     }
 
@@ -815,7 +883,6 @@ namespace aspect
     Point<dim>
     SphericalShell<dim>::natural_to_cartesian_coordinates(const std::array<double,dim> &position) const
     {
-      // TODO: Take into account topography
       return Utilities::Coordinates::spherical_to_cartesian_coordinates<dim>(position);
     }
 
@@ -830,19 +897,41 @@ namespace aspect
         {
           std::vector<GridTools::PeriodicFacePair<typename DoFHandler<dim>::cell_iterator>>
           matched_pairs;
-          FullMatrix<double> rotation_matrix(dim);
-          rotation_matrix[0][1] = 1.;
-          rotation_matrix[1][0] = -1.;
+          const FullMatrix<double> rotation_matrix = phi_periodicity_rotation_matrix<dim>(phi);
 
           GridTools::collect_periodic_faces(dof_handler, /*b_id1*/ 2, /*b_id2*/ 3,
                                             /*direction*/ 1, matched_pairs,
                                             Tensor<1, dim>(), rotation_matrix);
 
-          DoFTools::make_periodicity_constraints<dim,dim,double>(matched_pairs,
-                                                                 constraints,
-                                                                 ComponentMask(),
-          {0},
-          1.);
+          if (dof_handler.get_fe().n_components() == 1)
+            {
+              // Scalar fields (for example the pressure DoFHandler of the
+              // matrix-free Stokes solvers) are invariant under the rotation
+              // that maps one periodic face onto the other. The rotation
+              // matrix is only needed to geometrically match the faces above.
+              // It must not be handed to make_periodicity_constraints():
+              // for scalar elements whose number of DoFs per face equals dim
+              // (e.g. Q1 in 2d) the dim x dim rotation matrix would be
+              // misinterpreted as a face interpolation matrix, silently
+              // producing wrong constraints that couple different DoFs of
+              // the same face.
+              for (auto &pair : matched_pairs)
+                pair.matrix = FullMatrix<double>();
+
+              DoFTools::make_periodicity_constraints<dim,dim,double>(matched_pairs,
+                                                                     constraints);
+            }
+          else
+            {
+              // Vector-valued case (velocity DoFHandler or the full coupled
+              // finite element system): rotate the vector components starting
+              // at component 0.
+              DoFTools::make_periodicity_constraints<dim,dim,double>(matched_pairs,
+                                                                     constraints,
+                                                                     ComponentMask(),
+              {0},
+              1.);
+            }
         }
     }
 
@@ -914,7 +1003,7 @@ namespace aspect
                              "The only opening angles that are allowed for "
                              "this geometry are 90, 180, and 360 in 2d; "
                              "and 90 and 360 in 3d. "
-                             "Units: degrees.");
+                             "Units: \\si{\\degree}.");
           prm.declare_entry ("Cells along circumference", "0",
                              Patterns::Integer (0),
                              "The number of cells in circumferential direction that are "
@@ -939,7 +1028,9 @@ namespace aspect
                              "ignored when using a custom mesh subdivision scheme.");
           prm.declare_entry ("Phi periodic", "false",
                              Patterns::Bool (),
-                             "Whether the shell should be periodic in the phi direction.");
+                             "Whether the shell should be periodic in the phi direction. "
+                             "This is supported for 2d models with opening angles of "
+                             "90 or 180 degrees.");
 
         }
         prm.leave_subsection();
@@ -1003,8 +1094,12 @@ namespace aspect
           periodic = prm.get_bool ("Phi periodic");
           if (periodic)
             {
-              AssertThrow (dim == 2,  ExcMessage("Periodic boundaries in the spherical shell are only supported for 2d models."));
-              AssertThrow (phi == 90, ExcMessage("Periodic boundaries in the spherical shell are only supported for an opening angle of 90 degrees."));
+              AssertThrow (dim == 2,
+                           ExcMessage("Periodic boundaries in the spherical shell are only supported for "
+                                      "2d models."));
+              AssertThrow (phi == 90 || phi == 180,
+                           ExcMessage("Periodic boundaries in the spherical shell are only supported for "
+                                      "an opening angle of 90 or 180 degrees."));
             }
 
 
@@ -1057,13 +1152,12 @@ namespace aspect
                                    "also be referenced using the symbolic names `inner', `outer' "
                                    "and (if applicable) `left', `right'."
                                    "\n\n"
-                                   "In 3d, inner and "
-                                   "outer indicators are treated as in 2d. If the opening "
-                                   "angle is chosen as 90 degrees, i.e., the domain is the "
-                                   "intersection of a spherical shell and the first octant, "
-                                   "then indicator 2 is at the face $x=0$, 3 at $y=0$, "
-                                   "and 4 at $z=0$. These last three boundaries can then also "
-                                   "be referred to as `east', `west' and `south' symbolically "
-                                   "in input files.")
+                                   "In 3d, inner and outer indicators are treated as in 2d. "
+                                   "If the opening angle is chosen as 90 degrees, i.e., the "
+                                   "domain is the intersection of a spherical shell and the "
+                                   "first octant, then indicator 2 is at the face $x=0$, "
+                                   "3 at $y=0$, and 4 at $z=0$. These last three boundaries "
+                                   "can then also be referred to as `east', `west' and "
+                                   "`south' symbolically in input files.")
   }
 }

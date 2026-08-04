@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -39,11 +39,11 @@ namespace aspect
 
       const bool use_operator_split = (this->get_parameters().use_operator_splitting);
 
-      const MaterialModel::ReactionRateOutputs<dim> *reaction_rate_out
-        = material_model_outputs.template get_additional_output<MaterialModel::ReactionRateOutputs<dim>>();
+      const std::shared_ptr<const MaterialModel::ReactionRateOutputs<dim>> reaction_rate_out
+        = material_model_outputs.template get_additional_output_object<MaterialModel::ReactionRateOutputs<dim>>();
 
-      const MaterialModel::EnthalpyOutputs<dim> *enthalpy_out
-        = material_model_outputs.template get_additional_output<MaterialModel::EnthalpyOutputs<dim>>();
+      const std::shared_ptr<const MaterialModel::EnthalpyOutputs<dim>> enthalpy_out
+        = material_model_outputs.template get_additional_output_object<MaterialModel::EnthalpyOutputs<dim>>();
 
       double enthalpy_change;
 
@@ -109,6 +109,27 @@ namespace aspect
         }
     }
 
+
+
+    template <int dim>
+    MaterialModel::MaterialProperties::Property
+    LatentHeatMelt<dim>::
+    get_required_properties () const
+    {
+      MaterialModel::MaterialProperties::Property required_properties = MaterialModel::MaterialProperties::additional_outputs;
+      if (this->get_parameters().use_operator_splitting)
+        required_properties = required_properties |
+                              MaterialModel::MaterialProperties::specific_heat |
+                              MaterialModel::MaterialProperties::reaction_rates;
+      else
+        required_properties = required_properties |
+                              MaterialModel::MaterialProperties::reaction_terms |
+                              MaterialModel::MaterialProperties::density;
+      return required_properties;
+    }
+
+
+
     template <int dim>
     void
     LatentHeatMelt<dim>::declare_parameters (ParameterHandler &prm)
@@ -121,7 +142,7 @@ namespace aspect
                              Patterns::Double (),
                              "The entropy change for the phase transition "
                              "from solid to melt. "
-                             "Units: \\si{\\joule\\per\\kelvin\\per\\kilogram}.");
+                             "Units: $\\frac{\\text{J}}{\\text{K}\\text{kg}}$.");
           prm.declare_entry ("Retrieve entropy change from material model", "false",
                              Patterns::Bool (),
                              "Instead of using the entropy change given in the "
@@ -160,7 +181,7 @@ namespace aspect
     LatentHeatMelt<dim>::create_additional_material_model_outputs(MaterialModel::MaterialModelOutputs<dim> &outputs) const
     {
       if (this->include_melt_transport() && retrieve_entropy_change_from_material_model
-          && outputs.template get_additional_output<MaterialModel::EnthalpyOutputs<dim>>() == nullptr)
+          && outputs.template has_additional_output_object<MaterialModel::EnthalpyOutputs<dim>>() == false)
         {
           outputs.additional_outputs.push_back(
             std::make_unique<MaterialModel::EnthalpyOutputs<dim>> (outputs.n_evaluation_points()));

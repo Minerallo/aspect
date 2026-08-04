@@ -1,67 +1,73 @@
 # Release Tasklist
 
 ## Leading up to a release
-- send out an email about problems or outstanding patches
-- go through the list of TODOs in the source code and see what can be done
-- make sure the description of the interfaces that need to be updated
-    are up to date in the manual
-- update the used deal.II version for the Docker container in `contrib/docker/docker/Dockerfile`
-    and in the manual
-- check that `README.md` and https://aspect.geodynamics.org/ is up-to-date
+- Send out an email about problems or outstanding patches
+- Go through the list of TODOs in the source code and see what can be done
+- Go through the list of issues marked as bugs (https://github.com/geodynamics/aspect/issues?q=is%3Aissue+is%3Aopen+label%3Abug) and see which have to be fixed
+- Go through the list of open pull requests and decide which ones have to go into the release, postpone all others
+- Check that the used deal.II version for the Docker container in [contrib/docker/docker/Dockerfile](https://github.com/geodynamics/aspect/blob/main/contrib/docker/docker/Dockerfile) and in the manual is appropriate for the release
+- Check that [README.md](https://github.com/geodynamics/aspect/blob/main/README.md) and https://aspect.geodynamics.org/ is up-to-date
 and the links are working
-- run (and be patient):
+- Run (and be patient), if any cookbooks/benchmarks fail, find a fix or open an issue as broken:
 
   ```
   cd benchmarks && make -f check.mk BUILD=$BUILDDIR -j4
   cd cookbooks && make -f check.mk BUILD=$BUILDDIR -j4
   ```
 
-- determine new version roughly following semantic versioning: http://semver.org/
-  - format is X.Y.Z for a release, X.Y.Z-pre for the dev version or X.Y.Z-rcW for release candidates
-  - backwards incompatible changes require incrementing X, adding features incrementing Y
-
-- setup:
+- Find and fix doxygen errors:
 
   ```
-  export OLDVER=2.4.0
-  export VER=2.5.0
-  export VERSHORT=2.5
-  export NEXTVER=2.6.0-pre
-  # Make sure DEALSRCDIR is set to correct path
-  export DEALSRCDIR=$DEAL_II_DIR
-  ```
-
-- fix doxygen errors:
-
-  ```
+  git checkout -b pre-release-tasks
   find include -name "*h" -print | xargs -n 1 $DEALSRCDIR/contrib/utilities/checkdoxygen.py
+  git commit -a -m "doxygen fixes"
   ```
 
-  and commit.
-- manual, check for missing labels:
+- Build doxygen and manual, check for missing labels and for warnings, fix if possible:
 
   ```
   cd doc
   make aspect.tag
   cd sphinx
   make html
+  cd ../..
   ```
 
-  and check for warnings
-- fix formatting, copyright years:
+- Check and fix doxygen documentation. some of the changes of the script will destroy intentional indentation. Go through the list of changes manually and decide which ones to include.
+  ```
+  find . -name "*.h" -not -wholename "*/doc/modules/*" -not -wholename "*/contrib/world_builder/*" -print | while read file;do $DEALSRCDIR/contrib/utilities/wrapcomments.py $file >temp;mv temp $file;done
+  git add -p
+  git checkout .
+  ```
 
-  ```
-  find . -name "*.h" -print | while read file;do $DEALSRCDIR/contrib/utilities/wrapcomments.py $file >temp;mv temp $file;done
-  ```
-- note: we started ignoring the rewrapping of comments, but we should still fix wrong indentation or other problems
+- Fix formatting, copyright years:
 
   ```
   ./contrib/utilities/indent
   ./contrib/release/update_copyright.sh
-  git commit -a -m "doxygen formatting, comment wrapping"
+  git commit -a -m "doxygen formatting, update copyright years"
   ```
 
-## Create a pull-request
+- Make sure all CI workflows on the main branch pass: https://github.com/geodynamics/aspect/actions?query=branch%3Amain
+
+- Create a pull request with the pre release tasks
+
+## Create a release pull-request
+- determine new version roughly following semantic versioning: http://semver.org/
+  - format is X.Y.Z for a release, X.Y.Z-pre for the dev version or X.Y.Z-rcW for release candidates
+  - backwards incompatible changes require incrementing X, adding features incrementing Y
+
+  setup version numbers:
+
+  ```
+  export OLDVER=3.0.0
+  export VER=3.1.0
+  export VERSHORT=3.1
+  export NEXTVER=3.2.0-pre
+  # Make sure DEALSRCDIR is set to correct path
+  export DEALSRCDIR=$DEAL_II_DIR
+  ```
+
 - create branch for main PR to update changes.h in doc/modules:
 
   ```
@@ -76,18 +82,19 @@ and the links are working
   ```
   git checkout post-release-$VER && \
   git checkout -b aspect-$VERSHORT && \
-  cd contrib/release && ./bump_version.sh $VER && cd ../.. && \
+  cd contrib/release && ./bump_version.sh $VER-rc0 && cd ../.. && \
   git commit -m "release task: update version info"
   ```
 
 - compile aspect, make sure you have a symlink in the main directory for the next step
   - make sure the WorldBuilder is using the included version
 
-- update parameters and documentation:
+- update parameters, plugin graph, and documentation:
 
   ```
-  cd doc && ./update_parameters.sh && cd sphinx && make html && cd ../.. && \
+  cd doc && ./update_parameters.sh && ./update_plugin_graph.sh && cd sphinx && make html && cd ../.. && \
   git add doc/sphinx/parameters && \
+  git add doc/sphinx/user/extending/images && \
   git commit -m "release task: update manual"
   ```
 
@@ -111,17 +118,16 @@ and the links are working
 
 - create a tar file:
   ```
-  cd doc/sphinx && make html && cd ..
   export PREFIX=aspect-$TAG && rm -rf $PREFIX.tar.gz && \
-  git archive --format=tar.gz --prefix=$PREFIX/ HEAD >temp.tar.gz && \
-  rm -fr $PREFIX/ && \
-  tar xf temp.tar.gz && \
-  cd contrib/WorldBuilder/ && \
-  git archive --format=tar.gz --prefix=$PREFIX/contrib/WorldBuilder/ HEAD >temp.tar.gz && \
-  cd ../.. && \
-  tar xf contrib/WorldBuilder/temp.tar.gz && \
-  tar czf $PREFIX.tar.gz $PREFIX/ && \
-  rm -rf contrib/WorldBuilder/temp.tar.gz
+  git archive --format=tar.gz --prefix=$PREFIX/ HEAD >$PREFIX.tar.gz
+  ```
+
+- build pdf doc (temporary by building html one page and print to pdf until
+  we fix the sphinx pdf):
+  ```
+  cd doc/sphinx && make singlehtml && cd ../..
+  firefox ./doc/sphinx/_build/singlehtml/index.html
+  # print to pdf
   ```
 
 - final testing by extracting tarball, compiling, and running:
@@ -193,6 +199,118 @@ and the links are working
   - dealii@googlegroups.com
 
 ## List of prior release notes
+
+Announcement for 3.0.0 (Nov 6, 2024)
+-----------------------------------------
+We are pleased to announce the release of ASPECT 3.0.0. ASPECT is the Advanced
+Solver for Planetary Evolution, Convection, and Tectonics. It uses modern
+numerical methods such as adaptive mesh refinement, multigrid solvers, and
+a modular software design to provide a fast, flexible, and extensible mantle
+convection solver. ASPECT is available from
+
+                   https://aspect.geodynamics.org/
+
+and the release is available from
+
+        https://geodynamics.org/resources/aspect
+
+and
+
+        https://github.com/geodynamics/aspect/releases/tag/v3.0.0
+
+Among others this release includes the following significant changes:
+
+- ASPECT has been renamed from "Advanced Solver for Problems in Earth's
+  ConvecTion" to "Advanced Solver for Planetary Evolution, Convection, and
+  Tectonics" to reflect that the scope of ASPECT has grown beyond mantle
+  convection.
+  (Timo Heister on behalf of all maintainers)
+
+- ASPECT now includes version 1.0.0 of the Geodynamic World Builder and no
+  longer supports World Builder versions older than 0.5.0.
+  (Menno Fraters and other contributors)
+
+- ASPECT can now be coupled to the landscape evolution code FastScape to deform
+  the surface through erosion and sediment deposition. Solution variables can
+  now also be output on the surface mesh of the model domain.
+  (Derek Neuharth, Anne Glerum)
+
+- ASPECT can now compute crystal-preferred orientation of mineral fabrics.
+  DREX-like calculations are used to compute anisotropy tensors and
+  distributions of mineral orientations.
+  (Menno Fraters, Xiaochuan Tian)
+
+- A sea level postprocessor for glacial isostatic adjustment modeling has been
+  added. It computes the sea level based on the free surface topography, ocean
+  basin, ice thickness, and perturbed gravitational potential.
+  (Maaike Weerdesteijn, John Naliboff)
+
+- There is now a new material model that is designed to advect fluids and
+  compute fluid release and absorption based on different models for fluid-rock
+  interaction. New melt-rock interactions have been added.
+  (Daniel Douglas, Juliane Dannberg, Grant Block, John Naliboff)
+
+- ASPECT now requires deal.II 9.5 or newer. ASPECT is also compatible with
+  deal.II 9.6, including new features and performance improvements.
+  (Rene Gassmoeller, Timo Heister)
+
+- ASPECT now by default builds a debug and an optimized (release) version of
+  the executable in the same build directory.
+  (Rene Gassmoeller, Wolfgang Bangerth, Timo Heister)
+
+- ASPECT now has a Visual Studio Code extension, which provides syntax
+  highlighting and auto-completion for input parameter files. The old
+  Parameter GUI has been removed as it was no longer maintained.
+  (Zhikui Guo, Timo Heister, Rene Gassmoeller)
+
+- ASPECT now supports compositional fields with different discretizations
+  (continuous or discontinuous) and different polynomial degrees in the same
+  model. Compositional fields can now be solved using a different list of
+  assemblers for each field, effectively allowing to add additional terms to
+  each advection equation.
+  (Timo Heister, Juliane Dannberg)
+
+- ASPECT now outputs the physical units of quantities into .pvtu files.
+  (Wolfgang Bangerth)
+
+- The geometric multigrid (GMG) solver described in Clevenger and Heister,
+  2021, has become ASPECT's new default Stokes solver. The previous algebraic
+  multigrid (AMG) option is still available.
+  (Conrad Clevenger, Jiaqi Zhang, Timo Heister, Rene Gassmoeller)
+
+- ASPECT now utilizes solvers for ordinary differential equations from the
+  SUNDIALS ARKODE library for grain-size evolution and other purposes.
+  (Juliane Dannberg, Wolfgang Bangerth, Bob Myhill, Rene Gassmoeller)
+
+- All ASPECT plugin classes and plugin systems are now derived from common base
+  classes. This unifies class interfaces across plugin systems and allows for
+  removal of duplicate code and documentation.
+  (Wolfgang Bangerth)
+
+- The particle subsystem has been overhauled. Most particle parameters have
+  moved. Multiple particle systems (with different properties) can be active
+  in the same model. Existing input files can be updated with the update
+  scripts.
+  (Rene Gassmoeller, Menno Fraters, Timo Heister)
+
+- 15 new cookbooks and benchmark cases have been added.
+  (Many authors, see link below)
+
+- Many deprecated input options and source code functions have been removed.
+  Many bugs and inconsistencies have been fixed.
+  (Many authors, see link below).
+
+A complete list of all changes and their authors can be found at
+  https://aspect.geodynamics.org/doc/doxygen/changes_between_2_85_80_and_3_80_80.html
+
+We are thankful for all feature and model contributions, code reviews,
+forum posts, bug reports, and general help provided by members of our
+community. Your contributions have helped make ASPECT what is it today.
+
+Wolfgang Bangerth, Juliane Dannberg, Menno Fraters, Rene Gassmoeller,
+Anne Glerum, Timo Heister, Bob Myhill, John Naliboff, Cedric Thieulot,
+and many other contributors.
+
 
 Announcement for 2.5.0 (July 8, 2023)
 -----------------------------------------

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,7 +18,6 @@
   <http://www.gnu.org/licenses/>.
 */
 
-#include <array>
 #include <aspect/material_model/averaging.h>
 #include <utility>
 #include <limits>
@@ -299,7 +298,7 @@ namespace aspect
                      */
                     if (values_out[j] != 0)
                       {
-                        sum_value += weight*log(values_out[j]);
+                        sum_value += weight*std::log(values_out[j]);
                       }
 
                     sum_weights += weight;
@@ -417,6 +416,13 @@ namespace aspect
     is_compressible () const
     {
       return base_model->is_compressible();
+    }
+
+    template <int dim>
+    void
+    Averaging<dim>::create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const
+    {
+      base_model->create_additional_named_outputs(out);
     }
   }
 }

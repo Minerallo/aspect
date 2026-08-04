@@ -68,6 +68,7 @@ namespace aspect
     }
 
 
+
     template <int dim>
     void
     Function<dim>::update()
@@ -79,6 +80,7 @@ namespace aspect
       else
         boundary_velocity_function.set_time (this->get_time());
     }
+
 
 
     template <int dim>
@@ -171,8 +173,8 @@ namespace aspect
                                             "section is a semicolon separated list of velocities "
                                             "for each of the $d$ components of the velocity vector. "
                                             "These $d$ formulas are interpreted as having units "
-                                            "m/s, unless the global input parameter ``Use "
-                                            "years in output instead of seconds'' is set, in "
+                                            "m/s, unless the global input parameter "
+                                            "``Use years instead of seconds'' is set, in "
                                             "which case we interpret the formula expressions "
                                             "as having units m/year."
                                             "\n\n"

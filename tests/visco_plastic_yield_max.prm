@@ -12,7 +12,7 @@
 set Dimension                              = 2
 set Start time                             = 0
 set End time                               = 0
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set Nonlinear solver scheme                = single Advection, iterated Stokes
 set Max nonlinear iterations               = 1
 set Output directory                       = max_yield
@@ -104,10 +104,14 @@ subsection Postprocess
 
   subsection Visualization
     set Interpolate output = false
-    set List of output variables      = strain rate, viscosity
+    set List of output variables      = strain rate, material properties
     set Output format                 = gnuplot
     set Time between graphical output = 0.25e6
     set Number of grouped files       = 0
+
+    subsection Material properties
+      set List of material properties = viscosity
+    end
   end
 end
 

@@ -1,7 +1,7 @@
 # A simple setup for a plume in a 2D chunk based on Kellogg \& King, EPSL 148 (1997).
 
 set Dimension                              = 2
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set End time                               = 200e9
 set Output directory                       = output_plume2D
 set Maximum time step                      = 5e7
@@ -65,7 +65,6 @@ subsection Boundary temperature model
   subsection Function
     set Coordinate system = spherical
     set Variable names = r, phi
-    set Function constants = pi=3.1415926536
     set Function expression = if (r>4e6,273,if(phi>7*pi/16,3273,2773))
   end
 end
@@ -96,9 +95,13 @@ subsection Postprocess
   set List of postprocessors = visualization, velocity statistics, temperature statistics
 
   subsection Visualization
-    set List of output variables = density, viscosity, vertical heat flux
+    set List of output variables = material properties, vertical heat flux
     set Output format                 = vtu
     set Time between graphical output = 10e7
     set Number of grouped files       = 0
+
+    subsection Material properties
+      set List of material properties = density, viscosity
+    end
   end
 end

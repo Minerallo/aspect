@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2016 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2016 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -30,8 +30,6 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
   namespace MaterialModel
   {
     /**
@@ -45,7 +43,7 @@ namespace aspect
       public:
         /**
          * Constructor. When the MeltInputs are created,
-         * all properties are initialized with signalingNaNs.
+         * all properties are initialized with signaling NaNs.
          * This means that individual heating or material models
          * can all attach the plugins they need, and in a later
          * step they will all be filled together (using the fill
@@ -76,15 +74,16 @@ namespace aspect
     class MeltOutputs : public AdditionalMaterialOutputs<dim>
     {
       public:
+        /**
+         * Constructor. When the MeltOutputs are created,
+         * all properties are initialized with signaling NaNs.
+         * This means that after the call to the material model
+         * it can be checked if the material model actually
+         * computed the values, by checking if the individual
+         * values are finite (using std::isfinite).
+         */
         MeltOutputs (const unsigned int n_points,
-                     const unsigned int /*n_comp*/)
-        {
-          compaction_viscosities.resize(n_points);
-          fluid_viscosities.resize(n_points);
-          permeabilities.resize(n_points);
-          fluid_densities.resize(n_points);
-          fluid_density_gradients.resize(n_points, Tensor<1,dim>());
-        }
+                     const unsigned int n_comp);
 
         /**
          * Compaction viscosity values $\xi$ at the given positions.
@@ -154,9 +153,14 @@ namespace aspect
          * @param in Object that contains the current conditions.
          * @param melt_fractions Vector of doubles that is filled with the
          * equilibrium melt fraction for each given input conditions.
+         * @param out Optional pointer to the material properties provided by the
+         * material model. By default, this variable is a nullptr. If the melt
+         * fractions depend on material model properties, then this parameter
+         * must be set to a valid pointer to a MaterialModelOutputs object.
          */
         virtual void melt_fractions (const MaterialModel::MaterialModelInputs<dim> &in,
-                                     std::vector<double> &melt_fractions) const = 0;
+                                     std::vector<double> &melt_fractions,
+                                     const MaterialModel::MaterialModelOutputs<dim> *out = nullptr) const = 0;
 
         /**
          * Return whether an object provided as argument is of a class that is
@@ -294,6 +298,9 @@ namespace aspect
         void
         execute(internal::Assembly::Scratch::ScratchBase<dim>   &scratch_base,
                 internal::Assembly::CopyData::CopyDataBase<dim> &data_base) const override;
+
+        void
+        create_additional_material_model_outputs(MaterialModel::MaterialModelOutputs<dim> &outputs) const override;
     };
 
 
@@ -450,6 +457,15 @@ namespace aspect
                                          std::vector<VariableDeclaration<dim>> &variables);
 
       /**
+       * Replace introspection.stokes_dof_info with the local DoFs of the melt
+       * Stokes system (velocity, fluid pressure, and compaction pressure).
+       * Called from Simulator::setup_introspection() after the default
+       * (non-melt) Stokes DoF cache has been built.
+       */
+      void initialize_stokes_dof_info(Introspection<dim> &introspection,
+                                      const FiniteElement<dim> &finite_element) const;
+
+      /**
        * Determine, based on the run-time parameters of the current simulation,
        * which functions need to be called in order to assemble linear systems,
        * matrices, and right hand side vectors.
@@ -486,12 +502,12 @@ namespace aspect
        */
       void compute_melt_variables(LinearAlgebra::BlockSparseMatrix &system_matrix,
                                   LinearAlgebra::BlockVector &solution,
-                                  LinearAlgebra::BlockVector &system_rhs);
+                                  LinearAlgebra::BlockVector &system_rhs) const;
 
       /**
        * Return whether this object refers to the porosity field.
        */
-      bool is_porosity (const typename Simulator<dim>::AdvectionField &advection_field) const;
+      bool is_porosity (const AdvectionField &advection_field) const;
 
       /**
        * Apply free surface stabilization to a cell of the system matrix when melt

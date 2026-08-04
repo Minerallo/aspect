@@ -32,8 +32,6 @@ namespace aspect
 {
   namespace InitialTopographyModel
   {
-    using namespace dealii;
-
     /**
      * A class that implements initial topography based
      * on a user-defined function..
@@ -72,6 +70,8 @@ namespace aspect
 
         /**
          * The maximum value the topography can take.
+         *
+         * This variable is read from the parameter file through a parameter called 'Maximum topography value'.
          */
         double max_topo;
 
@@ -83,6 +83,8 @@ namespace aspect
         /**
          * The coordinate representation to evaluate the function. Possible
          * choices are cartesian and spherical.
+         *
+         * This variable is read from the parameter file through a parameter called 'Coordinate system'.
          */
         Utilities::Coordinates::CoordinateSystem coordinate_system;
     };

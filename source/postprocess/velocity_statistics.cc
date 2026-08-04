@@ -35,34 +35,40 @@ namespace aspect
     std::pair<std::string,std::string>
     VelocityStatistics<dim>::execute (TableHandler &statistics)
     {
-      const Quadrature<dim> &quadrature_formula = this->introspection().quadratures.velocities;
+      // Use a Gauss-Lobatto quadrature rule so that we do not need to use two separate quadratures
+      // for the maximum velocity (ideally we would use Trapezoidal quadrature) and the RMS velocity
+      // (ideally we would use Gauss quadrature).
+      const QGaussLobatto<dim> quadrature_formula(this->get_fe().base_element(this->introspection().base_elements.velocities).degree + 2);
       const unsigned int n_q_points = quadrature_formula.size();
 
-      FEValues<dim> fe_values (this->get_mapping(),
-                               this->get_fe(),
-                               quadrature_formula,
-                               update_values   |
-                               update_quadrature_points |
-                               update_JxW_values);
+      FEValues<dim> fe_values(this->get_mapping(),
+                              this->get_fe(),
+                              quadrature_formula,
+                              update_values   |
+                              update_quadrature_points |
+                              update_JxW_values);
+
       std::vector<Tensor<1,dim>> velocity_values(n_q_points);
 
       double local_velocity_square_integral = 0;
       double local_max_velocity = 0;
 
       for (const auto &cell : this->get_dof_handler().active_cell_iterators())
-        if (cell->is_locally_owned())
-          {
-            fe_values.reinit (cell);
-            fe_values[this->introspection().extractors.velocities].get_function_values (this->get_solution(),
-                                                                                        velocity_values);
-            for (unsigned int q = 0; q < n_q_points; ++q)
-              {
-                local_velocity_square_integral += ((velocity_values[q] * velocity_values[q]) *
-                                                   fe_values.JxW(q));
-                local_max_velocity = std::max (std::sqrt(velocity_values[q]*velocity_values[q]),
-                                               local_max_velocity);
-              }
-          }
+        {
+          if (cell->is_locally_owned())
+            {
+              fe_values.reinit (cell);
+              fe_values[this->introspection().extractors.velocities].get_function_values (this->get_solution(),
+                                                                                          velocity_values);
+              for (unsigned int q = 0; q < n_q_points; ++q)
+                {
+                  local_velocity_square_integral += (velocity_values[q].norm_square() *
+                                                     fe_values.JxW(q));
+                  local_max_velocity = std::max (velocity_values[q].norm(),
+                                                 local_max_velocity);
+                }
+            }
+        }
 
       const double global_velocity_square_integral
         = Utilities::MPI::sum (local_velocity_square_integral, this->get_mpi_communicator());

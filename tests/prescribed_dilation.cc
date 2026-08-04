@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -34,12 +34,10 @@ namespace aspect
 {
   namespace Benchmark
   {
-    using namespace dealii;
-
     /**
      * u = cos(y), sin(x)+xy
-     * p = 2/3 eta x
-     * grad p = 2/3 eta
+     * p = -2/3 eta x
+     * grad p = -2/3 eta
      * R = div u = x
      * => grad p and compressibility term cancel
      */
@@ -54,7 +52,7 @@ namespace aspect
         const double x = pos[0];
         const double y = pos[1];
 
-        return Point<2> (cos(y), sin(x)+x*y);
+        return Point<2> (std::cos(y), std::sin(x)+x*y);
       }
 
       double
@@ -62,9 +60,8 @@ namespace aspect
                 const double eta)
       {
         const double x = pos[0];
-        //        const double y = pos[1];
 
-        return 2./3.*eta*(x-1.0);
+        return -2./3.*eta*(x-1.0);
       }
 
 
@@ -170,11 +167,11 @@ namespace aspect
         virtual void evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
                               MaterialModel::MaterialModelOutputs<dim> &out) const
         {
-          MaterialModel::PrescribedPlasticDilation<dim>
-          *prescribed_dilation = out.template get_additional_output<MaterialModel::PrescribedPlasticDilation<dim>>();
+          const std::shared_ptr<MaterialModel::PrescribedPlasticDilation<dim>> prescribed_dilation
+            = out.template get_additional_output_object<MaterialModel::PrescribedPlasticDilation<dim>>();
 
-          MaterialModel::AdditionalMaterialOutputsStokesRHS<dim>
-          *force = out.template get_additional_output<MaterialModel::AdditionalMaterialOutputsStokesRHS<dim>>();
+          const std::shared_ptr<MaterialModel::AdditionalMaterialOutputsStokesRHS<dim>> force
+            = out.template get_additional_output_object<MaterialModel::AdditionalMaterialOutputsStokesRHS<dim>>();
 
           for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
             {
@@ -204,13 +201,14 @@ namespace aspect
 
               if (force)
                 {
-                  force->rhs_u[i][0] = -eta*(1-cos(y));
-                  force->rhs_u[i][1] = -eta*(-sin(x));
+                  force->rhs_u[i][0] = -eta*(1-std::cos(y));
+                  force->rhs_u[i][1] = -eta*(-std::sin(x));
                   force->rhs_p[i] = 0.;
                 }
               if (prescribed_dilation)
                 {
-                  prescribed_dilation->dilation[i] = x;
+                  prescribed_dilation->dilation_rhs_term[i] = x;
+                  prescribed_dilation->dilation_lhs_term[i] = 0.;
                 }
 
             }

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -20,9 +20,16 @@
 
 
 #include <aspect/simulator.h>
+#include <aspect/advection_field.h>
 #include <aspect/mesh_deformation/free_surface.h>
 #include <aspect/mesh_deformation/interface.h>
-#include <aspect/particle/world.h>
+#include <aspect/particle/manager.h>
+
+namespace WorldBuilder
+{
+  class World;
+}
+
 
 namespace aspect
 {
@@ -39,6 +46,15 @@ namespace aspect
     :
     simulator (&simulator_object)
   {}
+
+
+
+  // Define the destructor as defaulted. One might have wanted to do that in
+  // the header file, but that requires all member variables to be complete
+  // types (in particular, the Simulator class), which is not the casein the
+  // .h file.
+  template <int dim>
+  SimulatorAccess<dim>::~SimulatorAccess () = default;
 
 
 
@@ -201,6 +217,15 @@ namespace aspect
 
 
   template <int dim>
+  unsigned int
+  SimulatorAccess<dim>::get_checkpoint_id () const
+  {
+    return simulator->last_checkpoint_id;
+  }
+
+
+
+  template <int dim>
   bool
   SimulatorAccess<dim>::convert_output_to_years () const
   {
@@ -248,7 +273,7 @@ namespace aspect
   bool
   SimulatorAccess<dim>::include_latent_heat () const
   {
-    const std::vector<std::string> &heating_models = simulator->heating_model_manager.get_active_heating_model_names();
+    const std::vector<std::string> &heating_models = simulator->heating_model_manager.get_active_plugin_names();
     return (std::find(heating_models.begin(), heating_models.end(), "latent heat") != heating_models.end());
   }
 
@@ -304,7 +329,7 @@ namespace aspect
   SimulatorAccess<dim>::get_artificial_viscosity (Vector<float> &viscosity_per_cell,
                                                   const bool skip_interior_cells) const
   {
-    const typename Simulator<dim>::AdvectionField advection_field = Simulator<dim>::AdvectionField::temperature();
+    const AdvectionField advection_field = AdvectionField::temperature();
     simulator->get_artificial_viscosity(viscosity_per_cell, advection_field, skip_interior_cells);
   }
 
@@ -315,7 +340,7 @@ namespace aspect
   SimulatorAccess<dim>::get_artificial_viscosity_composition (Vector<float> &viscosity_per_cell,
                                                               const unsigned int compositional_variable) const
   {
-    const typename Simulator<dim>::AdvectionField advection_field = Simulator<dim>::AdvectionField::composition(compositional_variable);
+    const AdvectionField advection_field = AdvectionField::composition(compositional_variable);
     simulator->get_artificial_viscosity(viscosity_per_cell, advection_field);
   }
 
@@ -452,6 +477,15 @@ namespace aspect
 
 
   template <int dim>
+  const BoundaryConvectiveHeating::Manager<dim> &
+  SimulatorAccess<dim>::get_boundary_convective_heating_manager () const
+  {
+    return simulator->boundary_convective_heating_manager;
+  }
+
+
+
+  template <int dim>
   const BoundaryHeatFlux::Interface<dim> &
   SimulatorAccess<dim>::get_boundary_heat_flux () const
   {
@@ -485,6 +519,15 @@ namespace aspect
   SimulatorAccess<dim>::get_fixed_temperature_boundary_indicators () const
   {
     return get_boundary_temperature_manager().get_fixed_temperature_boundary_indicators();
+  }
+
+
+
+  template <int dim>
+  const std::set<types::boundary_id> &
+  SimulatorAccess<dim>::get_fixed_convective_heating_boundary_indicators () const
+  {
+    return get_boundary_convective_heating_manager().get_convective_heating_boundary_indicators();
   }
 
 
@@ -525,6 +568,7 @@ namespace aspect
   }
 
 
+
   template <int dim>
   const InitialTopographyModel::Interface<dim> &
   SimulatorAccess<dim>::get_initial_topography_model () const
@@ -533,6 +577,18 @@ namespace aspect
             ExcMessage("You can not call this function if no such model is actually available."));
     return *simulator->initial_topography_model.get();
   }
+
+
+
+  template <int dim>
+  const std::shared_ptr<const InitialTopographyModel::Interface<dim>>
+  SimulatorAccess<dim>::get_initial_topography_model_pointer () const
+  {
+    Assert (simulator->initial_topography_model.get() != nullptr,
+            ExcMessage("You can not call this function if no such model is actually available."));
+    return simulator->initial_topography_model;
+  }
+
 
 
   template <int dim>
@@ -650,6 +706,13 @@ namespace aspect
   SimulatorAccess<dim>::get_heating_model_manager () const
   {
     return simulator->heating_model_manager;
+  }
+
+  template <int dim>
+  const PrescribedDilation::Manager<dim> &
+  SimulatorAccess<dim>::get_prescribed_dilation_manager () const
+  {
+    return simulator->prescribed_dilation_manager;
   }
 
   template <int dim>
@@ -816,22 +879,32 @@ namespace aspect
   }
 
 
-  template <int dim>
-  const Particle::World<dim> &
-  SimulatorAccess<dim>::get_particle_world() const
-  {
-    Assert (simulator->particle_world.get() != nullptr,
-            ExcMessage("You can not call this function if there is no particle world."));
-    return *simulator->particle_world.get();
-  }
 
   template <int dim>
-  Particle::World<dim> &
-  SimulatorAccess<dim>::get_particle_world()
+  unsigned int
+  SimulatorAccess<dim>::n_particle_managers() const
   {
-    Assert (simulator->particle_world.get() != nullptr,
-            ExcMessage("You can not call this function if there is no particle world."));
-    return *simulator->particle_world.get();
+    return simulator->particle_managers.size();
+  }
+
+
+
+  template <int dim>
+  const Particle::Manager<dim> &
+  SimulatorAccess<dim>::get_particle_manager(unsigned int particle_manager_index) const
+  {
+    AssertThrow (particle_manager_index < simulator->particle_managers.size(), ExcInternalError());
+    return simulator->particle_managers[particle_manager_index];
+  }
+
+
+
+  template <int dim>
+  Particle::Manager<dim> &
+  SimulatorAccess<dim>::get_particle_manager(unsigned int particle_manager_index)
+  {
+    AssertThrow (particle_manager_index < simulator->particle_managers.size(), ExcInternalError());
+    return const_cast<Particle::Manager<dim>&>(simulator->particle_managers[particle_manager_index]);
   }
 
 
@@ -856,12 +929,50 @@ namespace aspect
 
 
   template <int dim>
+  const PrescribedSolution::Manager<dim> &
+  SimulatorAccess<dim>::get_prescribed_solution () const
+  {
+    return simulator->prescribed_solution_manager;
+  }
+
+
+
+  template <int dim>
   RotationProperties<dim>
   SimulatorAccess<dim>::compute_net_angular_momentum(const bool use_constant_density,
                                                      const LinearAlgebra::BlockVector &solution,
                                                      const bool limit_to_top_faces) const
   {
     return simulator->compute_net_angular_momentum(use_constant_density, solution, limit_to_top_faces);
+  }
+
+
+
+  template <int dim>
+  double
+  SimulatorAccess<dim>::normalize_pressure(LinearAlgebra::BlockVector &vector) const
+  {
+    return simulator->normalize_pressure(vector);
+  }
+
+
+
+  template <int dim>
+  void
+  SimulatorAccess<dim>::denormalize_pressure(const double                      pressure_adjustment,
+                                             LinearAlgebra::BlockVector       &vector) const
+  {
+    simulator->denormalize_pressure(pressure_adjustment, vector);
+  }
+
+
+
+  template <int dim>
+  void
+  SimulatorAccess<dim>::remove_nullspace(LinearAlgebra::BlockVector &solution,
+                                         LinearAlgebra::BlockVector &distributed_stokes_solution) const
+  {
+    simulator->remove_nullspace(solution, distributed_stokes_solution);
   }
 }
 

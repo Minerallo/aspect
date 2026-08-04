@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2019 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -42,35 +42,33 @@ namespace aspect
       if (this->get_dof_handler().n_locally_owned_dofs() == 0)
         return;
 
-      const Quadrature<dim> quadrature(this->get_fe().base_element(this->introspection().base_elements.compositional_fields).get_unit_support_points());
-      FEValues<dim> fe_values (this->get_mapping(),
-                               this->get_fe(),
-                               quadrature,
-                               update_quadrature_points | update_values);
-
-      // the values of the compositional fields are stored as block vectors for each field
-      // we have to extract them in this structure
-      std::vector<double> composition_values (quadrature.size());
-
+      const unsigned int dofs_per_cell = this->get_fe().dofs_per_cell;
+      std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
       for (const auto &cell : this->get_dof_handler().active_cell_iterators())
         if (cell->is_locally_owned())
           {
+            cell->get_dof_indices (local_dof_indices);
             bool refine = false;
 
             for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
               {
-                fe_values.reinit(cell);
-                fe_values[this->introspection().extractors.compositional_fields[c]].get_function_values (this->get_solution(),
-                    composition_values);
-
-                // if the composition exceeds the threshold, cell is marked for refinement
-                for (unsigned int j=0; j<this->get_fe().base_element(this->introspection().base_elements.compositional_fields).dofs_per_cell; ++j)
-                  if (composition_values[j] > composition_thresholds[c])
-                    {
-                      refine = true;
-                      break;
-                    }
+                const unsigned int component_idx = this->introspection().component_indices.compositional_fields[c];
+                for (unsigned int i=0; i<dofs_per_cell; ++i)
+                  {
+                    if (this->get_fe().system_to_component_index(i).first == component_idx)
+                      {
+                        const double composition_value = this->get_solution()[local_dof_indices[i]];
+                        // if the composition exceeds the threshold, cell is marked for refinement
+                        if (composition_value > composition_thresholds[c])
+                          {
+                            refine = true;
+                            break;
+                          }
+                      }
+                  }
+                if (refine)
+                  break;
               }
 
             if (refine)
@@ -93,8 +91,8 @@ namespace aspect
           prm.declare_entry("Compositional field thresholds",
                             "",
                             Patterns::List (Patterns::Double()),
-                            "A list of thresholds that every individual compositional "
-                            "field will be evaluated against.");
+                            "A list of thresholds, one for each compositional field "
+                            "to be evaluated against.");
         }
         prm.leave_subsection();
       }
@@ -115,7 +113,7 @@ namespace aspect
 
           AssertThrow (composition_thresholds.size() == this->n_compositional_fields(),
                        ExcMessage ("The number of thresholds given here must be "
-                                   "equal to the number of chosen refinement criteria."));
+                                   "equal to the number of compositional fields."));
         }
         prm.leave_subsection();
       }
@@ -132,8 +130,9 @@ namespace aspect
     ASPECT_REGISTER_MESH_REFINEMENT_CRITERION(CompositionThreshold,
                                               "composition threshold",
                                               "A mesh refinement criterion that computes refinement "
-                                              "indicators from the compositional fields. If any field "
-                                              "exceeds the threshold given in the input file, the cell "
-                                              "is marked for refinement.")
+                                              "indicators from the compositional fields. One threshold "
+                                              "per compositional is given in the input file, and if any "
+                                              "field exceeds its threshold, the cell is marked for "
+                                              "refinement.")
   }
 }

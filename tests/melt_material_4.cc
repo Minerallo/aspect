@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -33,9 +33,6 @@
 #include <deal.II/numerics/error_estimator.h>
 #include <deal.II/numerics/vector_tools.h>
 
-using namespace dealii;
-
-
 namespace aspect
 {
   template <int dim>
@@ -62,7 +59,7 @@ namespace aspect
           {
             const double y = in.position[i][dim-1] + 0.1;
             out.viscosities[i] = 3.0/4.0;
-            out.densities[i] = 2 + std::pow(y,2)/0.001;
+            out.densities[i] = 2 + Utilities::fixed_power<2>(y)/0.001;
             out.thermal_expansion_coefficients[i] = 1.0;
             out.specific_heat[i] = 1.0;
             out.thermal_conductivities[i] = 1.0;
@@ -72,7 +69,8 @@ namespace aspect
           }
 
         // fill melt outputs if they exist
-        aspect::MaterialModel::MeltOutputs<dim> *melt_out = out.template get_additional_output<aspect::MaterialModel::MeltOutputs<dim>>();
+        const std::shared_ptr<aspect::MaterialModel::MeltOutputs<dim>> melt_out
+          = out.template get_additional_output_object<aspect::MaterialModel::MeltOutputs<dim>>();
 
         if (melt_out != nullptr)
           {
@@ -107,12 +105,12 @@ namespace aspect
         double x = p(0);
         double y = p(1);
 
-        const double porosity = 1.0 - 0.001/std::pow(y+0.1,2.0);
+        const double porosity = 1.0 - 0.001/Utilities::fixed_power<2>(y+0.1);
         const double p_f = 1.0 - (y+0.1);
         const double p_s = 0.0;
 
         values[0]=0;  // x vel
-        values[1]=0.5 * std::pow(y+0.1, 2.0);  // y vel
+        values[1]=0.5 * Utilities::fixed_power<2>(y+0.1);  // y vel
         values[2]=p_f;  // p_f
         values[3]=(1.0-porosity)*(p_s-p_f); // p_c
         values[4]=-1; // u_f_x

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018-2024 by the authors of the World Builder code.
+  Copyright (C) 2018-2026 by the authors of the World Builder code.
 
   This file is part of the World Builder.
 
@@ -69,6 +69,17 @@ namespace WorldBuilder
     bool
     polygon_contains_point_implementation(const std::vector<Point<2> > &point_list,
                                           const Point<2> &point);
+
+    /**
+     * computes Bary center of a polygon.
+     */
+    Point<2> polygon_bary_center(const std::vector<Point<2> > &point_list);
+
+    /**
+     * return a vector with a polygon where the points have been scaled according to
+     * the provided scaling factor.
+     */
+    std::vector<Point<2>> get_scaled_polygon(const std::vector<Point<2>> &polygon, double scaling_factor);
 
 
     /**
@@ -142,7 +153,7 @@ namespace WorldBuilder
     /**
      * Convert point to array
      */
-    template<int dim>
+    template<unsigned int dim>
     std::array<double,dim> convert_point_to_array(const Point<dim> &point);
 
     /**
@@ -202,14 +213,14 @@ namespace WorldBuilder
         inline
         double operator() (const double x) const
         {
-          if (x >= 0 && x <= mx_size_min)
+          if (x >= 0. && x <= static_cast<double>(mx_size_min))
             {
-              const size_t idx = (size_t)x;
-              const double h = x-idx;
+              const size_t idx = static_cast<size_t>(x);
+              const double h = x-static_cast<double>(idx);
               return ((m[idx][0]*h + m[idx][1])*h + m[idx][2])*h + m[idx][3];
             }
-          const size_t idx = std::min((size_t)std::max( (int)x, (int)0),mx_size_min);
-          const double h = x-idx;
+          const size_t idx = std::min(static_cast<size_t>(std::max( static_cast<int>(x), static_cast<int>(0))),mx_size_min);
+          const double h = x-static_cast<double>(idx);
           return (m[idx][1]*h + m[idx][2])*h + m[idx][3];
         }
 
@@ -217,7 +228,7 @@ namespace WorldBuilder
         inline
         double operator() (const double x, const size_t idx, const double h) const
         {
-          return (x >= 0 && x <= mx_size_min)
+          return (x >= 0. && x <= static_cast<double>(mx_size_min))
                  ?
                  ((m[idx][0]*h + m[idx][1])*h + m[idx][2])*h + m[idx][3]
                  :
@@ -246,7 +257,7 @@ namespace WorldBuilder
         double value_outside (const size_t idx, const double h) const
         {
           WBAssert(idx <= mx_size_min, "Internal error: using value_inside outside the range of 0 to " << mx_size_min << ", but value was outside of this range: " << idx << ".");
-          WBAssert(!(idx + h >= 0 && idx + h <= 1.), "Internal error: using value_inside outside the range of 0 to " << mx_size_min << ", but value was outside of this range: " << idx + h << " (h=" << h << ", idx = " << idx << ").");
+          WBAssert(!(static_cast<double>(idx) + h >= 0 && static_cast<double>(idx) + h <= 1.), "Internal error: using value_inside outside the range of 0 to " << mx_size_min << ", but value was outside of this range: " << static_cast<double>(idx) + h << " (h=" << h << ", idx = " << idx << ").");
           return (m[idx][1]*h + m[idx][2])*h + m[idx][3];
         }
 
@@ -386,7 +397,7 @@ namespace WorldBuilder
      * when determining the location with respect to the curved plane.
      * \param spline_x the spline representing the x coordinate.
      * \param spline_y the spline representing the y coordinate.
-     * \param global_x_list This is a list of one dimensional coorindates, with zero or the
+     * \param global_x_list This is a list of one dimensional coordinates, with zero or the
      * amount of coordinates entries, used for interpolation. An empty list is interpreted
      * as a list filled with {0,1,2,...,number of coordinates}. Filling this list with other
      * values changes the returned section fraction. It allows for, for example, adding
@@ -486,6 +497,14 @@ namespace WorldBuilder
     */
     std::vector<double>
     calculate_effective_trench_and_plate_ages(std::vector<double> ridge_parameters, double distance_along_plane);
+
+    /*
+     * Returns the result of the multiplication of two 3*3 matrix,
+     * used in applying the random uniform distribution rotation matrix
+     * to a given orientation (rotation matrix)
+     */
+    std::array<std::array<double,3>,3>
+    multiply_3x3_matrices(const std::array<std::array<double,3>,3> mat1, std::array<std::array<double,3>,3> const mat2);
 
   } // namespace Utilities
 } // namespace WorldBuilder

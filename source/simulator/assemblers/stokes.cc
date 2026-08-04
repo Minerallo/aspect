@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2016 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2016 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -38,22 +38,15 @@ namespace aspect
       internal::Assembly::CopyData::StokesPreconditioner<dim> &data = dynamic_cast<internal::Assembly::CopyData::StokesPreconditioner<dim>&> (data_base);
 
       const Introspection<dim> &introspection = this->introspection();
-      const FiniteElement<dim> &fe = this->get_fe();
       const unsigned int stokes_dofs_per_cell = data.local_dof_indices.size();
       const unsigned int n_q_points           = scratch.finite_element_values.n_quadrature_points;
       const double pressure_scaling = this->get_pressure_scaling();
 
-      // First loop over all dofs and find those that are in the Stokes system
-      // save the component (pressure and dim velocities) each belongs to.
-      for (unsigned int i = 0, i_stokes = 0; i_stokes < stokes_dofs_per_cell; /*increment at end of loop*/)
-        {
-          if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
-            {
-              scratch.dof_component_indices[i_stokes] = fe.system_to_component_index(i).first;
-              ++i_stokes;
-            }
-          ++i;
-        }
+      const std::shared_ptr<const MaterialModel::PrescribedPlasticDilation<dim>>
+      prescribed_dilation =
+        this->get_parameters().enable_prescribed_dilation
+        ? scratch.material_model_outputs.template get_additional_output_object<MaterialModel::PrescribedPlasticDilation<dim>>()
+        : nullptr;
 
       // When using the Q1-Q1 equal order element, we need to compute the
       // projection of the Q1 pressure shape functions onto the constants
@@ -81,23 +74,20 @@ namespace aspect
           for (unsigned int q=0; q<n_q_points; ++q)
             area += scratch.finite_element_values.JxW(q);
 
-          for (unsigned int i=0, i_stokes=0; i_stokes<stokes_dofs_per_cell; /*increment at end of loop*/)
+          for (unsigned int i_stokes = 0; i_stokes < stokes_dofs_per_cell; ++i_stokes)
             {
-              if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
+              const unsigned int i = introspection.stokes_dof_info[i_stokes].local_dof_index;
+              double int_over_p = 0;
+
+              for (unsigned int q=0; q<n_q_points; ++q)
                 {
-                  double int_over_p = 0;
-
-                  for (unsigned int q=0; q<n_q_points; ++q)
-                    {
-                      int_over_p += scratch.finite_element_values[introspection.extractors.pressure].value(i,q)
-                                    *
-                                    scratch.finite_element_values.JxW(q);
-                    }
-
-                  average_pressure_shape_function[i_stokes] = int_over_p/area;
-                  ++i_stokes;
+                  int_over_p += scratch.finite_element_values[introspection.extractors.pressure].value(i,q)
+                                *
+                                scratch.finite_element_values.JxW(q);
                 }
-              ++i;
+
+              average_pressure_shape_function[i_stokes] = int_over_p/area;
+
             }
         }
 
@@ -105,19 +95,20 @@ namespace aspect
       // the preconditioner matrix
       for (unsigned int q = 0; q < n_q_points; ++q)
         {
-          for (unsigned int i = 0, i_stokes = 0; i_stokes < stokes_dofs_per_cell; /*increment at end of loop*/)
+          for (unsigned int i_stokes = 0; i_stokes < stokes_dofs_per_cell; ++i_stokes)
             {
-              if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
+              const unsigned int i = introspection.stokes_dof_info[i_stokes].local_dof_index;
+              if (this->get_parameters().use_full_A_block_preconditioner == false)
+                scratch.grads_phi_u[i_stokes] =
+                  scratch.finite_element_values[introspection.extractors
+                                                .velocities].symmetric_gradient(i, q);
+              scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection
+                                                                      .extractors.pressure].value(i, q);
+              if (this->get_parameters().use_bfbt == true)
                 {
-                  if (this->get_parameters().use_full_A_block_preconditioner == false)
-                    scratch.grads_phi_u[i_stokes] =
-                      scratch.finite_element_values[introspection.extractors
-                                                    .velocities].symmetric_gradient(i, q);
-                  scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection
-                                                                          .extractors.pressure].value(i, q);
-                  ++i_stokes;
+                  scratch.grad_phi_p[i_stokes]=scratch.finite_element_values[introspection.extractors.pressure].gradient(i,q);
+                  scratch.phi_u[i_stokes]=scratch.finite_element_values[introspection.extractors.velocities].value(i,q);
                 }
-              ++i;
             }
 
           const double eta = scratch.material_model_outputs.viscosities[q];
@@ -129,33 +120,58 @@ namespace aspect
             {
               for (unsigned int i = 0; i < stokes_dofs_per_cell; ++i)
                 for (unsigned int j = 0; j < stokes_dofs_per_cell; ++j)
-                  if (scratch.dof_component_indices[i] ==
-                      scratch.dof_component_indices[j])
+                  if (introspection.stokes_dof_info[i].component_index ==
+                      introspection.stokes_dof_info[j].component_index)
                     {
                       data.local_matrix(i, j) += ((2.0 * eta * (scratch.grads_phi_u[i]
                                                                 * scratch.grads_phi_u[j]))
-                                                  + one_over_eta * pressure_scaling
-                                                  * pressure_scaling
-                                                  * (scratch.phi_p[i]
-                                                     * scratch.phi_p[j]))
+                                                 )
                                                  * JxW;
                     }
 
+
+            }
+          if (this->get_parameters().use_bfbt == true)
+            {
+              const double sqrt_eta = std::sqrt(eta);
+              const unsigned int pressure_component_index = this->introspection().component_indices.pressure;
+
+              for (unsigned int i = 0; i < stokes_dofs_per_cell; ++i)
+                {
+                  for (unsigned int j = 0; j < stokes_dofs_per_cell; ++j)
+                    {
+
+
+                      // i and j are not pressures
+                      if (introspection.stokes_dof_info[i].component_index != pressure_component_index && introspection.stokes_dof_info[j].component_index != pressure_component_index)
+                        data.local_inverse_lumped_mass_matrix[i] += sqrt_eta*scalar_product(scratch.phi_u[i],scratch.phi_u[j])*JxW;
+
+
+                      // i and j are pressures
+                      if (introspection.stokes_dof_info[i].component_index == pressure_component_index && introspection.stokes_dof_info[j].component_index == pressure_component_index)
+                        data.local_matrix(i, j) += (
+                                                     1.0/sqrt_eta * pressure_scaling
+                                                     * pressure_scaling
+                                                     * (scratch.grad_phi_p[i]
+                                                        * scratch.grad_phi_p[j] + 1e-6*scratch.phi_p[i]*scratch.phi_p[j] ))
+                                                   * JxW;
+                    }
+                }
             }
           else
             {
-              const unsigned int pressure_component_index = this->introspection().component_indices.pressure;
               for (unsigned int i = 0; i < stokes_dofs_per_cell; ++i)
-                if (scratch.dof_component_indices[i] == pressure_component_index)
-                  for (unsigned int j = 0; j < stokes_dofs_per_cell; ++j)
-                    if (scratch.dof_component_indices[j] == pressure_component_index)
-                      {
-                        data.local_matrix(i, j) += (one_over_eta * pressure_scaling
-                                                    * pressure_scaling
-                                                    * (scratch.phi_p[i]
-                                                       * scratch.phi_p[j]))
-                                                   * JxW;
-                      }
+                for (unsigned int j = 0; j < stokes_dofs_per_cell; ++j)
+                  if (introspection.stokes_dof_info[i].component_index ==
+                      introspection.stokes_dof_info[j].component_index)
+                    {
+                      data.local_matrix(i, j) += (
+                                                   one_over_eta * pressure_scaling
+                                                   * pressure_scaling
+                                                   * (scratch.phi_p[i]
+                                                      * scratch.phi_p[j]))
+                                                 * JxW;
+                    }
             }
 
           // If we are using the equal order Q1-Q1 element, then we also need
@@ -181,7 +197,40 @@ namespace aspect
                                               * JxW;
                   }
             }
+
+          if (prescribed_dilation != nullptr)
+            {
+              for (unsigned int i=0; i<stokes_dofs_per_cell; ++i)
+                for (unsigned int j=0; j<stokes_dofs_per_cell; ++j)
+                  data.local_matrix(i,j) += prescribed_dilation->dilation_lhs_term[q]
+                                            * pressure_scaling * pressure_scaling
+                                            * scratch.phi_p[i] * scratch.phi_p[j]
+                                            * JxW;
+            }
         }
+    }
+
+
+
+    template <int dim>
+    void
+    StokesPreconditioner<dim>::
+    create_additional_material_model_outputs(MaterialModel::MaterialModelOutputs<dim> &outputs) const
+    {
+      const unsigned int n_points = outputs.n_evaluation_points();
+
+      if (this->get_parameters().enable_prescribed_dilation
+          && outputs.template has_additional_output_object<MaterialModel::PrescribedPlasticDilation<dim>>() == false)
+        {
+          outputs.additional_outputs.push_back(
+            std::make_unique<MaterialModel::PrescribedPlasticDilation<dim>>(n_points));
+        }
+
+      Assert(!this->get_parameters().enable_prescribed_dilation
+             ||
+             outputs.template get_additional_output_object<MaterialModel::PrescribedPlasticDilation<dim>>()->dilation_lhs_term.size()
+             == n_points, ExcInternalError());
+
     }
 
 
@@ -203,36 +252,18 @@ namespace aspect
       internal::Assembly::CopyData::StokesPreconditioner<dim> &data = dynamic_cast<internal::Assembly::CopyData::StokesPreconditioner<dim>&> (data_base);
 
       const Introspection<dim> &introspection = this->introspection();
-      const FiniteElement<dim> &fe = this->get_fe();
       const unsigned int stokes_dofs_per_cell = data.local_dof_indices.size();
       const unsigned int n_q_points           = scratch.finite_element_values.n_quadrature_points;
-
-      // First loop over all dofs and find those that are in the Stokes system
-      // save the component (pressure and dim velocities) each belongs to.
-      for (unsigned int i = 0, i_stokes = 0; i_stokes < stokes_dofs_per_cell; /*increment at end of loop*/)
-        {
-          if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
-            {
-              scratch.dof_component_indices[i_stokes] = fe.system_to_component_index(i).first;
-              ++i_stokes;
-            }
-          ++i;
-        }
 
       // Loop over all quadrature points and assemble their contributions to
       // the preconditioner matrix
       for (unsigned int q = 0; q < n_q_points; ++q)
         {
-          for (unsigned int i = 0, i_stokes = 0; i_stokes < stokes_dofs_per_cell; /*increment at end of loop*/)
+          for (unsigned int i_stokes = 0; i_stokes < stokes_dofs_per_cell; ++i_stokes)
             {
-              if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
-                {
-                  scratch.grads_phi_u[i_stokes] = scratch.finite_element_values[introspection.extractors.velocities].symmetric_gradient(i,q);
-                  scratch.div_phi_u[i_stokes]   = scratch.finite_element_values[introspection.extractors.velocities].divergence (i, q);
-
-                  ++i_stokes;
-                }
-              ++i;
+              const unsigned int i = introspection.stokes_dof_info[i_stokes].local_dof_index;
+              scratch.grads_phi_u[i_stokes] = scratch.finite_element_values[introspection.extractors.velocities].symmetric_gradient(i,q);
+              scratch.div_phi_u[i_stokes]   = scratch.finite_element_values[introspection.extractors.velocities].divergence (i, q);
             }
 
           const double eta_two_thirds = scratch.material_model_outputs.viscosities[q] * 2.0 / 3.0;
@@ -241,8 +272,8 @@ namespace aspect
 
           for (unsigned int i = 0; i < stokes_dofs_per_cell; ++i)
             for (unsigned int j = 0; j < stokes_dofs_per_cell; ++j)
-              if (scratch.dof_component_indices[i] ==
-                  scratch.dof_component_indices[j])
+              if (introspection.stokes_dof_info[i].component_index ==
+                  introspection.stokes_dof_info[j].component_index)
                 data.local_matrix(i, j) += (- eta_two_thirds * (scratch.div_phi_u[i] * scratch.div_phi_u[j])
                                            )
                                            * JxW;
@@ -261,24 +292,20 @@ namespace aspect
       internal::Assembly::CopyData::StokesSystem<dim> &data = dynamic_cast<internal::Assembly::CopyData::StokesSystem<dim>&> (data_base);
 
       const Introspection<dim> &introspection = this->introspection();
-      const FiniteElement<dim> &fe = this->get_fe();
       const unsigned int stokes_dofs_per_cell = data.local_dof_indices.size();
       const unsigned int n_q_points    = scratch.finite_element_values.n_quadrature_points;
       const double pressure_scaling = this->get_pressure_scaling();
 
-      const MaterialModel::AdditionalMaterialOutputsStokesRHS<dim>
-      *force = scratch.material_model_outputs.template get_additional_output<MaterialModel::AdditionalMaterialOutputsStokesRHS<dim>>();
+      const std::shared_ptr<const MaterialModel::AdditionalMaterialOutputsStokesRHS<dim>> force
+        = scratch.material_model_outputs.template get_additional_output_object<MaterialModel::AdditionalMaterialOutputsStokesRHS<dim>>();
 
-      const MaterialModel::ElasticOutputs<dim>
-      *elastic_outputs = scratch.material_model_outputs.template get_additional_output<MaterialModel::ElasticOutputs<dim>>();
+      const std::shared_ptr<const MaterialModel::ElasticOutputs<dim>> elastic_outputs
+        = scratch.material_model_outputs.template get_additional_output_object<MaterialModel::ElasticOutputs<dim>>();
 
-      const MaterialModel::PrescribedPlasticDilation<dim>
-      *prescribed_dilation =
-        (this->get_parameters().enable_prescribed_dilation)
-        ? scratch.material_model_outputs.template get_additional_output<MaterialModel::PrescribedPlasticDilation<dim>>()
-        : nullptr;
-
-      const bool material_model_is_compressible = (this->get_material_model().is_compressible());
+      const std::shared_ptr<const MaterialModel::PrescribedPlasticDilation<dim>> prescribed_dilation
+        = (this->get_parameters().enable_prescribed_dilation)
+          ? scratch.material_model_outputs.template get_additional_output_object<MaterialModel::PrescribedPlasticDilation<dim>>()
+          : nullptr;
 
       // When using the Q1-Q1 equal order element, we need to compute the
       // projection of the Q1 pressure shape functions onto the constants
@@ -306,51 +333,40 @@ namespace aspect
           for (unsigned int q=0; q<n_q_points; ++q)
             area += scratch.finite_element_values.JxW(q);
 
-          for (unsigned int i=0, i_stokes=0; i_stokes<stokes_dofs_per_cell; /*increment at end of loop*/)
+          for (unsigned int i_stokes = 0; i_stokes < stokes_dofs_per_cell; ++i_stokes)
             {
-              if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
+              const unsigned int i = introspection.stokes_dof_info[i_stokes].local_dof_index;
+              double int_over_p = 0;
+
+              for (unsigned int q=0; q<n_q_points; ++q)
                 {
-                  double int_over_p = 0;
-
-                  for (unsigned int q=0; q<n_q_points; ++q)
-                    {
-                      int_over_p += scratch.finite_element_values[introspection.extractors.pressure].value(i,q)
-                                    *
-                                    scratch.finite_element_values.JxW(q);
-                    }
-
-                  average_pressure_shape_function[i_stokes] = int_over_p/area;
-                  ++i_stokes;
+                  int_over_p += scratch.finite_element_values[introspection.extractors.pressure].value(i,q)
+                                *
+                                scratch.finite_element_values.JxW(q);
                 }
-              ++i;
+
+              average_pressure_shape_function[i_stokes] = int_over_p/area;
+
             }
         }
 
       // Next, do the integration of matrix and right hand side terms.
       for (unsigned int q=0; q<n_q_points; ++q)
         {
-          for (unsigned int i=0, i_stokes=0; i_stokes<stokes_dofs_per_cell; /*increment at end of loop*/)
+          for (unsigned int i_stokes = 0; i_stokes < stokes_dofs_per_cell; ++i_stokes)
             {
-              if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
+              const unsigned int i = introspection.stokes_dof_info[i_stokes].local_dof_index;
+              scratch.phi_u[i_stokes] = scratch.finite_element_values[introspection.extractors.velocities].value (i,q);
+              scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection.extractors.pressure].value (i, q);
+              if (scratch.rebuild_stokes_matrix)
                 {
-                  scratch.phi_u[i_stokes] = scratch.finite_element_values[introspection.extractors.velocities].value (i,q);
-                  scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection.extractors.pressure].value (i, q);
-                  if (scratch.rebuild_stokes_matrix)
-                    {
-                      scratch.grads_phi_u[i_stokes] = scratch.finite_element_values[introspection.extractors.velocities].symmetric_gradient(i,q);
-                      scratch.div_phi_u[i_stokes]   = scratch.finite_element_values[introspection.extractors.velocities].divergence (i, q);
-                    }
-                  else if (this->get_parameters().enable_elasticity)
-                    {
-                      scratch.grads_phi_u[i_stokes] = scratch.finite_element_values[introspection.extractors.velocities].symmetric_gradient(i,q);
-                    }
-                  else if (prescribed_dilation && !material_model_is_compressible)
-                    {
-                      scratch.div_phi_u[i_stokes]   = scratch.finite_element_values[introspection.extractors.velocities].divergence (i, q);
-                    }
-                  ++i_stokes;
+                  scratch.grads_phi_u[i_stokes] = scratch.finite_element_values[introspection.extractors.velocities].symmetric_gradient(i,q);
+                  scratch.div_phi_u[i_stokes]   = scratch.finite_element_values[introspection.extractors.velocities].divergence (i, q);
                 }
-              ++i;
+              else if (this->get_parameters().enable_elasticity)
+                {
+                  scratch.grads_phi_u[i_stokes] = scratch.finite_element_values[introspection.extractors.velocities].symmetric_gradient(i,q);
+                }
             }
 
 
@@ -385,25 +401,14 @@ namespace aspect
                                      * JxW;
 
               if (elastic_outputs != nullptr && this->get_parameters().enable_elasticity)
-                data.local_rhs(i) += (scalar_product(elastic_outputs->elastic_force[q],Tensor<2,dim>(scratch.grads_phi_u[i])))
+                data.local_rhs(i) += (elastic_outputs->elastic_force[q] * scratch.grads_phi_u[i])
                                      * JxW;
 
               if (prescribed_dilation != nullptr)
                 data.local_rhs(i) += (
-                                       // RHS of - (div u,q) = - (R,q)
                                        - pressure_scaling
-                                       * prescribed_dilation->dilation[q]
+                                       * prescribed_dilation->dilation_rhs_term[q]
                                        * scratch.phi_p[i]
-                                     ) * JxW;
-
-              // Only assemble this term if we are running incompressible, otherwise this term
-              // is already included on the LHS of the equation.
-              if (prescribed_dilation != nullptr && !material_model_is_compressible)
-                data.local_rhs(i) += (
-                                       // RHS of momentum eqn: - \int 2/3 eta R, div v
-                                       - 2.0 / 3.0 * eta
-                                       * prescribed_dilation->dilation[q]
-                                       * scratch.div_phi_u[i]
                                      ) * JxW;
 
               if (scratch.rebuild_stokes_matrix)
@@ -417,7 +422,14 @@ namespace aspect
                                                 // Note the negative sign to make this
                                                 // operator adjoint to the grad p term:
                                                 - (pressure_scaling *
-                                                   scratch.phi_p[i] * scratch.div_phi_u[j]))
+                                                   scratch.phi_p[i] * scratch.div_phi_u[j])
+                                                // assemble -\bar\alpha\alpha pq / eta^{ve}
+                                                // if plastic dilation is enabled
+                                                - (prescribed_dilation == nullptr ? 0.0 :
+                                                   pressure_scaling * pressure_scaling *
+                                                   prescribed_dilation->dilation_lhs_term[q] *
+                                                   scratch.phi_p[i] * scratch.phi_p[j])
+                                              )
                                               * JxW;
                   }
             }
@@ -451,7 +463,7 @@ namespace aspect
 
       // Stokes RHS:
       if (this->get_parameters().enable_additional_stokes_rhs
-          && outputs.template get_additional_output<MaterialModel::AdditionalMaterialOutputsStokesRHS<dim>>() == nullptr)
+          && outputs.template has_additional_output_object<MaterialModel::AdditionalMaterialOutputsStokesRHS<dim>>() == false)
         {
           outputs.additional_outputs.push_back(
             std::make_unique<MaterialModel::AdditionalMaterialOutputsStokesRHS<dim>> (n_points));
@@ -459,12 +471,12 @@ namespace aspect
 
       Assert(!this->get_parameters().enable_additional_stokes_rhs
              ||
-             outputs.template get_additional_output<MaterialModel::AdditionalMaterialOutputsStokesRHS<dim>>()->rhs_u.size()
+             outputs.template get_additional_output_object<MaterialModel::AdditionalMaterialOutputsStokesRHS<dim>>()->rhs_u.size()
              == n_points, ExcInternalError());
 
       // prescribed dilation:
       if (this->get_parameters().enable_prescribed_dilation
-          && outputs.template get_additional_output<MaterialModel::PrescribedPlasticDilation<dim>>() == nullptr)
+          && outputs.template has_additional_output_object<MaterialModel::PrescribedPlasticDilation<dim>>() == false)
         {
           outputs.additional_outputs.push_back(
             std::make_unique<MaterialModel::PrescribedPlasticDilation<dim>> (n_points));
@@ -472,12 +484,13 @@ namespace aspect
 
       Assert(!this->get_parameters().enable_prescribed_dilation
              ||
-             outputs.template get_additional_output<MaterialModel::PrescribedPlasticDilation<dim>>()->dilation.size()
-             == n_points, ExcInternalError());
+             (outputs.template get_additional_output_object<MaterialModel::PrescribedPlasticDilation<dim>>()->dilation_lhs_term.size() == n_points &&
+              outputs.template get_additional_output_object<MaterialModel::PrescribedPlasticDilation<dim>>()->dilation_rhs_term.size() == n_points),
+             ExcInternalError());
 
       // Elasticity:
       if ((this->get_parameters().enable_elasticity) &&
-          outputs.template get_additional_output<MaterialModel::ElasticOutputs<dim>>() == nullptr)
+          outputs.template has_additional_output_object<MaterialModel::ElasticOutputs<dim>>() == false)
         {
           outputs.additional_outputs.push_back(
             std::make_unique<MaterialModel::ElasticOutputs<dim>> (n_points));
@@ -485,7 +498,7 @@ namespace aspect
 
       Assert(!this->get_parameters().enable_elasticity
              ||
-             outputs.template get_additional_output<MaterialModel::ElasticOutputs<dim>>()->elastic_force.size()
+             outputs.template get_additional_output_object<MaterialModel::ElasticOutputs<dim>>()->elastic_force.size()
              == n_points, ExcInternalError());
     }
 
@@ -504,21 +517,15 @@ namespace aspect
         return;
 
       const Introspection<dim> &introspection = this->introspection();
-      const FiniteElement<dim> &fe = this->get_fe();
       const unsigned int stokes_dofs_per_cell = data.local_dof_indices.size();
       const unsigned int n_q_points    = scratch.finite_element_values.n_quadrature_points;
 
       for (unsigned int q=0; q<n_q_points; ++q)
         {
-          for (unsigned int i=0, i_stokes=0; i_stokes<stokes_dofs_per_cell; /*increment at end of loop*/)
+          for (unsigned int i_stokes = 0; i_stokes < stokes_dofs_per_cell; ++i_stokes)
             {
-              if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
-                {
-                  scratch.div_phi_u[i_stokes]   = scratch.finite_element_values[introspection.extractors.velocities].divergence (i, q);
-
-                  ++i_stokes;
-                }
-              ++i;
+              const unsigned int i = introspection.stokes_dof_info[i_stokes].local_dof_index;
+              scratch.div_phi_u[i_stokes]   = scratch.finite_element_values[introspection.extractors.velocities].divergence (i, q);
             }
 
           // Viscosity scalar
@@ -554,21 +561,16 @@ namespace aspect
              ExcInternalError());
 
       const Introspection<dim> &introspection = this->introspection();
-      const FiniteElement<dim> &fe = this->get_fe();
       const unsigned int stokes_dofs_per_cell = data.local_dof_indices.size();
       const unsigned int n_q_points    = scratch.finite_element_values.n_quadrature_points;
       const double pressure_scaling = this->get_pressure_scaling();
 
       for (unsigned int q=0; q<n_q_points; ++q)
         {
-          for (unsigned int i=0, i_stokes=0; i_stokes<stokes_dofs_per_cell; /*increment at end of loop*/)
+          for (unsigned int i_stokes = 0; i_stokes < stokes_dofs_per_cell; ++i_stokes)
             {
-              if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
-                {
-                  scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection.extractors.pressure].value (i, q);
-                  ++i_stokes;
-                }
-              ++i;
+              const unsigned int i = introspection.stokes_dof_info[i_stokes].local_dof_index;
+              scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection.extractors.pressure].value (i, q);
             }
 
           const Tensor<1,dim>
@@ -606,22 +608,17 @@ namespace aspect
         return;
 
       const Introspection<dim> &introspection = this->introspection();
-      const FiniteElement<dim> &fe = this->get_fe();
       const unsigned int stokes_dofs_per_cell = data.local_dof_indices.size();
       const unsigned int n_q_points    = scratch.finite_element_values.n_quadrature_points;
       const double pressure_scaling = this->get_pressure_scaling();
 
       for (unsigned int q=0; q<n_q_points; ++q)
         {
-          for (unsigned int i=0, i_stokes=0; i_stokes<stokes_dofs_per_cell; /*increment at end of loop*/)
+          for (unsigned int i_stokes = 0; i_stokes < stokes_dofs_per_cell; ++i_stokes)
             {
-              if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
-                {
-                  scratch.phi_u[i_stokes] = scratch.finite_element_values[introspection.extractors.velocities].value (i,q);
-                  scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection.extractors.pressure].value (i,q);
-                  ++i_stokes;
-                }
-              ++i;
+              const unsigned int i = introspection.stokes_dof_info[i_stokes].local_dof_index;
+              scratch.phi_u[i_stokes] = scratch.finite_element_values[introspection.extractors.velocities].value (i,q);
+              scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection.extractors.pressure].value (i,q);
             }
 
           const Tensor<1,dim>
@@ -662,21 +659,16 @@ namespace aspect
              ExcInternalError());
 
       const Introspection<dim> &introspection = this->introspection();
-      const FiniteElement<dim> &fe = this->get_fe();
       const unsigned int stokes_dofs_per_cell = data.local_dof_indices.size();
       const unsigned int n_q_points    = scratch.finite_element_values.n_quadrature_points;
       const double pressure_scaling = this->get_pressure_scaling();
 
       for (unsigned int q=0; q<n_q_points; ++q)
         {
-          for (unsigned int i=0, i_stokes=0; i_stokes<stokes_dofs_per_cell; /*increment at end of loop*/)
+          for (unsigned int i_stokes = 0; i_stokes < stokes_dofs_per_cell; ++i_stokes)
             {
-              if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
-                {
-                  scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection.extractors.pressure].value (i, q);
-                  ++i_stokes;
-                }
-              ++i;
+              const unsigned int i = introspection.stokes_dof_info[i_stokes].local_dof_index;
+              scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection.extractors.pressure].value (i, q);
             }
 
           const Tensor<1,dim>
@@ -722,7 +714,6 @@ namespace aspect
              ExcInternalError());
 
       const Introspection<dim> &introspection = this->introspection();
-      const FiniteElement<dim> &fe = this->get_fe();
       const unsigned int stokes_dofs_per_cell = data.local_dof_indices.size();
       const unsigned int n_q_points    = scratch.finite_element_values.n_quadrature_points;
       const double pressure_scaling = this->get_pressure_scaling();
@@ -747,14 +738,10 @@ namespace aspect
 
       for (unsigned int q=0; q<n_q_points; ++q)
         {
-          for (unsigned int i=0, i_stokes=0; i_stokes<stokes_dofs_per_cell; /*increment at end of loop*/)
+          for (unsigned int i_stokes = 0; i_stokes < stokes_dofs_per_cell; ++i_stokes)
             {
-              if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
-                {
-                  scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection.extractors.pressure].value (i, q);
-                  ++i_stokes;
-                }
-              ++i;
+              const unsigned int i = introspection.stokes_dof_info[i_stokes].local_dof_index;
+              scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection.extractors.pressure].value (i, q);
             }
 
           double drho_dt;
@@ -817,21 +804,16 @@ namespace aspect
              ExcInternalError());
 
       const Introspection<dim> &introspection = this->introspection();
-      const FiniteElement<dim> &fe = this->get_fe();
       const unsigned int stokes_dofs_per_cell = data.local_dof_indices.size();
       const unsigned int n_q_points    = scratch.finite_element_values.n_quadrature_points;
       const double pressure_scaling = this->get_pressure_scaling();
 
       for (unsigned int q=0; q<n_q_points; ++q)
         {
-          for (unsigned int i=0, i_stokes=0; i_stokes<stokes_dofs_per_cell; /*increment at end of loop*/)
+          for (unsigned int i_stokes = 0; i_stokes < stokes_dofs_per_cell; ++i_stokes)
             {
-              if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
-                {
-                  scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection.extractors.pressure].value (i, q);
-                  ++i_stokes;
-                }
-              ++i;
+              const unsigned int i = introspection.stokes_dof_info[i_stokes].local_dof_index;
+              scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection.extractors.pressure].value (i, q);
             }
 
           const Tensor<1,dim>
@@ -873,22 +855,20 @@ namespace aspect
       internal::Assembly::CopyData::StokesSystem<dim> &data = dynamic_cast<internal::Assembly::CopyData::StokesSystem<dim>&> (data_base);
 
       const Introspection<dim> &introspection = this->introspection();
-      const FiniteElement<dim> &fe = scratch.finite_element_values.get_fe();
 
       const unsigned int stokes_dofs_per_cell = data.local_dof_indices.size();
       const unsigned int n_q_points    = scratch.finite_element_values.n_quadrature_points;
 
       for (unsigned int q=0; q<n_q_points; ++q)
-        for (unsigned int i=0, i_stokes=0; i_stokes<stokes_dofs_per_cell; /*increment at end of loop*/)
-          {
-            if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
-              {
-                scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection.extractors.pressure].value (i, q);
-                data.local_pressure_shape_function_integrals(i_stokes) += scratch.phi_p[i_stokes] * scratch.finite_element_values.JxW(q);
-                ++i_stokes;
-              }
-            ++i;
-          }
+        {
+          const double JxW = scratch.finite_element_values.JxW(q);
+          for (unsigned int i_stokes = 0; i_stokes < stokes_dofs_per_cell; ++i_stokes)
+            {
+              const unsigned int i = introspection.stokes_dof_info[i_stokes].local_dof_index;
+              scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection.extractors.pressure].value (i, q);
+              data.local_pressure_shape_function_integrals(i_stokes) += scratch.phi_p[i_stokes] * JxW;
+            }
+        }
     }
 
 
@@ -902,7 +882,6 @@ namespace aspect
       internal::Assembly::CopyData::StokesSystem<dim> &data = dynamic_cast<internal::Assembly::CopyData::StokesSystem<dim>&> (data_base);
 
       const Introspection<dim> &introspection = this->introspection();
-      const FiniteElement<dim> &fe = scratch.finite_element_values.get_fe();
 
       // see if any of the faces are traction boundaries for which
       // we need to assemble force terms for the right hand side
@@ -910,9 +889,9 @@ namespace aspect
 
       const typename DoFHandler<dim>::face_iterator face = scratch.cell->face(scratch.face_number);
 
-      if (this->get_boundary_traction_manager().get_active_boundary_traction_names().find (face->boundary_id())
-          !=
-          this->get_boundary_traction_manager().get_active_boundary_traction_names().end())
+      const auto &traction_bis = this->get_boundary_traction_manager().get_prescribed_boundary_traction_indicators();
+
+      if (traction_bis.find(face->boundary_id()) != traction_bis.end())
         {
           for (unsigned int q=0; q<scratch.face_finite_element_values.n_quadrature_points; ++q)
             {
@@ -922,17 +901,51 @@ namespace aspect
                                      scratch.face_finite_element_values.quadrature_point(q),
                                      scratch.face_finite_element_values.normal_vector(q));
 
-              for (unsigned int i=0, i_stokes=0; i_stokes<stokes_dofs_per_cell; /*increment at end of loop*/)
+              const double JxW = scratch.face_finite_element_values.JxW(q);
+
+              for (unsigned int i_stokes = 0; i_stokes < stokes_dofs_per_cell; ++i_stokes)
                 {
-                  if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
-                    {
-                      data.local_rhs(i_stokes) += scratch.face_finite_element_values[introspection.extractors.velocities].value(i,q) *
-                                                  traction *
-                                                  scratch.face_finite_element_values.JxW(q);
-                      ++i_stokes;
-                    }
-                  ++i;
+                  const unsigned int i = introspection.stokes_dof_info[i_stokes].local_dof_index;
+                  data.local_rhs(i_stokes) += scratch.face_finite_element_values[introspection.extractors.velocities].value(i,q) *
+                                              traction * JxW;
+
                 }
+            }
+        }
+    }
+
+    template <int dim>
+    void
+    StokesPrescribedDilation<dim>::
+    execute (internal::Assembly::Scratch::ScratchBase<dim>   &scratch_base,
+             internal::Assembly::CopyData::CopyDataBase<dim> &data_base) const
+    {
+      internal::Assembly::Scratch::StokesSystem<dim> &scratch = dynamic_cast<internal::Assembly::Scratch::StokesSystem<dim>&> (scratch_base);
+      internal::Assembly::CopyData::StokesSystem<dim> &data = dynamic_cast<internal::Assembly::CopyData::StokesSystem<dim>&> (data_base);
+
+      const Introspection<dim> &introspection = this->introspection();
+      const FiniteElement<dim> &fe = this->get_fe();
+      const unsigned int stokes_dofs_per_cell = data.local_dof_indices.size();
+      const unsigned int n_q_points    = scratch.finite_element_values.n_quadrature_points;
+      const double pressure_scaling = this->get_pressure_scaling();
+
+      const PrescribedDilation::Manager<dim> &prescribed_dilation = this->get_prescribed_dilation_manager();
+
+      PrescribedDilation::PrescribedDilationOutputs<dim> out (n_q_points);
+      prescribed_dilation.evaluate (scratch.material_model_inputs, out);
+
+      for (unsigned int q=0; q<n_q_points; ++q)
+        {
+          const double JxW = scratch.finite_element_values.JxW(q);
+          for (unsigned int i=0, i_stokes=0; i_stokes<stokes_dofs_per_cell; /*increment at end of loop*/)
+            {
+              if (introspection.is_stokes_component(fe.system_to_component_index(i).first))
+                {
+                  scratch.phi_p[i_stokes] = scratch.finite_element_values[introspection.extractors.pressure].value (i, q);
+                  data.local_rhs(i_stokes) += -pressure_scaling * out.dilation[q] * scratch.phi_p[i_stokes]*JxW;
+                  ++i_stokes;
+                }
+              ++i;
             }
         }
     }
@@ -955,6 +968,7 @@ namespace aspect
   template class StokesHydrostaticCompressionTerm<dim>; \
   template class StokesProjectedDensityFieldTerm<dim>; \
   template class StokesPressureRHSCompatibilityModification<dim>; \
+  template class StokesPrescribedDilation<dim>; \
   template class StokesBoundaryTraction<dim>;
 
     ASPECT_INSTANTIATE(INSTANTIATE)

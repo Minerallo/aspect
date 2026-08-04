@@ -5,7 +5,7 @@ set End time                               = 0
 set Start time                             = 0
 set Adiabatic surface temperature          = 0
 set Surface pressure                       = 0
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set Nonlinear solver scheme                = single Advection, single Stokes
 
 subsection Boundary temperature model
@@ -82,11 +82,18 @@ subsection Postprocess
   end
 
   subsection Particles
-    set Number of particles = 100
     set Time between data output = 70
     set Data output format = none
-    set List of particle properties = initial composition
-    set Interpolation scheme = cell average
-    set Update ghost particles = true
+  end
+end
+
+subsection Particles
+  set List of particle properties = initial composition
+  set Interpolation scheme = cell average
+
+  subsection Generator
+    subsection Random uniform
+      set Number of particles = 100
+    end
   end
 end

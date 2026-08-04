@@ -10,7 +10,7 @@
 set Dimension                              = 2
 set Start time                             = 0
 set End time                               = 20
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set Output directory                       = output-composition-active-particles
 
 subsection Geometry model
@@ -38,7 +38,6 @@ subsection Boundary velocity model
 
   subsection Function
     set Variable names      = x,z,t
-    set Function constants  = pi=3.1415926
     set Function expression = if(x>1+sin(0.5*pi*t), 1, -1); 0
   end
 end
@@ -82,18 +81,17 @@ subsection Postprocess
   set List of postprocessors = visualization, temperature statistics, composition statistics,particles
 
   subsection Visualization
-    set List of output variables = density
+    set List of output variables = material properties
     set Time between graphical output = 0.1
+
+    subsection Material properties
+      set List of material properties = density
+    end
   end
 
   subsection Particles
-    set Number of particles = 100000
     set Time between data output = 0
     set Data output format = vtu
-    set List of particle properties = velocity, initial composition
-    set Interpolation scheme = cell average
-    set Update ghost particles = true
-    set Particle generator name = random uniform
   end
 end
 
@@ -115,5 +113,17 @@ subsection Initial composition model
   subsection Function
     set Variable names      = x,y
     set Function expression = if(y<0.2, 1, 0) ; if(y>0.8, 1, 0)
+  end
+end
+
+subsection Particles
+  set List of particle properties = velocity, initial composition
+  set Interpolation scheme = cell average
+  set Particle generator name = random uniform
+
+  subsection Generator
+    subsection Random uniform
+      set Number of particles = 100000
+    end
   end
 end

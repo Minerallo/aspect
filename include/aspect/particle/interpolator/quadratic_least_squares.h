@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2019 - 2022-2020 by the authors of the ASPECT code.
+ Copyright (C) 2019 - 2024-2020 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -24,7 +24,6 @@
 #include <aspect/particle/interpolator/interface.h>
 #include <aspect/particle/interpolator/cell_average.h>
 #include <aspect/simulator_access.h>
-#include <deal.II/lac/lapack_full_matrix.h>
 
 namespace aspect
 {

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2014 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2014 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -24,6 +24,7 @@
 
 #include <aspect/gravity_model/interface.h>
 #include <aspect/simulator_access.h>
+#include <aspect/utilities.h>
 
 #include <deal.II/base/parsed_function.h>
 
@@ -31,8 +32,6 @@ namespace aspect
 {
   namespace GravityModel
   {
-    using namespace dealii;
-
     /**
      * A class that implements gravity based on a functional description
      * provided in the input file.
@@ -62,10 +61,7 @@ namespace aspect
         Tensor<1,dim> gravity_vector (const Point<dim> &position) const override;
 
         /**
-         * Declare the parameters this class takes through input files. The
-         * default implementation of this function does not describe any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
+         * Declare the parameters this class takes through input files.
          */
         static
         void
@@ -73,9 +69,6 @@ namespace aspect
 
         /**
          * Read the parameters this class declares from the parameter file.
-         * The default implementation of this function does not read any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
          */
         void
         parse_parameters (ParameterHandler &prm) override;
@@ -85,6 +78,14 @@ namespace aspect
          * A function object representing the gravity.
          */
         Functions::ParsedFunction<dim> function;
+
+        /**
+         * The coordinate representation to evaluate the function. Possible
+         * choices are depth, cartesian and spherical.
+         *
+         * This variable is read from the parameter file through a parameter called 'Coordinate system'.
+         */
+        Utilities::Coordinates::CoordinateSystem coordinate_system;
     };
   }
 }

@@ -10,7 +10,7 @@
 set Additional shared libraries            = ./plugin/libvankeken_subduction.so
 set Dimension                              = 2
 set Output directory                       = vankeken-output
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set Pressure normalization                 = no
 set Surface pressure                       = 0
 set Use conduction timestep                = true
@@ -149,9 +149,13 @@ subsection Postprocess
   set List of postprocessors = visualization, temperature statistics, velocity statistics
 
   subsection Visualization
-    set List of output variables = density, viscosity, strain rate, stress second invariant, heat flux map, depth
+    set List of output variables = material properties, strain rate, stress second invariant, heat flux map, depth
     set Output format = vtu
     set Interpolate output = true
     set Time between graphical output = 1e7
+
+    subsection Material properties
+      set List of material properties = density, viscosity
+    end
   end
 end

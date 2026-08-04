@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2016 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2016 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -28,8 +28,6 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
   /**
    * A structure to describe everything necessary to define a single variable
    * of the finite element system in isolation. It groups the FiniteElement<dim> with other
@@ -194,9 +192,16 @@ namespace aspect
 
       /**
        * Return the variable with name @p name. Throws an exception if this
-       * variable does not exist.
+       * variable does not exist. If more than one variable with the same name
+       * exists, return the first one. Use variables_with_name() if you want
+       * to access all of them.
        */
       const FEVariable<dim> &variable(const std::string &name) const;
+
+      /**
+       * Return a vector of pointers of all variables with name @p name.
+       */
+      std::vector<const FEVariable<dim>*> variables_with_name(const std::string &name) const;
 
       /**
        * Returns true if the variable with @p name exists in the list of

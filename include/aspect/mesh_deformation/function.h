@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2018 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -24,16 +24,21 @@
 
 #include <aspect/mesh_deformation/interface.h>
 #include <aspect/simulator_access.h>
+#include <aspect/utilities.h>
 
 #include <deal.II/base/parsed_function.h>
 
 namespace aspect
 {
-  using namespace dealii;
-
   namespace MeshDeformation
   {
-    template<int dim>
+    /**
+     * A class that represents a mesh deformation function that can be
+     * prescribed on the boundary of the domain.
+     *
+     * @ingroup MeshDeformation
+     */
+    template <int dim>
     class BoundaryFunction : public Interface<dim>, public SimulatorAccess<dim>
     {
       public:
@@ -56,7 +61,7 @@ namespace aspect
         void
         compute_velocity_constraints_on_boundary(const DoFHandler<dim> &mesh_deformation_dof_handler,
                                                  AffineConstraints<double> &mesh_velocity_constraints,
-                                                 const std::set<types::boundary_id> &boundary_id) const override;
+                                                 const std::set<types::boundary_id> &boundary_ids) const override;
 
         /**
          * Returns whether or not the plugin requires surface stabilization
@@ -79,6 +84,12 @@ namespace aspect
          * A function object representing the mesh deformation.
          */
         Functions::ParsedFunction<dim> function;
+
+        /**
+         * The coordinate representation to evaluate the function. Possible
+         * choices are depth, cartesian and spherical.
+         */
+        Utilities::Coordinates::CoordinateSystem coordinate_system;
     };
   }
 }

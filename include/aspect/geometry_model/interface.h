@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -46,8 +46,6 @@ namespace aspect
    */
   namespace GeometryModel
   {
-    using namespace dealii;
-
     /**
      * Base class for classes that describe particular geometries for the
      * domain. These classes must also be able to create coarse meshes and
@@ -56,22 +54,9 @@ namespace aspect
      * @ingroup GeometryModels
      */
     template <int dim>
-    class Interface
+    class Interface : public Plugins::InterfaceBase
     {
       public:
-        /**
-         * Destructor. Made virtual to enforce that derived classes also have
-         * virtual destructors.
-         */
-        virtual ~Interface() = default;
-
-        /**
-         * Initialization function. This function is called once at the
-         * beginning of the program after parse_parameters is run and after
-         * the SimulatorAccess (if applicable) is initialized.
-         */
-        virtual void initialize ();
-
         /**
          * Generate a coarse mesh for the geometry described by this class.
          */
@@ -113,9 +98,9 @@ namespace aspect
          * @note Implementations of this function in derived classes can
          * only compute the depth with regard to the <i>reference
          * configuration</i> of the geometry, i.e., the geometry initially
-         * created. If you are using a dynamic topography in your models
-         * that changes in every time step, or if you apply initial
-         * topography to your model, then the <i>actual</i> depth
+         * created with initial topography or not.
+         * If you are using a dynamic topography in your models
+         * that changes in every time step, then the <i>actual</i> depth
          * of a point with regard to this dynamic topography will not
          * match the value this function returns. This is so because
          * computing the actual depth is difficult: In parallel computations,
@@ -162,18 +147,18 @@ namespace aspect
         aspect::Utilities::Coordinates::CoordinateSystem natural_coordinate_system() const = 0;
 
         /**
-         * Takes the Cartesian points (x,z or x,y,z) and returns standardized
-         * coordinates which are most 'natural' to the geometry model. For a box
-         * this will  be (x,z) in 2d or (x,y,z) in 3d, and for a spheroid geometry
-         * model it  will be (radius, longitude) in 2d and (radius, longitude,
-         * latitude) in 3d.
+         * Takes the Cartesian points (`(x,z)` or `(x,y,z)`) and returns standardized
+         * coordinates which are most "natural" to the geometry model. For a box
+         * this will be `(x,z)` in 2d, or `(x,y,z)` in 3d, and for a spheroid geometry
+         * model it will be `(radius, longitude)` in 2d, and `(radius, longitude,
+         * latitude)` in 3d.
          */
         virtual
         std::array<double,dim> cartesian_to_natural_coordinates(const Point<dim> &position) const;
 
         /**
-         * Undoes the action of cartesian_to_natural_coordinates, and turns the
-         * coordinate system which is most 'natural' to the geometry model into
+         * Undoes the action of cartesian_to_natural_coordinates(), and turns the
+         * coordinate system which is most "natural" to the geometry model into
          * Cartesian coordinates.
          */
         virtual
@@ -359,26 +344,6 @@ namespace aspect
         virtual
         bool
         point_is_in_domain(const Point<dim> &p) const = 0;
-
-        /**
-         * Declare the parameters this class takes through input files. The
-         * default implementation of this function does not describe any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
-         */
-        static
-        void
-        declare_parameters (ParameterHandler &prm);
-
-        /**
-         * Read the parameters this class declares from the parameter file.
-         * The default implementation of this function does not read any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
-         */
-        virtual
-        void
-        parse_parameters (ParameterHandler &prm);
 
         /**
          * Collects periodic boundary constraints for the given geometry

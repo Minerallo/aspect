@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2016 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2016 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -44,6 +44,13 @@ namespace aspect
       if (initialized)
         return;
 
+      // The simulator only keeps the initial conditions around for
+      // the first time step. As a consequence, we have to save a
+      // shared pointer to that object ourselves the first time we get
+      // here.
+      if (initial_composition_manager == nullptr)
+        initial_composition_manager = this->get_initial_composition_manager_pointer();
+
       temperatures.resize(n_points, numbers::signaling_nan<double>());
       pressures.resize(n_points, numbers::signaling_nan<double>());
       densities.resize(n_points, numbers::signaling_nan<double>());
@@ -54,27 +61,55 @@ namespace aspect
       MaterialModel::MaterialModelOutputs<dim> out(1, this->n_compositional_fields());
       this->get_material_model().create_additional_named_outputs (out);
 
-      MaterialModel::PrescribedTemperatureOutputs<dim> *prescribed_temperature_out
-        = out.template get_additional_output<MaterialModel::PrescribedTemperatureOutputs<dim>>();
+      const std::shared_ptr<MaterialModel::PrescribedTemperatureOutputs<dim>> prescribed_temperature_out
+        = out.template get_additional_output_object<MaterialModel::PrescribedTemperatureOutputs<dim>>();
 
       // check if the material model computes prescribed temperature outputs
-      AssertThrow(prescribed_temperature_out != NULL,
+      AssertThrow(prescribed_temperature_out != nullptr,
                   ExcMessage("The material model you use does not provide "
                              "PrescribedTemperatureOutputs, which is required "
                              "for this adiabatic conditions plugin."));
 
-      const std::vector<unsigned int> entropy_indices = this->introspection().get_indices_for_fields_of_type(CompositionalFieldDescription::entropy);
+      const std::vector<unsigned int> &entropy_indices = this->introspection().get_indices_for_fields_of_type(CompositionalFieldDescription::entropy);
 
-      AssertThrow(entropy_indices.size() == 1,
+      AssertThrow(entropy_indices.size() >= 1,
                   ExcMessage("The 'compute entropy' adiabatic conditions plugin "
-                             "requires exactly one field of type 'entropy'."));
+                             "requires at least one field of type 'entropy'."));
 
-      // Constant properties on the reference profile
       // We only need the material model to compute the density
+      // and prescribed temperature. Unfortunately 'additional_outputs' computes
+      // a lot of other outputs as well, but we have currently no way to prevent this.
       in.requested_properties = MaterialModel::MaterialProperties::density | MaterialModel::MaterialProperties::additional_outputs;
+
+      // No deformation on the reference profile
       in.velocity[0] = Tensor <1,dim> ();
-      // The entropy along an adiabat is constant (equals the surface entropy)
-      in.composition[0][entropy_indices[0]] = surface_entropy;
+      in.strain_rate[0] = SymmetricTensor<2,dim>();
+
+      // Strictly speaking the temperature on the adiabat should be defined by the pressure
+      // and entropy alone. However, we only compute the temperature in the call to the material
+      // model below. This is a problem if we use multiple material models via a compositing
+      // material model. We cannot copy the computed temperature into the MaterialModelInputs
+      // until after all material models have been evaluated, and material models that do not
+      // rely on entropy will access the temperature beforehand to compute their properties.
+      // Therefore, we provide a reasonable temperature guess anyway. It is important to note
+      // that all properties that are relevant for the equation of state will be provided by
+      // the entropy material model, and will therefore not be affected by this temperature.
+      in.temperature[0] = this->get_adiabatic_surface_temperature();
+
+      // Set all chemical composition to the initial composition, except the entropies, which
+      // are set to the surface entropy (since entropy is constant along an adiabat).
+      // Note, that if there a multiple entropy components they could have different entropies.
+      // However, since we are only interested in setting the
+      // equilibrated entropy, we do not need to compute the individual entropies for all components,
+      // and instead set all components to the equilibrated value.
+      // TODO : provide more ways to specify compositional fields like in compute_profile.cc
+      for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
+        {
+          if (this->introspection().get_composition_descriptions()[c].type == CompositionalFieldDescription::entropy)
+            in.composition[0][c] = surface_entropy;
+          else
+            in.composition[0][c] = initial_composition_manager->initial_composition(this->get_geometry_model().representative_point(0), c);
+        }
 
       // Check whether gravity is pointing up / out or down / in. In the normal case it should
       // point down / in and therefore gravity should be positive, leading to increasing
@@ -111,7 +146,7 @@ namespace aspect
               pressures[i] = pressures[i-1] + density * gravity * delta_z;
             }
 
-          const double z = double(i)/double(n_points-1)*this->get_geometry_model().maximal_depth();
+          const double z = static_cast<double>(i)/static_cast<double>(n_points-1)*this->get_geometry_model().maximal_depth();
           const Point<dim> representative_point = this->get_geometry_model().representative_point (z);
 
           in.position[0] = representative_point;
@@ -120,6 +155,7 @@ namespace aspect
 
           densities[i] = out.densities[0];
           temperatures[i] = prescribed_temperature_out->prescribed_temperature_outputs[0];
+          in.temperature[0] = temperatures[i];
         }
 
       if (gravity_direction == 1 && this->get_surface_pressure() >= 0)
@@ -140,7 +176,6 @@ namespace aspect
       Assert (*std::min_element (temperatures.begin(), temperatures.end()) >=
               -std::numeric_limits<double>::epsilon() * temperatures.size(),
               ExcMessage("Adiabatic ComputeProfile encountered a negative temperature."));
-
 
       initialized = true;
     }
@@ -226,19 +261,26 @@ namespace aspect
           return property.front();
         }
 
-      const double floating_index = z/delta_z;
-      const unsigned int i = static_cast<unsigned int>(floating_index);
+      const double normalized_distance_from_surface = z/delta_z;
+      // This value is index of the point immediately above the depth z
+      // It is also the normalized distance from the surface to the point at index i.
+      const unsigned int i = static_cast<unsigned int>(normalized_distance_from_surface);
 
-      // If p is close to an existing value use that one. This prevents
-      // asking for values at i+1 while initializing i+1 (when p is at the
-      // depth of index i).
-      if (std::abs(floating_index-std::floor(floating_index+0.5)) < 1e-6)
+      // Check if p is close to, and immediately beyond, an existing value.
+      // If so, use that one. This prevents asking for values at i+1 while
+      // initializing i+1 (when p is at the depth of index i).
+
+      // This value is negative if it is closer to i+1 than to i.
+      // It is positive if it is closer to i than to i+1 or it is
+      // larger than i+1.
+      const double normalized_distance_to_closest_profile_point = normalized_distance_from_surface-std::floor(normalized_distance_from_surface+0.5);
+      if (normalized_distance_to_closest_profile_point >=0.0 && normalized_distance_to_closest_profile_point < 1e-6)
         return property[i];
 
       Assert (i+1 < property.size(), ExcInternalError());
 
       // now do the linear interpolation
-      const double d = floating_index - i;
+      const double d = normalized_distance_from_surface - i;
       Assert ((d>=0) && (d<=1), ExcInternalError());
 
       return d*property[i+1] + (1.-d)*property[i];

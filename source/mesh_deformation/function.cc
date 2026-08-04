@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2018 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -20,6 +20,7 @@
 
 
 #include <aspect/mesh_deformation/function.h>
+#include <aspect/geometry_model/interface.h>
 
 #include <deal.II/numerics/vector_tools.h>
 
@@ -63,11 +64,31 @@ namespace aspect
     {
       // Loop over all boundary indicators to set the velocity constraints
       for (const auto boundary_id : boundary_ids)
-        VectorTools::interpolate_boundary_values (this->get_mapping(),
-                                                  mesh_deformation_dof_handler,
-                                                  boundary_id,
-                                                  function,
-                                                  mesh_velocity_constraints);
+        {
+          Utilities::VectorFunctionFromVelocityFunctionObject<dim> vel
+          (dim,
+           [&] (const dealii::Point<dim> &x) -> Tensor<1,dim>
+          {
+            Tensor<1,dim> velocity;
+
+            // convert the position into the selected coordinate system
+            const Utilities::NaturalCoordinate<dim> point = this->get_geometry_model().cartesian_to_other_coordinates(x, coordinate_system);
+
+            for (unsigned int d=0; d<dim; ++d)
+              velocity[d] = function.value(Utilities::convert_array_to_point<dim>(point.get_coordinates()), d);
+
+            if (this->convert_output_to_years())
+              velocity /= year_in_seconds;
+
+            return velocity;
+          });
+
+          VectorTools::interpolate_boundary_values (this->get_mapping(),
+                                                    mesh_deformation_dof_handler,
+                                                    boundary_id,
+                                                    vel,
+                                                    mesh_velocity_constraints);
+        }
     }
 
 
@@ -89,6 +110,16 @@ namespace aspect
       {
         prm.enter_subsection ("Boundary function");
         {
+          prm.declare_entry ("Coordinate system", "cartesian",
+                             Patterns::Selection ("cartesian|spherical|depth"),
+                             "A selection that determines the assumed coordinate "
+                             "system for the function variables. Allowed values "
+                             "are `cartesian', `spherical', and `depth'. `spherical' coordinates "
+                             "are interpreted as r,phi or r,phi,theta in 2d/3d "
+                             "respectively with theta being the polar angle. `depth' "
+                             "will create a function, in which only the first "
+                             "parameter is non-zero, which is interpreted to "
+                             "be the depth of the point.");
           Functions::ParsedFunction<dim>::declare_parameters (prm, dim);
         }
         prm.leave_subsection();
@@ -117,6 +148,8 @@ namespace aspect
                         << "is shown below.\n";
               throw;
             }
+
+          coordinate_system = Utilities::Coordinates::string_to_coordinate_system(prm.get("Coordinate system"));
         }
         prm.leave_subsection();
       }
@@ -139,9 +172,9 @@ namespace aspect
                                            "deformation velocity, i.e. the return value of "
                                            "this plugin is later multiplied by the time step length "
                                            "to compute the displacement increment in this time step. "
-                                           "Although the function's time variable is interpreted as "
-                                           "years when Use years in output instead of seconds is set to true, "
-                                           "the boundary deformation velocity should still be given "
+                                           "The function's time variable is interpreted as "
+                                           "years when Use years instead of seconds is set to true, "
+                                           "as is the boundary deformation velocity. Otherwise it should be given "
                                            "in m/s. The format of the "
                                            "functions follows the syntax understood by the "
                                            "muparser library, see {ref}\\`sec:run-aspect:parameters-overview:muparser-format\\`.")

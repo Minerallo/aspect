@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2014 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2014 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -30,8 +30,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     /**
      * A material model that applies a given constant viscosity in the lithosphere.
      * Viscosity below this is taken from a ''base model'' chosen from any of the
@@ -77,10 +75,15 @@ namespace aspect
          */
         bool is_compressible () const override;
 
+        void
+        create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const override;
+
       private:
 
         /**
          * This parameter gives the viscosity set within the lithosphere.
+         *
+         * This variable is read from the parameter file through a parameter called 'Lithosphere viscosity'.
          */
         double lithosphere_viscosity;
 

@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2016 - 2023 by the authors of the ASPECT code.
+ Copyright (C) 2016 - 2024 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -25,8 +25,6 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
   template <>
   void VolumeOfFluidHandler<2>::update_volume_of_fluid_normals (const VolumeOfFluidField<2> &field,
                                                                 LinearAlgebra::BlockVector &solution)
@@ -36,7 +34,7 @@ namespace aspect
 
     LinearAlgebra::BlockVector initial_solution;
 
-    TimerOutput::Scope timer (sim.computing_timer, "Reconstruct VolumeOfFluid interfaces");
+    this->get_computing_timer().enter_subsection("Reconstruct VolumeOfFluid interfaces");
 
     initial_solution.reinit(sim.system_rhs, false);
 
@@ -415,6 +413,8 @@ namespace aspect
 
     solution.block(volume_of_fluidN_blockidx) = initial_solution.block(volume_of_fluidN_blockidx);
     solution.block(volume_of_fluidLS_blockidx) = initial_solution.block(volume_of_fluidLS_blockidx);
+
+    this->get_computing_timer().leave_subsection("Reconstruct VolumeOfFluid interfaces");
   }
 
 
@@ -434,7 +434,7 @@ namespace aspect
 
     LinearAlgebra::BlockVector initial_solution;
 
-    TimerOutput::Scope timer (sim.computing_timer, "Compute VolumeOfFluid compositions");
+    this->get_computing_timer().enter_subsection("Compute VolumeOfFluid compositions");
 
     initial_solution.reinit(sim.system_rhs, false);
 
@@ -486,7 +486,7 @@ namespace aspect
                                    ?
                                    0.0
                                    :
-                                   2.0*(0.5-abs(cell_volume_of_fluid-0.5))/normal_l1_norm;
+                                   2.0*(0.5-std::abs(cell_volume_of_fluid-0.5))/normal_l1_norm;
         for (unsigned int i=0; i<system_fe.base_element(base_element).dofs_per_cell; ++i)
           {
             const unsigned int system_local_dof
@@ -502,9 +502,12 @@ namespace aspect
 
       }
 
+    initial_solution.compress(VectorOperation::insert);
 
     const unsigned int blockidx = composition_field.block_index(this->introspection());
     solution.block(blockidx) = initial_solution.block(blockidx);
+
+    this->get_computing_timer().leave_subsection("Compute VolumeOfFluid compositions");
   }
 
 

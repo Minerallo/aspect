@@ -9,7 +9,7 @@ set Start time                             = 0
 set Adiabatic surface temperature          = 1600
 set Surface pressure                       = 0
 set Pressure normalization = surface
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set Nonlinear solver scheme                = single Advection, single Stokes
 
 subsection Boundary temperature model
@@ -108,8 +108,12 @@ subsection Postprocess
 
   subsection Visualization
     set Interpolate output = false
-    set List of output variables = viscosity,density
+    set List of output variables = material properties
     set Output format                 = gnuplot
+
+    subsection Material properties
+      set List of material properties = viscosity, density
+    end
   end
 end
 

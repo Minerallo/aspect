@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -20,7 +20,7 @@
 
 #include <aspect/particle/integrator/rk_4.h>
 #include <aspect/particle/property/interface.h>
-#include <aspect/particle/world.h>
+#include <aspect/particle/manager.h>
 #include <aspect/geometry_model/interface.h>
 
 namespace aspect
@@ -41,7 +41,7 @@ namespace aspect
       void
       RK4<dim>::initialize ()
       {
-        const auto &property_information = this->get_particle_world().get_property_manager().get_data_info();
+        const auto &property_information = this->get_particle_manager(this->get_particle_manager_index()).get_property_manager().get_data_info();
 
         property_indices[0] = property_information.get_position_by_field_name("internal: integrator properties");
         property_indices[1] = property_indices[0] + dim;
@@ -90,18 +90,17 @@ namespace aspect
         typename std::vector<Tensor<1,dim>>::const_iterator velocity = velocities.begin();
 
         std::array<Tensor<1,dim>,4> k;
-        for (typename ParticleHandler<dim>::particle_iterator it = begin_particle;
-             it != end_particle; ++it, ++velocity, ++old_velocity)
+        for (auto &p : typename ParticleHandler<dim>::particle_iterator_range (begin_particle, end_particle))
           {
-            ArrayView<double> properties = it->get_properties();
+            ArrayView<double> properties = p.get_properties();
 
             if (integrator_substep == 0)
               {
 #if DEAL_II_VERSION_GTE(9, 6, 0)
                 // Get a reference to the particle location, so that we can update it in-place
-                Point<dim> &location = it->get_location();
+                Point<dim> &location = p.get_location();
 #else
-                Point<dim> location = it->get_location();
+                Point<dim> location = p.get_location();
 #endif
                 k[0] = dt * (*old_velocity);
 
@@ -123,12 +122,13 @@ namespace aspect
                   }
 
 #if !DEAL_II_VERSION_GTE(9, 6, 0)
-                it->set_location(new_location);
+                p.set_location(new_location);
 #endif
               }
             else if (integrator_substep == 1)
               {
                 k[1] = dt * ((*old_velocity) + (*velocity)) * 0.5;
+
                 Point<dim> old_location;
                 for (unsigned int i=0; i<dim; ++i)
                   old_location[i] = properties[property_indices[0] + i];
@@ -155,11 +155,12 @@ namespace aspect
                 for (unsigned int i=0; i<dim; ++i)
                   properties[property_indices[2] + i] = k[1][i];
 
-                it->set_location(new_location);
+                p.set_location(new_location);
               }
             else if (integrator_substep == 2)
               {
                 k[2] = dt * (*old_velocity + *velocity) * 0.5;
+
                 Point<dim> old_location;
                 for (unsigned int i=0; i<dim; ++i)
                   old_location[i] = properties[property_indices[0] + i];
@@ -187,11 +188,9 @@ namespace aspect
                   }
 
                 for (unsigned int i=0; i<dim; ++i)
-                  {
-                    properties[property_indices[3] + i] = k[2][i];
-                  }
+                  properties[property_indices[3] + i] = k[2][i];
 
-                it->set_location(new_location);
+                p.set_location(new_location);
               }
             else if (integrator_substep == 3)
               {
@@ -199,8 +198,10 @@ namespace aspect
 
                 Point<dim> old_location;
                 for (unsigned int i=0; i<dim; ++i)
+                  old_location[i] = properties[property_indices[0] + i];
+
+                for (unsigned int i=0; i<dim; ++i)
                   {
-                    old_location[i] = properties[property_indices[0] + i];
                     k[0][i] = properties[property_indices[1] + i];
                     k[1][i] = properties[property_indices[2] + i];
                     k[2][i] = properties[property_indices[3] + i];
@@ -212,13 +213,16 @@ namespace aspect
                 if (at_periodic_boundary)
                   this->get_geometry_model().adjust_positions_for_periodicity(new_location);
 
-                it->set_location(new_location);
+                p.set_location(new_location);
               }
             else
               {
                 Assert(false,
-                       ExcMessage("The RK4 integrator should never continue after four integration steps."));
+                       ExcMessage("The RK4 integrator should never continue after four integration stages."));
               }
+
+            ++old_velocity;
+            ++velocity;
           }
       }
 

@@ -1,3 +1,9 @@
+```{tags}
+category:cookbook
+feature:3d
+feature:cartesian
+```
+
 (sec:cookbooks:convection_box_3d)=
 # Convection in a 3d box
 
@@ -140,7 +146,7 @@ Convection in a 3d box: Temperature isocontours and some velocity vectors at the
 ```{figure-md} fig:box-3d-mesh
 <img src="box_3d_mesh.*" style="width:100.0%" />
 
-Convection in a 3d box: Meshes and large-scale velocity field for the third, fourth and sixth of the snapshots shown in Fig.&#xA0;6.
+Convection in a 3d box: Meshes and large-scale velocity field for the third, fourth and sixth of the snapshots shown in Fig.{numref}`fig:box-3d-solution`.
 ```
 
 As before, we could analyze all sorts of data from the statistics file but we

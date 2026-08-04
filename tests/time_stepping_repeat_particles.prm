@@ -2,13 +2,13 @@
 # prescribed surface velocity in combination with the advection
 # of particles. There are two compositional fields, one based on
 # the field method and one on the particle method. The initial condition
-# for the fields is the same (idenical to the temperature field).
+# for the fields is the same (identical to the temperature field).
 # For sufficient mesh and particle resolution,
 # the end result for the two fields should be practically the same.
 
 set Dimension                              = 2
 set End time                               = 0.755
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set Maximum relative increase in time step     = 2
 
 subsection Time stepping
@@ -31,7 +31,6 @@ subsection Boundary velocity model
 
   subsection Function
     set Variable names      = x,z,t
-    set Function constants  = pi=3.1415926
     set Function expression = if(t<0.75, if(x<0.5,-1,1), 100); 0
   end
 end
@@ -85,25 +84,8 @@ subsection Postprocess
   end
 
   subsection Particles
-    set Number of particles = 64
     set Time between data output = 1e-1
-    set Minimum particles per cell  = 0
-    set Maximum particles per cell  = 100
-    set Load balancing strategy     = remove and add particles
-    set List of particle properties = initial composition, composition
-    set Update ghost particles      = true
     set Data output format          = gnuplot
-    set Allow cells without particles = true
-    set Particle generator name = uniform box
-
-    subsection Generator
-      subsection Uniform box
-        set Minimum x = 0.
-        set Maximum x = 2.
-        set Minimum y = 0.
-        set Maximum y = 0.3
-      end
-    end
   end
 end
 
@@ -120,5 +102,24 @@ subsection Initial composition model
   subsection Function
     set Variable names      = x,y
     set Function expression = if(y<0.2, 1, 0) ; if(y<0.2, 1, 0)
+  end
+end
+
+subsection Particles
+  set Minimum particles per cell  = 0
+  set Maximum particles per cell  = 100
+  set Load balancing strategy     = remove and add particles
+  set List of particle properties = initial composition, composition
+  set Allow cells without particles = true
+  set Particle generator name = uniform box
+
+  subsection Generator
+    subsection Uniform box
+      set Minimum x = 0.
+      set Maximum x = 2.
+      set Minimum y = 0.
+      set Maximum y = 0.3
+      set Number of particles = 64
+    end
   end
 end

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -23,6 +23,11 @@
 
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/fe/fe_values.h>
+
+#include <boost/serialization/list.hpp>
+#include <boost/serialization/map.hpp>
+#include <boost/serialization/utility.hpp>
+
 
 namespace aspect
 {
@@ -126,9 +131,9 @@ namespace aspect
                              Patterns::Double (0.),
                              "The minimum length of simulation time that the system "
                              "should be in steady state before termination."
-                             "Units: years if the "
-                             "'Use years in output instead of seconds' parameter is set; "
-                             "seconds otherwise.");
+                             "Units: \\si{\\year} if the "
+                             "'Use years instead of seconds' parameter is set; "
+                             "\\si{\\second} otherwise.");
         }
         prm.leave_subsection ();
       }
@@ -154,6 +159,35 @@ namespace aspect
                    ExcMessage("Relative deviation must be greater than or equal to 0."));
       AssertThrow (time_length > 0,
                    ExcMessage("Steady state minimum time period must be greater than 0."));
+    }
+
+
+
+    template <int dim>
+    void
+    SteadyRMSVelocity<dim>::save (std::map<std::string, std::string> &status_strings) const
+    {
+      std::ostringstream os;
+      {
+        aspect::oarchive oa (os);
+        oa << time_rmsvel;
+      }
+      status_strings["SteadyRMSVelocity"] = os.str();
+    }
+
+
+
+    template <int dim>
+    void
+    SteadyRMSVelocity<dim>::load (const std::map<std::string, std::string> &status_strings)
+    {
+      const auto saved_state = status_strings.find("SteadyRMSVelocity");
+      if (saved_state != status_strings.end())
+        {
+          std::istringstream is (saved_state->second);
+          aspect::iarchive ia (is);
+          ia >> time_rmsvel;
+        }
     }
   }
 }

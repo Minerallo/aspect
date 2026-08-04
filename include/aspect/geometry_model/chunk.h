@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -24,7 +24,6 @@
 
 #include <aspect/geometry_model/interface.h>
 #include <aspect/simulator_access.h>
-#include <aspect/compat.h>
 
 #include <deal.II/grid/manifold.h>
 #include <deal.II/base/function_lib.h>
@@ -34,8 +33,6 @@ namespace aspect
 {
   namespace GeometryModel
   {
-    using namespace dealii;
-
     namespace internal
     {
       /**
@@ -57,7 +54,7 @@ namespace aspect
           /**
            * Constructor
            */
-          ChunkGeometry(const InitialTopographyModel::Interface<dim> &topography,
+          ChunkGeometry(const std::shared_ptr<const InitialTopographyModel::Interface<dim>> &topography,
                         const double min_longitude,
                         const double min_radius,
                         const double max_depth);
@@ -116,25 +113,21 @@ namespace aspect
             const Point<dim> &p) const override;
 
           /**
-           * This function computes the outer radius of the domain
-           * at the longitude (and latitude) of the given point
-           * (given in cartesian coordinates), i.e. the unperturbed
-           * outer radius + the topography.
-           */
-          double
-          get_radius(const Point<dim> &space_point) const;
-
-          /**
            * Return a copy of this manifold.
            */
           std::unique_ptr<Manifold<dim,dim>>
           clone() const override;
 
+          /**
+           * Return the topography at a given point
+           */
+          double topography_for_point(const Point<dim> &x_y_z) const;
+
         private:
           /**
            * A pointer to the topography model.
            */
-          const InitialTopographyModel::Interface<dim> *topo;
+          const std::shared_ptr<const InitialTopographyModel::Interface<dim>> topo;
 
           /**
            * The minimum longitude of the domain.
@@ -387,19 +380,25 @@ namespace aspect
 
       private:
         /**
-         * Minimum longitude-depth or
-         * longitude-latitude-depth point
+         * Minimum longitude-depth or longitude-latitude-depth point.
+         *
+         * This variable is read from the parameter file through parameters called
+         * 'Chunk inner radius', 'Chunk minimum longitude', and 'Chunk minimum latitude'.
          */
         Point<dim> point1;
 
         /**
-         * Maximum longitude-depth or
-         * longitude-latitude-depth point
+         * Maximum longitude-depth or longitude-latitude-depth point
+         * This variable is read from the parameter file through parameters called
+         * 'Chunk outer radius', 'Chunk maximum longitude', and 'Chunk maximum latitude'.
          */
         Point<dim> point2;
 
         /**
          * The number of cells in each coordinate direction
+         *
+         * This variable is read from the parameter file through parameters called
+         * 'Radius repetitions', 'Longitude repetitions', and 'Latitude repetitions'.
          */
         std::array<unsigned int, dim> repetitions;
 
@@ -419,7 +418,7 @@ namespace aspect
         /**
          * Give a symbolic name to the manifold id to be used by this class.
          */
-        static const types::manifold_id my_manifold_id = 15;
+        static constexpr types::manifold_id my_manifold_id = 15;
     };
   }
 }

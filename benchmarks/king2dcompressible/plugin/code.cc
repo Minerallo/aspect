@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -27,8 +27,6 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
   /**
    * This benchmark is from the article
    * @code
@@ -72,13 +70,13 @@ namespace aspect
 
               const double depth = 1.0-position(dim-1);
 
-              out.viscosities[i] = ((Di==0.0)?1.0:Di)/Ra*exp(-b*(temperature- this->get_adiabatic_conditions().temperature(position))+c*depth);
+              out.viscosities[i] = ((Di==0.0)?1.0:Di)/Ra*std::exp(-b*(temperature- this->get_adiabatic_conditions().temperature(position))+c*depth);
 
               out.specific_heat[i] = reference_specific_heat;
               out.thermal_conductivities[i] = 1.0;
               out.thermal_expansion_coefficients[i] = (Di==0.0)?1.0:Di;
 
-              double rho = reference_rho * exp(depth * Di/gamma);
+              double rho = reference_rho * std::exp(depth * Di/gamma);
               rho *= 1.0 - out.thermal_expansion_coefficients[i] * (temperature - this->get_adiabatic_conditions().temperature(position))
                      + (tala?0.0:1.0)*Di*gamma
                      *  (pressure - this->get_adiabatic_conditions().pressure(position));
@@ -165,7 +163,7 @@ namespace aspect
           prm.declare_entry ("Reference density", "3300",
                              Patterns::Double (0),
                              "Reference density $\\rho_0$. "
-                             "Units: \\si{\\kilogram\\per\\meter\\cubed}.");
+                             "Units: $\\frac{\\text{kg}}{\\text{m}^3}$.");
           prm.declare_entry ("Ra", "1e4",
                              Patterns::Double (0),
                              "");
@@ -178,7 +176,7 @@ namespace aspect
           prm.declare_entry ("Reference specific heat", "1250",
                              Patterns::Double (0),
                              "The value of the specific heat $cp$. "
-                             "Units: \\si{\\joule\\per\\kelvin\\per\\kilogram}.");
+                             "Units: $\\frac{\\text{J}}{\\text{K}\\text{kg}}$.");
           prm.declare_entry ("b", "6.907755279",
                              Patterns::Double (0),
                              "");

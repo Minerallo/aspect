@@ -44,7 +44,16 @@ namespace aspect
           public Interface<dim>
       {
         public:
+          /**
+           * Constructor.
+           */
           HeatFluxMap();
+
+          /**
+           * Initialize the postprocessor.
+           */
+          void
+          initialize() override;
 
           /**
            * Fill the temporary storage variables with the
@@ -57,7 +66,7 @@ namespace aspect
           /**
            * Compute the heat flux for the given input cell.
            *
-           * @copydoc DataPostprocessorScalar<dim>::evaluate_vector_field()
+           * @copydoc dealii::DataPostprocessor<dim>::evaluate_vector_field()
            */
           void
           evaluate_vector_field(const DataPostprocessorInputs::Vector<dim> &input_data,
@@ -80,6 +89,8 @@ namespace aspect
           /**
            * A flag that determines whether to use the point-wise
            * heat flux calculation or the cell-wise averaged calculation.
+           *
+           * This variable is read from the parameter file through a parameter called 'Output point wise heat flux'.
            */
           bool output_point_wise_heat_flux;
 
@@ -87,6 +98,9 @@ namespace aspect
            * A temporary storage place for the point-wise heat flux
            * solution. Only initialized and used if output_point_wise_heat_flux
            * is set to true.
+           *
+           * This object is computed in update() and then used on every cell
+           * where evaluate_vector_field() is called.
            */
           LinearAlgebra::BlockVector heat_flux_density_solution;
 
@@ -94,6 +108,9 @@ namespace aspect
            * A temporary storage place for the cell-wise heat flux
            * solution. Only initialized and used if output_point_wise_heat_flux
            * is set to false.
+           *
+           * This object is computed in update() and then used on every cell
+           * where evaluate_vector_field() is called.
            */
           std::vector<std::vector<std::pair<double, double>>> heat_flux_and_area;
       };

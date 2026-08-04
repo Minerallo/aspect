@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -27,8 +27,6 @@
 
 #include <deal.II/fe/fe_dgq.h>
 #include <iostream>
-
-using namespace dealii;
 
 namespace aspect
 {
@@ -70,7 +68,7 @@ namespace aspect
       virtual double reference_darcy_coefficient () const
       {
         const double porosity = 0.01;
-        const double permeability = 1.0 * std::pow(porosity, 3) * std::pow(1.0-porosity, 2);
+        const double permeability = 1.0 * Utilities::fixed_power<3>(porosity) * Utilities::fixed_power<2>(1.0-porosity);
         return permeability / 0.1;
       }
 
@@ -91,7 +89,8 @@ namespace aspect
           }
 
         // fill melt outputs if they exist
-        aspect::MaterialModel::MeltOutputs<dim> *melt_out = out.template get_additional_output<aspect::MaterialModel::MeltOutputs<dim>>();
+        const std::shared_ptr<aspect::MaterialModel::MeltOutputs<dim>> melt_out
+          = out.template get_additional_output_object<aspect::MaterialModel::MeltOutputs<dim>>();
 
         if (melt_out != nullptr)
           {
@@ -102,7 +101,7 @@ namespace aspect
 
                 melt_out->compaction_viscosities[i] = 100.0;
                 melt_out->fluid_viscosities[i]=0.1;
-                melt_out->permeabilities[i]=1.0 * std::pow(porosity,3) * std::pow(1.0-porosity,2);
+                melt_out->permeabilities[i]=1.0 * Utilities::fixed_power<3>(porosity) * Utilities::fixed_power<2>(1.0-porosity);
                 melt_out->fluid_densities[i]=.1;
                 melt_out->fluid_density_gradients[i] = Tensor<1,dim>();
               }

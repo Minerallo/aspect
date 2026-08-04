@@ -5,16 +5,20 @@
 # numerical time step. Viscoelastic stresses (sigma_xx,
 # sigma_yy, sigma_xy) are tracked with active particles.
 # The parameter file is derived from the 2D
-# viscoelastic_stress_build-up benchmark with modifications
+# viscoelastic_stress_build_up benchmark with modifications
 # to the compositional field method, resolution, end time, material properties and
 # postprocessors.
 
-include $ASPECT_SOURCE_DIR/benchmarks/viscoelastic_stress_build-up/viscoelastic_stress_build-up.prm
+include $ASPECT_SOURCE_DIR/benchmarks/viscoelastic_stress_build_up/viscoelastic_stress_build_up.prm
 
 
 #  Global parameters
 set End time                               = 2e3
 set Output directory                       = viscoelastic_numerical_elastic_time_step_particles
+
+# For particles, the stress update is done by the particle property elastic stress,
+# so we do not need the operator splitting.
+set Use operator splitting                 = false
 
 # Model geometry (100x100 km, 5 km spacing)
 subsection Geometry model
@@ -30,8 +34,9 @@ end
 
 # Track compositional fields with active particles
 subsection Compositional fields
-  set Compositional field methods = particles, particles, particles
-  set Mapped particle properties  = ve_stress_xx:ve_stress_xx, ve_stress_yy:ve_stress_yy, ve_stress_xy:ve_stress_xy
+  set Compositional field methods = particles, particles, particles, particles, particles, particles
+  set Mapped particle properties  = ve_stress_xx:ve_stress_xx, ve_stress_yy:ve_stress_yy, ve_stress_xy:ve_stress_xy, \
+                                    ve_stress_xx_old:ve_stress_xx_old, ve_stress_yy_old:ve_stress_yy_old, ve_stress_xy_old:ve_stress_xy_old
 end
 
 # Material model
@@ -53,15 +58,22 @@ subsection Postprocess
   set List of postprocessors = basic statistics, composition statistics, particles
 
   subsection Particles
-    set Number of particles = 12e3
-    set Minimum particles per cell  = 25
-    set Maximum particles per cell  = 35
-    set Load balancing strategy     = remove and add particles
-    set List of particle properties = initial composition, elastic stress
-    set Interpolation scheme        = bilinear least squares
-    set Update ghost particles      = true
-    set Particle generator name     = random uniform
     set Time between data output    = 1e9
     set Data output format          = vtu
+  end
+end
+
+subsection Particles
+  set Minimum particles per cell  = 25
+  set Maximum particles per cell  = 35
+  set Load balancing strategy     = remove and add particles
+  set List of particle properties = initial composition, elastic stress
+  set Interpolation scheme        = linear least squares
+  set Particle generator name     = random uniform
+
+  subsection Generator
+    subsection Random uniform
+      set Number of particles = 12e3
+    end
   end
 end

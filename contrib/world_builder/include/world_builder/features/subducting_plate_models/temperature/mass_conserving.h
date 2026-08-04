@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018-2024 by the authors of the World Builder code.
+  Copyright (C) 2018-2026 by the authors of the World Builder code.
 
   This file is part of the World Builder.
 
@@ -133,7 +133,7 @@ namespace WorldBuilder
             ReferenceModelName reference_model_name;
             const int plate_model_summation_number = 100; // for the plate model
             bool apply_spline;
-            int spline_n_points;
+            unsigned int spline_n_points;
         };
       } // namespace Temperature
     } // namespace SubductingPlateModels

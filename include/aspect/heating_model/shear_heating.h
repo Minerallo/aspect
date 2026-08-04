@@ -30,8 +30,6 @@ namespace aspect
 {
   namespace HeatingModel
   {
-    using namespace dealii;
-
     /**
      * A class that implements a standard shear heating rate.
      *
@@ -63,6 +61,13 @@ namespace aspect
         create_additional_material_model_outputs(MaterialModel::MaterialModelOutputs<dim> &material_model_outputs) const override;
 
         /**
+         * Specify which material model outputs the heating model requires
+         * for computing the heating terms.
+         */
+        MaterialModel::MaterialProperties::Property
+        get_required_properties () const override;
+
+        /**
          * Declare the parameters this class takes through input files.
          */
         static
@@ -83,9 +88,18 @@ namespace aspect
          * in the DruckerPrager rheology model can be used to define a
          * maximum stress computed from the given cohesion and friction
          * angle.
+         *
+         * This variable is read from the parameter file through the 'Limit
+         * stress contribution to shear heating' parameter.
          */
         bool limit_stress;
+        /**
+         * This variable is read from the parameter file through a parameter called 'Cohesion for maximum shear stress'.
+         */
         double cohesion;
+        /**
+         * This variable is read from the parameter file through a parameter called 'Friction angle for maximum shear stress'.
+         */
         double friction_angle;
         MaterialModel::Rheology::DruckerPrager<dim> drucker_prager_plasticity;
     };
@@ -95,6 +109,9 @@ namespace aspect
      * Additional output fields for the shear heating computation
      * to be added to the MaterialModel::MaterialModelOutputs structure
      * and filled in the MaterialModel::evaluate() function.
+     *
+     * This structure allows to modify the shear heating term by
+     * multiplying it with a factor computed by the material model.
      */
     template <int dim>
     class ShearHeatingOutputs : public MaterialModel::NamedAdditionalMaterialOutputs<dim>
@@ -111,6 +128,31 @@ namespace aspect
          * work will go into shear heating.
          */
         std::vector<double> shear_heating_work_fractions;
+    };
+
+    /**
+     * Additional output fields for the shear heating computation
+     * to be added to the MaterialModel::MaterialModelOutputs structure
+     * and filled in the MaterialModel::evaluate() function.
+     *
+     * This structure allows to prescribe the full shear heating term from
+     * the material model.
+     */
+    template <int dim>
+    class PrescribedShearHeatingOutputs : public MaterialModel::NamedAdditionalMaterialOutputs<dim>
+    {
+      public:
+        PrescribedShearHeatingOutputs(const unsigned int n_points);
+
+        std::vector<double> get_nth_output(const unsigned int idx) const override;
+
+        /**
+         * The viscous dissipation rate contributing to shear heating.
+         * If this object is created and filled by the material model
+         * it will replace the default viscous dissipation rate
+         * computed by the shear heating model.
+         */
+        std::vector<double> prescribed_shear_heating_rates;
     };
   }
 }

@@ -1,0 +1,37 @@
+
+Number of active cells: 1,024 (on 6 levels)
+Number of degrees of freedom: 17,989 (8,450+1,089+4,225+4,225)
+
+*** Timestep 0:  t=0 years, dt=0 years
+   Solving temperature system... 0 iterations.
+   Solving Stokes system (GMG)... 19+0 iterations.
+
+   Postprocessing:
+     Number of advected particles:        3500
+     Particle count per cell min/avg/max: 0, 3, 11
+
+Number of active cells: 574 (on 7 levels)
+Number of degrees of freedom: 10,643 (4,996+651+2,498+2,498)
+
+*** Timestep 0:  t=0 years, dt=0 years
+   Solving temperature system... 0 iterations.
+   Advecting particles...  done.
+   Solving Stokes system (GMG)... 22+0 iterations.
+
+   Postprocessing:
+     Number of advected particles:        3764
+     Particle count per cell min/avg/max: 2, 6, 27
+
+*** Timestep 1:  t=7e+09 years, dt=7e+09 years
+   Solving temperature system... 145 iterations.
+   Advecting particles...  done.
+   Solving Stokes system (GMG)... 22+0 iterations.
+
+   Postprocessing:
+     Number of advected particles:        3790
+     Particle count per cell min/avg/max: 2, 6, 27
+
+Termination requested by criterion: end time
+
+
+

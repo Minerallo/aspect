@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2021 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -21,7 +21,7 @@
 
 #include <aspect/mesh_refinement/compaction_length.h>
 #include <aspect/melt.h>
-#include <aspect/simulator.h>
+#include <aspect/advection_field.h>
 
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/fe/fe_values.h>
@@ -40,7 +40,14 @@ namespace aspect
       if (this->get_dof_handler().n_locally_owned_dofs() == 0)
         return;
 
-      const Quadrature<dim> quadrature(this->get_fe().base_element(this->introspection().base_elements.compositional_fields).get_unit_support_points());
+      // Use a quadrature in the support points of the porosity to compute the
+      // compaction length at:
+      const AdvectionField porosity = AdvectionField::composition(
+                                        this->introspection().compositional_index_for_name("porosity"));
+
+      const unsigned int base_element_index = porosity.base_element(this->introspection());
+      const Quadrature<dim> quadrature(this->get_fe().base_element(base_element_index).get_unit_support_points());
+
       FEValues<dim> fe_values (this->get_mapping(),
                                this->get_fe(),
                                quadrature,
@@ -60,12 +67,13 @@ namespace aspect
             in.reinit(fe_values, cell, this->introspection(), this->get_solution());
             this->get_material_model().evaluate(in, out);
 
-            MaterialModel::MeltOutputs<dim> *melt_out = out.template get_additional_output<MaterialModel::MeltOutputs<dim>>();
+            const std::shared_ptr<const MaterialModel::MeltOutputs<dim>> melt_out
+              = out.template get_additional_output_object<MaterialModel::MeltOutputs<dim>>();
             AssertThrow(melt_out != nullptr,
                         ExcMessage("Need MeltOutputs from the material model for computing the melt properties."));
 
             // for each composition dof, check if the compaction length exceeds the cell size
-            for (unsigned int i=0; i<this->get_fe().base_element(this->introspection().base_elements.compositional_fields).dofs_per_cell; ++i)
+            for (unsigned int i=0; i<in.n_evaluation_points(); ++i)
               {
                 const double compaction_length = std::sqrt((out.viscosities[i] + 4./3. * melt_out->compaction_viscosities[i])
                                                            * melt_out->permeabilities[i] / melt_out->fluid_viscosities[i]);

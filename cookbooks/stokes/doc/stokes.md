@@ -1,3 +1,13 @@
+```{tags}
+category:cookbook
+category:benchmark
+feature:3d
+feature:cartesian
+feature:compositional-fields
+feature:analytical-solution
+```
+
+(sec:cookbooks:stokes-benchmark)=
 # The "Stokes' law" benchmark
 
 *This section was contributed by Juliane Dannberg.*

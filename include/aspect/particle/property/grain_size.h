@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2022 - 2023 by the authors of the ASPECT code.
+ Copyright (C) 2022 - 2024 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -61,13 +61,11 @@ namespace aspect
                                             std::vector<double> &particle_properties) const override;
 
           /**
-           * @copydoc aspect::Particle::Property::Interface::update_particle_property()
+           * @copydoc aspect::Particle::Property::Interface::update_particle_properties()
            */
           void
-          update_particle_property (const unsigned int data_position,
-                                    const Vector<double> &solution,
-                                    const std::vector<Tensor<1,dim>> &gradients,
-                                    typename ParticleHandler<dim>::particle_iterator &particle) const override;
+          update_particle_properties (const ParticleUpdateInputs<dim> &inputs,
+                                      typename ParticleHandler<dim>::particle_iterator_range &particles) const override;
 
           /**
            * Returns an enum, which determines how this particle property is
@@ -81,16 +79,26 @@ namespace aspect
           late_initialization_mode () const override;
 
           /**
+           * A function that returns the advection field to be used
+           * when initializing the particle property at a boundary.
+           *
+           * For this property we use the compositional field tracking the
+           * grain size.
+           */
+          AdvectionField
+          advection_field_for_boundary_initialization(const unsigned int property_component) const override;
+
+          /**
            * @copydoc aspect::Particle::Property::Interface::need_update()
            */
           UpdateTimeFlags
           need_update () const override;
 
           /**
-           * @copydoc aspect::Particle::Property::Interface::get_needed_update_flags()
+           * @copydoc aspect::Particle::Property::Interface::get_update_flags()
            */
           UpdateFlags
-          get_needed_update_flags () const override;
+          get_update_flags (const unsigned int component) const override;
 
           /**
            * @copydoc aspect::Particle::Property::Interface::get_property_information()

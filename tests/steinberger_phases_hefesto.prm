@@ -1,12 +1,12 @@
 # This is a copy of the steinberger phases test.
-# The only difference is that is uses the hefeasto instead
+# The only difference is that is uses the HeFESTo instead
 # of the perplex data format. It should produce exactly the
 # same results.
 
 set CFL number                             = 1.0
 set End time                               = 1e5
 set Adiabatic surface temperature          = 1600.0
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 
 subsection Boundary temperature model
   set List of model names = spherical constant

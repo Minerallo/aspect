@@ -6,7 +6,7 @@
 # melt and solid. As these terms scale with 1/porosity, this
 # can lead to instabilities. However, this can be avoided by
 # choosing a resolution that is high enough and choosing the
-# Darcy coefficient variation threshold that is not too small
+# Darcy coefficient variation threshold to be not too small
 # (here, the default value is sufficient).
 
 # The test is based on the model of 1D upwelling melting in a
@@ -16,26 +16,31 @@
 # the bottom boundary temperature can be changed to 2000 K
 # (this is just not feasible in the test, as it would take too
 # many time time steps until the onset of melting).
+# However, note that ASPECT's handling of boundary conditions
+# in models with reactions has changed after the publication:
+# Reactions are now (correctly) no longer applied to degrees
+# of freedom at Dirichlet boundaries of compositional fields.
+# This means that melting reactions and the associated change
+# in porosity do not occur at the bottom boundary (as in
+# Dannberg & Heister, 2016) and instead the porosity starts to
+# change from its initial (zero) value at the next degree of freedom
+# above the bottom boundary, moving further upward during the
+# model evolution.
 
 set Adiabatic surface temperature          = 1600
 set CFL number                             = 1.0
 set Nonlinear solver scheme                = iterated Advection and Stokes
 set Max nonlinear iterations               = 10
 set Dimension                              = 2
-set End time                               = 1e4
+set End time                               = 2e4
 set Pressure normalization                 = surface
 set Surface pressure                       = 0
 set Resume computation                     = false
 set Start time                             = 0
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set Use operator splitting                 = true
 
 subsection Solver parameters
-  subsection Operator splitting parameters
-    set Reaction time step                     = 2e2
-    set Reaction time steps per advection step = 10
-  end
-
   subsection Stokes solver parameters
     set Use direct solver for Stokes system = false
   end
@@ -123,7 +128,7 @@ subsection Initial composition model
   set Model name = function
 
   subsection Function
-    set Function constants  = pi=3.1415926,a = 1e-6, b = 300000, c = 20000, d=0.0
+    set Function constants  = a = 1e-6, b = 300000, c = 20000, d=0.0
     set Function expression = 0;0 #d + a * exp(-((x-b)*(x-b)+y*y)/(2*c*c)); d + a * exp(-((x-b)*(x-b)+y*y)/(2*c*c))
     set Variable names      = x,y
   end

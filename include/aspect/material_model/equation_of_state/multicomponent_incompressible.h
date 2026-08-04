@@ -32,8 +32,6 @@ namespace aspect
   {
     namespace EquationOfState
     {
-      using namespace dealii;
-
       /**
        * An incompressible equation of state that is intended for use with multiple compositional
        * fields and potentially phases. For each material property, the user supplies a comma
@@ -55,13 +53,13 @@ namespace aspect
       {
         public:
           /**
-           * A function that computes the output of the equation of state @p out
+           * A function that computes the output of the equation of state @p eos_outputs
            * for all compositions and phases, given the inputs in @p in and an
            * index input_index that determines which entry of the vector of inputs is used.
            */
           void evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
                         const unsigned int input_index,
-                        MaterialModel::EquationOfStateOutputs<dim> &out) const;
+                        MaterialModel::EquationOfStateOutputs<dim> &eos_outputs) const;
 
           /**
            * Return whether the model is compressible or not. Incompressibility
@@ -99,24 +97,30 @@ namespace aspect
           /**
            * Vector of reference densities $\rho_0$ with one entry per composition and phase plus one
            * for the background field.
+           *
+           * This variable is read from the parameter file through a parameter called 'Densities'.
            */
           std::vector<double> densities;
 
           /**
            * The reference temperature $T_0$ used in the computation of the density.
            * All components use the same reference temperature.
+           * This variable is read from the parameter file through a parameter called 'Reference temperature'.
            */
           double reference_T;
 
           /**
            * Vector of thermal expansivities with one entry per composition and phase plus one
            * for the background field.
+           * This variable is read from the parameter file through a parameter called 'Thermal expansivities'.
            */
           std::vector<double> thermal_expansivities;
 
           /**
            * Vector of specific heat capacities with one entry per composition and phase plus one
            * for the background field.
+           *
+           * This variable is read from the parameter file through a parameter called 'Heat capacities'.
            */
           std::vector<double> specific_heats;
       };

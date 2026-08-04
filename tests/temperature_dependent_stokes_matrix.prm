@@ -14,7 +14,7 @@ set End time                               = 1e6
 set Start time                             = 0
 set Adiabatic surface temperature          = 1.0
 set Surface pressure                       = 0
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set Nonlinear solver scheme                = single Advection, single Stokes
 
 subsection Boundary temperature model
@@ -71,6 +71,10 @@ subsection Postprocess
 
   subsection Visualization
     set Interpolate output = false
-    set List of output variables = viscosity
+    set List of output variables = material properties
+
+    subsection Material properties
+      set List of material properties = viscosity
+    end
   end
 end

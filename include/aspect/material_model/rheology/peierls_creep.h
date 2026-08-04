@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2020 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2020 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -28,8 +28,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     namespace Rheology
     {
       /**
@@ -51,6 +49,11 @@ namespace aspect
         double glide_parameter_q;
         double fitting_parameter;
         double stress_cutoff;
+
+        /**
+         * Constructor. Initializes all values to NaN.
+         */
+        PeierlsCreepParameters();
       };
 
       /**
@@ -175,6 +178,17 @@ namespace aspect
                                                         const PeierlsCreepParameters creep_parameters) const;
 
           /**
+           * Compute the natural logarithm of the strain rate norm and its first
+           * derivative with respect to the natural logarithm of the stress norm
+           * based on the approximate Peierls creep law.
+           */
+          std::pair<double, double>
+          compute_approximate_log_strain_rate_and_derivative (const double log_stress,
+                                                              const double pressure,
+                                                              const double temperature,
+                                                              const PeierlsCreepParameters creep_parameters) const;
+
+          /**
            * Compute the strain rate and first stress derivative
            * as a function of stress based on the selected Peierls creep law.
            * This function uses either the
@@ -204,63 +218,85 @@ namespace aspect
           {
             viscosity_approximation,
             exact
-          } peierls_creep_flow_law;
+          };
+          /**
+           *  This variable is read from the parameter file through a parameter called 'Peierls creep flow law'.
+           */
+          PeierlsCreepScheme peierls_creep_flow_law;
 
           /**
            * List of Peierls creep prefactors (A).
+           *
+           * This variable is read from the parameter file through a parameter called 'Prefactors for Peierls creep'.
            */
           std::vector<double> prefactors;
 
           /**
            * List of Peierls creep stress exponents (n).
+           * This variable is read from the parameter file through a parameter called 'Stress exponents for Peierls creep'.
            */
           std::vector<double> stress_exponents;
 
           /**
            * List of Peierls creep activation energies (E).
+           * This variable is read from the parameter file through a parameter called 'Activation energies for Peierls creep'.
            */
           std::vector<double> activation_energies;
 
           /**
            * List of Peierls creep activation volumes (V).
+           * This variable is read from the parameter file through a parameter called 'Activation volumes for Peierls creep'.
            */
           std::vector<double> activation_volumes;
 
           /**
            * List of Peierls stresses (sigma_p).
+           * This variable is read from the parameter file through a parameter called 'Peierls stresses'.
            */
           std::vector<double> peierls_stresses;
 
           /**
            * List of Peierls fitting parameters (gamma).
+           * This variable is read from the parameter file through a parameter called 'Peierls fitting parameters'.
            */
           std::vector<double> fitting_parameters;
 
           /**
            * List of the first Peierls parameter related
            * to dislocation glide (p).
+           * This variable is read from the parameter file through a parameter called 'Peierls glide parameters p'.
            */
           std::vector<double> glide_parameters_p;
 
           /**
            * List of the second Peierls parameter related
            * to dislocation glide (q).
+           * This variable is read from the parameter file through a parameter called 'Peierls glide parameters q'.
            */
           std::vector<double> glide_parameters_q;
 
+          /**
+           *  This variable is read from the parameter file through a parameter called 'Cutoff stresses for Peierls creep'.
+           */
           std::vector<double> stress_cutoffs;
 
           /**
            * A parameter determines whether a strict cutoff
            * on the stress is applied to the Peierls creep
-          */
+           * This variable is read from the parameter file through a parameter called 'Apply strict stress cutoff for Peierls creep'.
+           */
           bool apply_strict_cutoff;
 
           /**
            * Parameters governing the iteration for the exact
            * Peierls viscosity.
+           *
+           * This variable is read from the parameter file through a parameter called 'Peierls strain rate residual tolerance'.
            */
           double strain_rate_residual_threshold;
+          /**
+           *  This variable is read from the parameter file through a parameter called 'Maximum Peierls strain rate iterations'.
+           */
           unsigned int stress_max_iteration_number;
 
       };

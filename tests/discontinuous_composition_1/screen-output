@@ -6,8 +6,7 @@ Number of degrees of freedom: 556 (162+25+81+144+144)
    Solving temperature system... 0 iterations.
    Solving C_1 system ... 0 iterations.
    Solving C_2 system ... 0 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 16+0 iterations.
+   Solving Stokes system (GMG)... 10+0 iterations.
 
 Number of active cells: 40 (on 4 levels)
 Number of degrees of freedom: 1,354 (386+55+193+360+360)
@@ -16,8 +15,7 @@ Number of degrees of freedom: 1,354 (386+55+193+360+360)
    Solving temperature system... 0 iterations.
    Solving C_1 system ... 0 iterations.
    Solving C_2 system ... 0 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 16+0 iterations.
+   Solving Stokes system (GMG)... 13+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   0 K, 0.5 K, 1 K
@@ -27,8 +25,7 @@ Number of degrees of freedom: 1,354 (386+55+193+360+360)
    Solving temperature system... 10 iterations.
    Solving C_1 system ... 3 iterations.
    Solving C_2 system ... 4 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 9+0 iterations.
+   Solving Stokes system (GMG)... 8+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   0 K, 0.5 K, 1 K
@@ -38,8 +35,7 @@ Number of degrees of freedom: 1,354 (386+55+193+360+360)
    Solving temperature system... 11 iterations.
    Solving C_1 system ... 3 iterations.
    Solving C_2 system ... 3 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 16+0 iterations.
+   Solving Stokes system (GMG)... 13+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   0 K, 0.5 K, 1 K
@@ -52,8 +48,7 @@ Number of degrees of freedom: 2,100 (578+81+289+576+576)
    Solving temperature system... 12 iterations.
    Solving C_1 system ... 3 iterations.
    Solving C_2 system ... 4 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 17+0 iterations.
+   Solving Stokes system (GMG)... 12+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   0 K, 0.5 K, 1 K
@@ -63,21 +58,19 @@ Number of degrees of freedom: 2,100 (578+81+289+576+576)
    Solving temperature system... 12 iterations.
    Solving C_1 system ... 3 iterations.
    Solving C_2 system ... 4 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 17+0 iterations.
+   Solving Stokes system (GMG)... 12+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   -0.004362 K, 0.5 K, 1 K
      Compositions min/max/mass: -0.1982/1.126/0.4167 // -0.2808/1.208/0.4582
 
-Skipping mesh refinement, because the mesh did not change.
+Skipping mesh refinement, because no cells were flagged for refinement/coarsening.
 
 *** Timestep 5:  t=0.3125 seconds, dt=0.0625 seconds
    Solving temperature system... 12 iterations.
    Solving C_1 system ... 3 iterations.
    Solving C_2 system ... 4 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 17+0 iterations.
+   Solving Stokes system (GMG)... 12+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   -0.007754 K, 0.5 K, 1 K
@@ -87,21 +80,19 @@ Skipping mesh refinement, because the mesh did not change.
    Solving temperature system... 11 iterations.
    Solving C_1 system ... 3 iterations.
    Solving C_2 system ... 4 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 16+0 iterations.
+   Solving Stokes system (GMG)... 11+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   -0.01149 K, 0.5 K, 1 K
      Compositions min/max/mass: -0.1629/1.125/0.4167 // -0.1426/1.273/0.4581
 
-Skipping mesh refinement, because the mesh did not change.
+Skipping mesh refinement, because no cells were flagged for refinement/coarsening.
 
 *** Timestep 7:  t=0.4375 seconds, dt=0.0625 seconds
    Solving temperature system... 12 iterations.
    Solving C_1 system ... 3 iterations.
    Solving C_2 system ... 4 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 17+0 iterations.
+   Solving Stokes system (GMG)... 12+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   -0.01532 K, 0.4999 K, 1 K
@@ -111,21 +102,19 @@ Skipping mesh refinement, because the mesh did not change.
    Solving temperature system... 12 iterations.
    Solving C_1 system ... 3 iterations.
    Solving C_2 system ... 4 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 17+0 iterations.
+   Solving Stokes system (GMG)... 12+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   -0.0157 K, 0.4999 K, 1 K
      Compositions min/max/mass: -0.119/1.125/0.4167 // -0.1188/1.327/0.4584
 
-Skipping mesh refinement, because the mesh did not change.
+Skipping mesh refinement, because no cells were flagged for refinement/coarsening.
 
 *** Timestep 9:  t=0.5625 seconds, dt=0.0625 seconds
    Solving temperature system... 11 iterations.
    Solving C_1 system ... 3 iterations.
    Solving C_2 system ... 4 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 16+0 iterations.
+   Solving Stokes system (GMG)... 11+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   -0.01422 K, 0.4998 K, 1 K
@@ -135,21 +124,19 @@ Skipping mesh refinement, because the mesh did not change.
    Solving temperature system... 12 iterations.
    Solving C_1 system ... 3 iterations.
    Solving C_2 system ... 4 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 16+0 iterations.
+   Solving Stokes system (GMG)... 11+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   -0.01272 K, 0.4997 K, 1 K
      Compositions min/max/mass: -0.1223/1.125/0.4167 // -0.1024/1.368/0.4584
 
-Skipping mesh refinement, because the mesh did not change.
+Skipping mesh refinement, because no cells were flagged for refinement/coarsening.
 
 *** Timestep 11:  t=0.6875 seconds, dt=0.0625 seconds
    Solving temperature system... 11 iterations.
    Solving C_1 system ... 3 iterations.
    Solving C_2 system ... 4 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 17+0 iterations.
+   Solving Stokes system (GMG)... 12+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   -0.01329 K, 0.4996 K, 1 K
@@ -159,21 +146,19 @@ Skipping mesh refinement, because the mesh did not change.
    Solving temperature system... 13 iterations.
    Solving C_1 system ... 3 iterations.
    Solving C_2 system ... 4 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 17+0 iterations.
+   Solving Stokes system (GMG)... 12+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   -0.0123 K, 0.4996 K, 1 K
      Compositions min/max/mass: -0.1197/1.124/0.4167 // -0.1212/1.235/0.4584
 
-Skipping mesh refinement, because the mesh did not change.
+Skipping mesh refinement, because no cells were flagged for refinement/coarsening.
 
 *** Timestep 13:  t=0.8125 seconds, dt=0.0625 seconds
    Solving temperature system... 11 iterations.
    Solving C_1 system ... 3 iterations.
    Solving C_2 system ... 4 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 7+0 iterations.
+   Solving Stokes system (GMG)... 6+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   -0.009901 K, 0.4996 K, 1 K
@@ -183,21 +168,19 @@ Skipping mesh refinement, because the mesh did not change.
    Solving temperature system... 11 iterations.
    Solving C_1 system ... 3 iterations.
    Solving C_2 system ... 4 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 7+0 iterations.
+   Solving Stokes system (GMG)... 5+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   -0.007248 K, 0.4996 K, 1 K
      Compositions min/max/mass: -0.09368/1.125/0.4167 // -0.2084/1.374/0.4584
 
-Skipping mesh refinement, because the mesh did not change.
+Skipping mesh refinement, because no cells were flagged for refinement/coarsening.
 
 *** Timestep 15:  t=0.9375 seconds, dt=0.0625 seconds
    Solving temperature system... 11 iterations.
    Solving C_1 system ... 3 iterations.
    Solving C_2 system ... 4 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 7+0 iterations.
+   Solving Stokes system (GMG)... 5+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   -0.006538 K, 0.4996 K, 1 K
@@ -207,14 +190,13 @@ Skipping mesh refinement, because the mesh did not change.
    Solving temperature system... 12 iterations.
    Solving C_1 system ... 3 iterations.
    Solving C_2 system ... 4 iterations.
-   Rebuilding Stokes preconditioner...
-   Solving Stokes system... 7+0 iterations.
+   Solving Stokes system (GMG)... 5+0 iterations.
 
    Postprocessing:
      Temperature min/avg/max:   -0.006603 K, 0.4996 K, 1 K
      Compositions min/max/mass: -0.2114/1.149/0.4167 // -0.1736/1.403/0.4583
 
-Skipping mesh refinement, because the mesh did not change.
+Skipping mesh refinement, because no cells were flagged for refinement/coarsening.
 
 Termination requested by criterion: end time
 

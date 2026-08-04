@@ -24,7 +24,13 @@ subsection Boundary velocity model
 
   subsection Function
     set Variable names      = x,z,t
-    set Function constants  = pi=3.1415926
     set Function expression = if(t<0.75, if(x<0.5,-1,1), if(x<0.5,-15,15)); 0
   end
+end
+
+# This test prescribes a jump in velocity at t=0.75, this is a challenge for
+# the advection solver. Reduce its accuracy to a reasonable level that still
+# converges for the prescribed jump.
+subsection Solver parameters
+  set Composition solver tolerance = 1e-8
 end

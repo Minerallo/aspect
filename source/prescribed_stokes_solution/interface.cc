@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -28,39 +28,14 @@ namespace aspect
 {
   namespace PrescribedStokesSolution
   {
-    template <int dim>
-    void
-    Interface<dim>::initialize ()
-    {}
-
-
-    template <int dim>
-    void
-    Interface<dim>::update ()
-    {}
-
-
-    template <int dim>
-    void
-    Interface<dim>::
-    declare_parameters (dealii::ParameterHandler &/*prm*/)
-    {}
-
-
-    template <int dim>
-    void
-    Interface<dim>::parse_parameters (dealii::ParameterHandler &/*prm*/)
-    {}
-
-
 // -------------------------------- Deal with registering prescribed_stokes_solution models and automating
 // -------------------------------- their setup and selection at run time
 
     namespace
     {
       std::tuple
-      <void *,
-      void *,
+      <aspect::internal::Plugins::UnusablePluginList,
+      aspect::internal::Plugins::UnusablePluginList,
       aspect::internal::Plugins::PluginList<Interface<2>>,
       aspect::internal::Plugins::PluginList<Interface<3>>> registered_plugins;
     }
@@ -137,19 +112,6 @@ namespace aspect
 // explicit instantiations
 namespace aspect
 {
-  namespace internal
-  {
-    namespace Plugins
-    {
-      template <>
-      std::list<internal::Plugins::PluginList<PrescribedStokesSolution::Interface<2>>::PluginInfo> *
-      internal::Plugins::PluginList<PrescribedStokesSolution::Interface<2>>::plugins = nullptr;
-      template <>
-      std::list<internal::Plugins::PluginList<PrescribedStokesSolution::Interface<3>>::PluginInfo> *
-      internal::Plugins::PluginList<PrescribedStokesSolution::Interface<3>>::plugins = nullptr;
-    }
-  }
-
   namespace PrescribedStokesSolution
   {
 #define INSTANTIATE(dim) \

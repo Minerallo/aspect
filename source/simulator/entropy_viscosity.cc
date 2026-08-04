@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2016 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2016 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -21,6 +21,7 @@
 #include <aspect/simulator.h>
 #include <aspect/simulator/assemblers/interface.h>
 #include <aspect/melt.h>
+#include <aspect/utilities.h>
 
 #include <deal.II/base/signaling_nan.h>
 #include <deal.II/fe/fe_values.h>
@@ -44,10 +45,10 @@ namespace aspect
       return numbers::signaling_nan<double>();
 
     // record maximal entropy on Gauss quadrature points
-    const Quadrature<dim> &quadrature_formula
-      = (advection_field.is_temperature() ?
-         introspection.quadratures.temperature :
-         introspection.quadratures.compositional_fields);
+    const Quadrature<dim> &quadrature_formula =
+      (advection_field.is_temperature() ?
+       introspection.quadratures.temperature :
+       introspection.quadratures.compositional_fields[advection_field.compositional_variable]);
     const unsigned int n_q_points = quadrature_formula.size();
 
     const FEValuesExtractors::Scalar field = advection_field.scalar_extractor(introspection);
@@ -163,6 +164,16 @@ namespace aspect
 
     std::vector<Tensor<1,dim>> old_fluid_velocity_values(scratch.finite_element_values.n_quadrature_points);
     std::vector<Tensor<1,dim>> old_old_fluid_velocity_values(scratch.finite_element_values.n_quadrature_points);
+    const bool use_darcy_velocity = (advection_field.advection_method(introspection) == Parameters<dim>::AdvectionFieldMethod::fem_darcy_field);
+
+    std::shared_ptr<const MaterialModel::MeltOutputs<dim>> melt_outputs;
+    if (use_darcy_velocity)
+      {
+        melt_outputs = scratch.material_model_outputs.template get_additional_output_object<MaterialModel::MeltOutputs<dim>>();
+        AssertThrow(melt_outputs != nullptr,
+                    ExcMessage("Darcy field entropy viscosity requires MeltOutputs to be available."));
+      }
+
     if (parameters.include_melt_transport)
       {
         const FEValuesExtractors::Vector ex_u_f = introspection.variable("fluid velocity").extractor_vector();
@@ -175,6 +186,20 @@ namespace aspect
         const Tensor<1,dim> velocity = (scratch.old_velocity_values[q] +
                                         scratch.old_old_velocity_values[q]) / 2;
         double velocity_norm = velocity.norm();
+
+        if (use_darcy_velocity)
+          {
+            const unsigned int porosity_index = introspection.compositional_index_for_name("porosity");
+            const Tensor<1,dim> gravity = gravity_model.get()->gravity_vector(scratch.finite_element_values.quadrature_point(q));
+            Tensor<1,dim> darcy_velocity =
+              aspect::Utilities::calculate_approximate_darcy_velocity(scratch.material_model_inputs,
+                                                                      scratch.material_model_outputs,
+                                                                      melt_outputs, velocity,
+                                                                      gravity, porosity_index, q,
+                                                                      parameters.use_pressure_gradient_for_darcy_field);
+
+            velocity_norm = darcy_velocity.norm();
+          }
 
         if (parameters.include_melt_transport)
           {
@@ -561,6 +586,17 @@ namespace aspect
                                                               solution,
                                                               scratch.finite_element_values,
                                                               introspection);
+
+        if (advection_field.is_temperature())
+          scratch.material_model_inputs.requested_properties
+            = MaterialModel::MaterialProperties::equation_of_state_properties |
+              MaterialModel::MaterialProperties::thermal_conductivity;
+
+        for (const auto &heating_model : heating_model_manager.get_active_plugins())
+          scratch.material_model_inputs.requested_properties
+            = scratch.material_model_inputs.requested_properties |
+              heating_model->get_required_properties();
+
         material_model->evaluate(scratch.material_model_inputs,scratch.material_model_outputs);
         heating_model_manager.evaluate(scratch.material_model_inputs,scratch.material_model_outputs,scratch.heating_model_outputs);
 
@@ -584,6 +620,7 @@ namespace aspect
                                                    cell,
                                                    scratch.finite_element_values.get_quadrature(),
                                                    scratch.finite_element_values.get_mapping(),
+                                                   scratch.material_model_inputs.requested_properties,
                                                    scratch.material_model_outputs);
 
         if (parameters.advection_stabilization_method == Parameters<dim>::AdvectionStabilizationMethod::entropy_viscosity)
@@ -626,13 +663,7 @@ namespace aspect
                 }
             }
 
-            const double fe_order
-              = (advection_field.is_temperature()
-                 ?
-                 parameters.temperature_degree
-                 :
-                 parameters.composition_degree
-                );
+            const double fe_order = advection_field.polynomial_degree(introspection);
             const double h = cell->diameter();
             const double eps = max_conductivity_on_cell;
 
@@ -655,7 +686,7 @@ namespace aspect
                 // important, as long as the result is still a valid number. Note that this
                 // is only important if \|u\| and eps are zero.
                 const double peclet = peclet_times_eps / (eps + 1e-100);
-                const double coth_of_peclet = (1.0 + exp(-2.0*peclet)) / (1.0 - exp(-2.0*peclet));
+                const double coth_of_peclet = (1.0 + std::exp(-2.0*peclet)) / (1.0 - std::exp(-2.0*peclet));
                 const double delta = h/(2.0*norm_of_advection_term*fe_order) * (coth_of_peclet - 1.0/peclet);
                 viscosity_per_cell[cell->active_cell_index()] = delta;
               }

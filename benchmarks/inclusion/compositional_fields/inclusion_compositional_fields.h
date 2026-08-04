@@ -9,9 +9,7 @@ namespace aspect
 {
   namespace InclusionBenchmark
   {
-    using namespace dealii;
-
-    template<int dim>
+    template <int dim>
     class InclusionCompositionalMaterial : public InclusionMaterial<dim>
     {
       public:

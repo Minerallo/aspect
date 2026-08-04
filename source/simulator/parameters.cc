@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -24,7 +24,7 @@
 #include <aspect/utilities.h>
 #include <aspect/melt.h>
 #include <aspect/volume_of_fluid/handler.h>
-#include <aspect/stokes_matrix_free.h>
+#include <aspect/simulator/solver/stokes_matrix_free.h>
 #include <aspect/newton.h>
 #include <aspect/mesh_deformation/free_surface.h>
 
@@ -48,7 +48,7 @@ namespace aspect
   template <int dim>
   void
   Parameters<dim>::
-  declare_parameters (ParameterHandler &prm)
+  declare_parameters (ParameterHandler &prm, const unsigned int mpi_rank)
   {
     prm.declare_entry ("Dimension", "2",
                        Patterns::Integer (2,3),
@@ -97,9 +97,9 @@ namespace aspect
 
     prm.declare_entry ("Start time", "0.",
                        Patterns::Double (),
-                       "The start time of the simulation. Units: Years if the "
-                       "'Use years in output instead of seconds' parameter is set; "
-                       "seconds otherwise.");
+                       "The start time of the simulation. Units: \\si{\\year} if the "
+                       "'Use years instead of seconds' parameter is set; "
+                       "\\si{\\second} otherwise.");
 
     prm.declare_entry ("Timing output frequency", "100",
                        Patterns::Integer(0),
@@ -108,7 +108,7 @@ namespace aspect
                        "value is set to zero it will also output timing information at the "
                        "initiation timesteps.");
 
-    prm.declare_entry ("Use years in output instead of seconds", "true",
+    prm.declare_entry ("Use years instead of seconds", "true",
                        Patterns::Bool (),
                        "When computing results for mantle convection simulations, "
                        "it is often difficult to judge the order of magnitude of results "
@@ -126,7 +126,15 @@ namespace aspect
                        "several of the boundary velocity models described in Section~"
                        "\\ref{parameters:Boundary_20velocity_20model} interpret both "
                        "specific times in years instead of seconds, and velocities in "
-                       "meters per year instead of meters per second.");
+                       "meters per year instead of meters per second."
+                       "\n\n"
+                       "For the purposes of this parameter, a year consists of "
+                       "60*60*24*365.2425 seconds. In other words, a year is taken "
+                       "to have 365.2425 days.");
+
+    prm.declare_alias ("Use years instead of seconds",
+                       "Use years in output instead of seconds",
+                       (mpi_rank == 0) ? true : false); // trigger deprecation warning
 
     prm.declare_entry ("CFL number", "1.0",
                        Patterns::Double (0.),
@@ -153,8 +161,7 @@ namespace aspect
                        "The default value is a value so that when converted from years into seconds "
                        "it equals the largest number representable by a floating "
                        "point number, implying an unlimited time step."
-                       "Units: Years or seconds, depending on the ``Use years "
-                       "in output instead of seconds'' parameter.");
+                       "Units: \\si{\\year} or \\si{\\second}, depending on the ``Use years instead of seconds'' parameter.");
 
     prm.declare_entry ("Maximum first time step",
                        /* boost::lexical_cast<std::string>(std::numeric_limits<double>::max() /
@@ -169,8 +176,7 @@ namespace aspect
                        "The default value is a value so that when converted from years into seconds "
                        "it equals the largest number representable by a floating "
                        "point number, implying an unlimited time step. "
-                       "Units: Years or seconds, depending on the ``Use years "
-                       "in output instead of seconds'' parameter.");
+                       "Units: \\si{\\year} or \\si{\\second}, depending on the ``Use years instead of seconds'' parameter.");
 
     prm.declare_entry ("Maximum relative increase in time step",
                        "91.0",
@@ -199,71 +205,77 @@ namespace aspect
                        "This parameter indicates whether the simulator should also use "
                        "heat conduction in determining the length of each time step.");
 
-    const std::string allowed_solver_schemes = "single Advection, single Stokes|iterated Advection and Stokes|"
-                                               "single Advection, iterated Stokes|no Advection, iterated Stokes|"
+    const std::string allowed_solver_schemes = "no Advection, no Stokes|"
                                                "no Advection, single Stokes|"
+                                               "no Advection, single Stokes first timestep only|"
+                                               "first timestep only, single Stokes|" // deprecated: use "no Advection, single Stokes first timestep only" instead
+                                               "no Advection, iterated Stokes|"
                                                "no Advection, iterated defect correction Stokes|"
+                                               "single Advection, no Stokes|"
+                                               "single Advection, single Stokes|"
+                                               "single Advection, iterated Stokes|"
                                                "single Advection, iterated defect correction Stokes|"
+                                               "single Advection, iterated Newton Stokes|"
+                                               "iterated Advection, no Stokes|"
+                                               "iterated Advection and Stokes|"
                                                "iterated Advection and defect correction Stokes|"
-                                               "iterated Advection and Newton Stokes|single Advection, iterated Newton Stokes|"
-                                               "single Advection, no Stokes|IMPES|iterated IMPES|"
-                                               "iterated Stokes|Newton Stokes|Stokes only|Advection only|"
-                                               "first timestep only, single Stokes|no Advection, no Stokes";
+                                               "iterated Advection and Newton Stokes";
 
     prm.declare_entry ("Nonlinear solver scheme", "single Advection, single Stokes",
                        Patterns::Selection (allowed_solver_schemes),
-                       "The kind of scheme used to resolve the nonlinearity in the system. "
-                       "`single Advection, single Stokes' means that no nonlinear iterations are done, "
-                       "and the temperature, compositional fields and Stokes equations are solved exactly "
-                       "once per time step, one after the other. "
-                       "The `iterated Advection and Stokes' scheme iterates this decoupled approach "
-                       "by alternating the solution of the temperature, composition and Stokes systems. "
-                       "The `single Advection, iterated Stokes' scheme solves the temperature and composition "
-                       "equation once at the beginning of each time step and then iterates out the solution of "
-                       "the Stokes equation. "
+                       "The kind of scheme used to resolve the nonlinearity in the system of equations:\n\n"
+                       "The `no Advection, no Stokes' scheme solves no equations. This "
+                       "is useful to investigate the initial and boundary conditions of the model.\n"
+                       "The `no Advection, single Stokes' scheme only solves the Stokes system once per "
+                       "timestep. This is mostly useful for instantaneous models and Stokes benchmarks.\n"
+                       "The `no Advection, single Stokes first timestep only' scheme solves the Stokes equations exactly "
+                       "once, at the first time step. No nonlinear iterations are done, and the temperature and "
+                       "composition systems are not solved.\n"
                        "The `no Advection, iterated Stokes' scheme only solves the Stokes system, iterating "
-                       "out the solution, and ignores compositions and the temperature equation (careful, "
-                       "the material model must not depend on the temperature or composition; this is mostly "
-                       "useful for Stokes benchmarks). "
-                       " The `no Advection, single Stokes' scheme only solves the Stokes system once per "
-                       "timestep. This is also mostly useful for Stokes benchmarks. "
-                       "The `single Advection, no Stokes' scheme only solves the temperature and other advection "
-                       "systems once, and instead of solving for the Stokes system, a prescribed velocity "
-                       "and pressure is used. "
-                       "The `iterated Advection and Newton Stokes' scheme iterates by alternating the solution "
-                       "of the temperature, composition and Stokes equations, using Picard iterations for the "
-                       "temperature and composition, and Newton iterations for the Stokes system. "
-                       "The `single Advection, iterated Newton Stokes' scheme solves "
-                       "the temperature and composition equations once at the beginning of each time step and "
-                       "then iterates out the solution of the Stokes equation, using Newton iterations for the "
-                       "Stokes system. "
-                       "The `iterated Advection and defect correction Stokes' scheme iterates by alternating the "
-                       "solution of the temperature, composition and Stokes equations, using Picard iterations for "
-                       "the temperature and composition, and defect correction Picard iterations for the Stokes system. "
-                       "The `single Advection, iterated defect correction Stokes' scheme solves "
-                       "the temperature and composition equations once at the beginning of each time step and "
-                       "then iterates out the solution of the Stokes equation, using defect correction Picard "
-                       "iterations for the Stokes system. "
+                       "out the solution, and does not solve the compositions and the temperature equation. "
+                       "This is mostly useful for instantaneous models and benchmarks with stress-dependent rheology.\n"
                        "The `no Advection, iterated defect correction Stokes' scheme solves "
                        "the temperature and composition equations once at the beginning of each time step and "
                        "then iterates out the solution of the Stokes equation, using defect correction Picard "
-                       "iterations for the Stokes system. "
-                       "The `first timestep only, single Stokes' scheme solves the Stokes equations exactly "
-                       "once, at the first time step. No nonlinear iterations are done, and the temperature and "
-                       "composition systems are not solved. "
-                       "\n\n"
-                       "The `IMPES' scheme is deprecated and only allowed for reasons of backwards "
-                       "compatibility. It is the same as `single Advection, single Stokes' ."
-                       "The `iterated IMPES' scheme is deprecated and only allowed for reasons of "
-                       "backwards compatibility. It is the same as `iterated Advection and Stokes'. "
-                       "The `iterated Stokes' scheme is deprecated and only allowed for reasons of "
-                       "backwards compatibility. It is the same as `single Advection, iterated Stokes'. "
-                       "The `Stokes only' scheme is deprecated and only allowed for reasons of "
-                       "backwards compatibility. It is the same as `no Advection, iterated Stokes'. "
-                       "The `Advection only' scheme is deprecated and only allowed for reasons of "
-                       "backwards compatibility. It is the same as `single Advection, no Stokes'. "
-                       "The `Newton Stokes' scheme is deprecated and only allowed for reasons of "
-                       "backwards compatibility. It is the same as `iterated Advection and Newton Stokes'.");
+                       "iterations for the Stokes system.\n"
+                       "The `single Advection, no Stokes' scheme solves the temperature and other advection "
+                       "systems once per timestep, and instead of solving for the Stokes system, a prescribed "
+                       "velocity and pressure is used. This is useful for kinematic models and advection benchmarks.\n"
+                       "The `single Advection, single Stokes' solver scheme performs no nonlinear iterations, "
+                       "and the temperature, compositional fields and Stokes equations are solved exactly "
+                       "once per time step, one after the other. This is the default solver scheme.\n"
+                       "The `single Advection, iterated Stokes' scheme solves the temperature and composition "
+                       "equation once at the beginning of each time step and then iterates out the solution of "
+                       "the Stokes equation.\n"
+                       "The `single Advection, iterated defect correction Stokes' scheme solves "
+                       "the temperature and composition equations once at the beginning of each time step and "
+                       "then iterates out the solution of the Stokes equation, using defect correction Picard "
+                       "iterations for the Stokes system.\n"
+                       "The `single Advection, iterated Newton Stokes' scheme solves "
+                       "the temperature and composition equations once at the beginning of each time step and "
+                       "then iterates out the solution of the Stokes equation, using Newton iterations for the "
+                       "Stokes system.\n"
+                       "The `iterated Advection, no Stokes' scheme iterates the temperature and other advection "
+                       "equations, and instead of solving for the Stokes system, a prescribed "
+                       "velocity and pressure are used. This is useful for kinematic models and advection benchmarks "
+                       "with nonlinear processes in the advection equations.\n"
+                       "The `iterated Advection and Stokes' scheme iterates out the nonlinearity "
+                       "by alternating the solution of the temperature, composition and Stokes systems.\n"
+                       "The `iterated Advection and defect correction Stokes' scheme iterates by alternating the "
+                       "solution of the temperature, composition and Stokes equations, using Picard iterations for "
+                       "the temperature and composition, and defect correction Picard iterations for the Stokes system.\n"
+                       "The `iterated Advection and Newton Stokes' scheme iterates by alternating the solution "
+                       "of the temperature, composition and Stokes equations, using Picard iterations for the "
+                       "temperature and composition, and Newton iterations for the Stokes system.");
+
+    prm.declare_entry ("Nonlinear solver failure strategy", "continue with next timestep",
+                       Patterns::Selection("continue with next timestep|cut timestep size|abort program"),
+                       "Select the strategy on what to do if the nonlinear solver scheme fails to "
+                       "converge. The options are:\n"
+                       "`continue with next timestep`: ignore error and continue to the next timestep\n"
+                       "`cut timestep size`: reduce the current timestep size by a specified factor and redo "
+                       "the timestep\n"
+                       "`abort program`: abort the program with an error message.");
 
     prm.declare_entry ("Nonlinear solver tolerance", "1e-5",
                        Patterns::Double(0., 1.),
@@ -271,6 +283,13 @@ namespace aspect
                        "This parameter is only relevant if the `Nonlinear solver scheme' does nonlinear "
                        "iterations, in other words, if it is set to something other than "
                        "`single Advection, single Stokes' or `single Advection, no Stokes'.");
+
+    prm.declare_entry ("Linear solver failure strategy", "abort",
+                       Patterns::Selection("continue with nonlinear solver|abort"),
+                       "Select the strategy on what to do if the linear solver scheme fails to "
+                       "converge. The options are:\n"
+                       "`continue with nonlinear solver`: ignore error and continue with the nonlinear solver\n"
+                       "`abort`: abort with an error message");
 
     prm.declare_entry ("Pressure normalization", "surface",
                        Patterns::Selection ("surface|volume|no"),
@@ -331,7 +350,39 @@ namespace aspect
     prm.declare_entry ("Output directory", "output",
                        Patterns::DirectoryName(),
                        "The name of the directory into which all output files should be "
-                       "placed. This may be an absolute or a relative path.");
+                       "placed. This may be an absolute or a relative path. ASPECT will "
+                       "write output such as statistics files or visualization files "
+                       "into this directory or into directories further nested within.");
+
+    prm.declare_entry ("Output directory LFS stripe count", "0",
+                       Patterns::Integer(0),
+                       "Many large clusters use the Lustre file system (LFS) that allows to 'stripe' "
+                       "files, i.e., to use multiple file servers to store a single file. This is "
+                       "useful when writing very large files from multiple MPI processes, such "
+                       "as when creating graphical output or creating checkpoints. In those "
+                       "cases, if all MPI processes try to route their data to a single file "
+                       "server, that file server and the disks it manages may be saturated by "
+                       "data and everything slows down. File striping instead ensures that the "
+                       "data is sent to several file servers, improving performance. A "
+                       "description of how Lustre manages file striping can be found at "
+                       "https://doc.lustre.org/lustre_manual.xhtml#managingstripingfreespace . "
+                       "How file striping can be configured is discussed at "
+                       "https://wiki.lustre.org/Configuring_Lustre_File_Striping ."
+                       "\n\n"
+                       "When this parameter is set to anything other than zero, "
+                       "ASPECT will call the Lustre support tool, `lst`, as follows: "
+                       "`lst setstripe -c N OUTPUT_DIR`, where `N` is the value of the "
+                       "input parameter discussed here, and `OUTPUT_DIR` is the directory "
+                       "into which ASPECT writes its output. The file striping so set on "
+                       "the output directory are also inherited by the sub-directories "
+                       "ASPECT creates within it."
+                       "\n\n"
+                       "In order to use this parameter, your cluster must obviously be "
+                       "using the Lustre file system. What the correct value for the stripe "
+                       "count is is something you will have to find out from your cluster's "
+                       "local documentation, or your cluster administrator. It depends on "
+                       "the physical details and configuration of the file servers attached "
+                       "to a cluster.");
 
     prm.declare_entry ("Use operator splitting", "false",
                        Patterns::Bool(),
@@ -344,6 +395,15 @@ namespace aspect
     prm.declare_entry ("World builder file", "",
                        Patterns::FileName(),
                        "Name of the world builder file. If empty, the world builder is not initialized.");
+
+    prm.enter_subsection ("Particles");
+    {
+      prm.declare_entry ("Number of particle systems", "1",
+                         Patterns::Integer(0, ASPECT_MAX_NUM_PARTICLE_SYSTEMS),
+                         "The number of particle systems to be created. The maximum number of particle systems "
+                         "is set by the CMake variable `ASPECT_MAX_NUM_PARTICLE_SYSTEMS` and is by default 2.");
+    }
+    prm.leave_subsection();
 
     prm.enter_subsection ("Solver parameters");
     {
@@ -376,13 +436,21 @@ namespace aspect
 
       prm.enter_subsection ("Stokes solver parameters");
       {
-        prm.declare_entry ("Stokes solver type", "block AMG",
+        prm.declare_entry ("Stokes solver type", "default solver",
                            Patterns::Selection(StokesSolverType::pattern()),
                            "This is the type of solver used on the Stokes system. The block geometric "
                            "multigrid solver currently has a limited implementation and therefore "
                            "may trigger Asserts in the code when used. If this is the case, "
                            "please switch to 'block AMG'. Additionally, the block GMG solver requires "
-                           "using material model averaging.");
+                           "using material model averaging. The 'default solver' chooses "
+                           "the geometric multigrid solver if supported, otherwise the AMG solver.");
+
+        prm.declare_entry ("Stokes GMG type", "local smoothing",
+                           Patterns::Selection(StokesGMGType::pattern()),
+                           "The choice of geometric multigrid, either 'local smoothing' (the default) "
+                           " or 'global coarsening'. Local smoothing (\\cite{clevenger:heister:2021}) "
+                           "has been extensively tested and works in many more situations, while "
+                           "global coarsening is shown to be up to 3x faster (\\cite{munch:globalcoarsening:2023}).");
 
         prm.declare_entry ("Use direct solver for Stokes system", "false",
                            Patterns::Bool(),
@@ -390,6 +458,13 @@ namespace aspect
                            "be solved using Trilinos klu, otherwise an iterative Schur "
                            "complement solver is used. The direct solver is only efficient "
                            "for small problems.");
+
+        prm.declare_entry ("Use weighted BFBT for Schur complement", "false",
+                           Patterns::Bool(),
+                           "If set to true, the Schur complement approximation in the Block preconditioner "
+                           "uses the weighted BFBT preconditioner, otherwise a weighted mass matrix will "
+                           "be used. The BFBT preconditioner is more expensive, but works better for large "
+                           "viscosity variations.");
 
         prm.declare_entry ("Krylov method for cheap solver steps", "GMRES",
                            Patterns::Selection(StokesKrylovType::pattern()),
@@ -437,7 +512,7 @@ namespace aspect
                            "value should be sufficient. In fact, a tolerance of 1e-4 "
                            "might be accurate enough.");
 
-        prm.declare_entry ("Number of cheap Stokes solver steps", "200",
+        prm.declare_entry ("Number of cheap Stokes solver steps", "1000",
                            Patterns::Integer(0),
                            "As explained in the paper that describes ASPECT (Kronbichler, Heister, and Bangerth, "
                            "2012, see \\cite{kronbichler:etal:2012}) we first try to solve the Stokes system in every "
@@ -460,7 +535,7 @@ namespace aspect
                            "not converge and return an error message pointing out that the user didn't allow "
                            "a sufficiently large number of iterations for the iterative solver to converge.");
 
-        prm.declare_entry ("GMRES solver restart length", "50",
+        prm.declare_entry ("GMRES solver restart length", "100",
                            Patterns::Integer(1),
                            "This is the number of iterations that define the GMRES solver restart length. "
                            "Increasing this parameter helps with convergence issues arising from high localized "
@@ -495,7 +570,7 @@ namespace aspect
                            "\n\n"
                            "The default value should be good for relatively simple models, but in "
                            "particular for very strong viscosity contrasts the full $A$ block can be "
-                           "advantageous.");
+                           "advantageous. This parameter is always set to true when using the GMG solver.");
 
         prm.declare_entry ("Force nonsymmetric A block solver", "false",
                            Patterns::Bool(),
@@ -560,26 +635,53 @@ namespace aspect
       prm.leave_subsection ();
       prm.enter_subsection ("Operator splitting parameters");
       {
+        prm.declare_entry ("Reaction solver type", "ARKode",
+                           Patterns::Selection ("ARKode|fixed step"),
+                           "This parameter determines what solver will be used when the reactions "
+                           "are computed within the operator splitting scheme. For reactions where "
+                           "the reaction rate is a known, finite quantity, the appropriate choice "
+                           "is `ARKode', which uses an ODE solver from SUNDIALs ARKode (adaptive-step "
+                           "additive Runge Kutta ODE solver methods) to compute the solution. ARKode "
+                           "will pick a reasonable step size based on the reaction rate and the given "
+                           "`Reaction solver relative tolerance'. "
+                           "However, in some cases we have instantaneous reactions, where we know the "
+                           "new value of a compositional field (and the reaction rate would be "
+                           "infinite), or reaction where we need to know or be able to control the step "
+                           "size we use to compute the reactions. In theses cases, it is appropriate "
+                           "to use the `fixed step' scheme, a method that a forward Euler scheme and a "
+                           "fixed number of steps given by the `Reaction time step' and "
+                           "`Reaction time steps per advection step' parameters. ");
+
+        prm.declare_entry ("Reaction solver relative tolerance", "1e-6",
+                           Patterns::Double (0.),
+                           "The relative solver tolerance used in the ARKode reaction solver. "
+                           "This tolerance is used to adaptively determine the reaction step size. "
+                           "For more details, see the ARKode documentation. This parameter is only used "
+                           "if the `ARKode' reaction solver type is used. "
+                           "Units: none.");
+
         prm.declare_entry ("Reaction time step", "1000.0",
                            Patterns::Double (0.),
                            "Set a time step size for computing reactions of compositional fields and the "
                            "temperature field in case operator splitting is used. This is only used "
-                           "when the parameter ``Use operator splitting'' is set to true. "
+                           "when the parameter ``Use operator splitting'' is set to true and when the "
+                           "`fixed step' reaction solver type is used. "
                            "The reaction time step must be greater than 0. "
                            "If you want to prescribe the reaction time step only as a relative value "
                            "compared to the advection time step as opposed to as an absolute value, you "
                            "should use the parameter ``Reaction time steps per advection step'' and set "
                            "this parameter to the same (or larger) value as the ``Maximum time step'' "
                            "(which is 5.69e+300 by default). "
-                           "Units: Years or seconds, depending on the ``Use years "
-                           "in output instead of seconds'' parameter.");
+                           "Units: \\si{\\year} or \\si{\\second}, depending on the ``Use years instead of seconds'' "
+                           "parameter.");
 
         prm.declare_entry ("Reaction time steps per advection step", "0",
                            Patterns::Integer (0),
                            "The number of reaction time steps done within one advection time step "
                            "in case operator splitting is used. This is only used if the parameter "
-                           "``Use operator splitting'' is set to true. If set to zero, this "
-                           "parameter is ignored. Otherwise, the reaction time step size is chosen according to "
+                           "``Use operator splitting'' is set to true and when the `fixed step' "
+                           "reaction solver type is used. If set to zero, this parameter is ignored. "
+                           "Otherwise, the reaction time step size is chosen according to "
                            "this criterion and the ``Reaction time step'', whichever yields the "
                            "smaller time step. "
                            "Units: none.");
@@ -740,11 +842,27 @@ namespace aspect
                                                      "linear x momentum|linear y momentum|linear z momentum"),
                          "Choose none, one or several from "
                          "\n\n"
-                         "\\begin{itemize} \\item net rotation \\item angular momentum \\item net translation "
-                         "\\item net surface rotation"
-                         "\\item linear momentum \\item net x translation \\item net y translation "
-                         "\\item net z translation \\item linear x momentum \\item linear y momentum "
-                         "\\item linear z momentum \\end{itemize}"
+                         "* net rotation"
+                         "\n"
+                         "* angular momentum"
+                         "\n"
+                         "* net translation"
+                         "\n"
+                         "* net surface rotation"
+                         "\n"
+                         "* linear momentum"
+                         "\n"
+                         "* net x translation"
+                         "\n"
+                         "* net y translation"
+                         "\n"
+                         "* net z translation"
+                         "\n"
+                         "* linear x momentum"
+                         "\n"
+                         "* linear y momentum"
+                         "\n"
+                         "* linear z momentum"
                          "\n\n"
                          "These are a selection of operations to remove certain parts of the nullspace from "
                          "the velocity after solving. For some geometries and certain boundary conditions "
@@ -829,7 +947,7 @@ namespace aspect
                          "are in a time range that we are interested in and where "
                          "we would like to use a finer mesh. Units: Each element of the "
                          "list has units years if the "
-                         "'Use years in output instead of seconds' parameter is set; "
+                         "'Use years instead of seconds' parameter is set; "
                          "seconds otherwise.");
       prm.declare_entry ("Run postprocessors on initial refinement", "false",
                          Patterns::Bool (),
@@ -877,6 +995,39 @@ namespace aspect
                          "If 0 and time between checkpoint is not specified, "
                          "checkpointing will not be performed. "
                          "Units: None.");
+      prm.declare_entry ("Additional checkpoint times", "",
+                         Patterns::List (Patterns::Double (0.)),
+                         "A list of times so that if the end time of a time step "
+                         "is beyond this time, an additional checkpoint "
+                         "is created. These checkpoint times are independent of the "
+                         "checkpoint frequency specified by ``Time between checkpoint'' "
+                         "and ``Steps between checkpoint'', therefore additional checkpoints "
+                         "can also be created if these parameters are both set to zero. "
+                         "The additional checkpoints are numbered consequetively starting from "
+                         "``Number of checkpoints to keep'' + 1. If a time step is so large "
+                         "that it crosses multiple additional checkpoint times, only one "
+                         "checkpoint is created, and the rest of that time step's checkpoints "
+                         "are not taken into account in the checkpoint numbering. "
+                         "Units: \\si{\\year} if the 'Use years instead "
+                         "of seconds' parameter is set; \\si{\\second} otherwise.");
+      prm.declare_entry ("Number of checkpoints to keep", "3",
+                         Patterns::Integer (1),
+                         "The number of checkpoint slots to rotate through in the "
+                         "output/restart directory. "
+                         "Units: None.");
+      prm.declare_entry ("Resume checkpoint", "0",
+                         Patterns::Integer (0),
+                         "If nonzero, resume from the checkpoint with this slot id "
+                         "inside output/restart. This overrides Resume time and the "
+                         "last good checkpoint selection. "
+                         "Units: None.");
+      prm.declare_entry ("Resume time", "-1",
+                         Patterns::Double (-1),
+                         "If non-negative, resume from the checkpoint whose saved model "
+                         "time is closest to this value. This option is ignored when "
+                         "Resume checkpoint is set. "
+                         "Units: \\si{\\year} if the 'Use years instead "
+                         "of seconds' parameter is set; \\si{\\second} otherwise.");
     }
     prm.leave_subsection ();
 
@@ -908,7 +1059,7 @@ namespace aspect
                          "discontinuous field. "
                          "Units: None.");
       prm.declare_entry ("Composition polynomial degree", "2",
-                         Patterns::Integer (0),
+                         Patterns::List(Patterns::Integer (0)),
                          "The polynomial degree to use for the composition variable(s). "
                          "As an example, a value of 2 for this parameter will yield "
                          "either the element $Q_2$ or $DGQ_2$ for the compositional "
@@ -964,7 +1115,7 @@ namespace aspect
                          "and $Q_{k-1}$ for the pressure. This is because using the "
                          "\\textit{same} polynomial degree for both the velocity and the "
                          "pressure turns out to violate some mathematical properties "
-                         "necessary to make the problem solvable. (In particular, the"
+                         "necessary to make the problem solvable. (In particular, the "
                          "condition in question goes by the name ``inf-sup'' or "
                          "Babu{\\v s}ka-Brezzi or LBB condition.) A consequence of "
                          "violating this condition is that the pressure may show "
@@ -1003,7 +1154,7 @@ namespace aspect
                          "between cells, and weak imposition of boundary terms for the temperature "
                          "field via the interior-penalty discontinuous Galerkin method.");
       prm.declare_entry ("Use discontinuous composition discretization", "false",
-                         Patterns::Bool (),
+                         Patterns::List(Patterns::Bool ()),
                          "Whether to use a composition discretization that is discontinuous "
                          "as opposed to continuous. This then requires the assembly of face terms "
                          "between cells, and weak imposition of boundary terms for the composition "
@@ -1014,14 +1165,14 @@ namespace aspect
         prm.declare_entry ("Stabilization method", "entropy viscosity",
                            Patterns::Selection("entropy viscosity|SUPG"),
                            "Select the method for stabilizing the advection equation. The original "
-                           "method implemented is 'entropy viscosity' as described in \\cite {kronbichler:etal:2012}. "
+                           "method implemented is 'entropy viscosity' as described in \\cite{kronbichler:etal:2012}. "
                            "SUPG is currently experimental.");
 
         prm.declare_entry ("List of compositional fields with disabled boundary entropy viscosity", "",
                            Patterns::List(Patterns::Anything()),
                            "Select for which compositional fields to skip the entropy viscosity "
-                           "stabilization at dirichlet boundaries. This is "
-                           "only advisable for compositional fields"
+                           "stabilization at Dirichlet boundaries. This is "
+                           "only advisable for compositional fields "
                            "that have intrinsic physical diffusion terms, otherwise "
                            "oscillations may develop. The parameter should contain a list of "
                            "compositional field names.");
@@ -1043,7 +1194,7 @@ namespace aspect
                            "Rather, the paper always uses 2 as the exponent in the definition "
                            "of the entropy, following equation (15) of the paper. The full "
                            "approach is discussed in \\cite{guermond:etal:2011}.) Note that this is not the "
-                           "thermal expansion coefficient, also commonly referred to as $\\alpha$."
+                           "thermal expansion coefficient, also commonly referred to as $\\alpha$. "
                            "Units: None.");
         prm.declare_entry ("cR", "0.11",
                            Patterns::List(Patterns::Double (0.)),
@@ -1070,7 +1221,7 @@ namespace aspect
                            "entropy viscosity, which is the part that only scales with the cell diameter "
                            "and the maximum velocity in the cell, but does not depend on the solution "
                            "field itself or its residual. An appropriate value for 2d is 0.052 and "
-                           "0.78 for 3d. (For historical reasons, the name used here is different "
+                           "0.078 for 3d. (For historical reasons, the name used here is different "
                            "from the one used in the 2012 paper by Kronbichler, "
                            "Heister and Bangerth that describes ASPECT, see \\cite{kronbichler:etal:2012}. "
                            "This parameter can be given as a single value or as a list with as "
@@ -1107,19 +1258,34 @@ namespace aspect
         prm.declare_entry ("Use limiter for discontinuous temperature solution", "false",
                            Patterns::Bool (),
                            "Whether to apply the bound preserving limiter as a correction after computing "
-                           "the discontinuous temperature solution. Currently we apply this only to the "
-                           "temperature solution if the 'Global temperature maximum' and "
-                           "'Global temperature minimum' are already defined in the .prm file. "
+                           "the discontinuous temperature solution. The limiter will only have an "
+                           "effect if the 'Global temperature maximum' and "
+                           "'Global temperature minimum' parameters are defined in the .prm file. "
                            "This limiter keeps the discontinuous solution in the range given by "
-                           "'Global temperature maximum' and 'Global temperature minimum'.");
+                           "'Global temperature maximum' and 'Global temperature minimum'. "
+                           "Because this limiter modifies the solution it no longer "
+                           "satisfies the assembled equation. Therefore, "
+                           "the nonlinear residual for this field is meaningless, and in nonlinear "
+                           "solvers we will ignore the residual for this field to evaluate "
+                           "if the nonlinear solver has converged.");
         prm.declare_entry ("Use limiter for discontinuous composition solution", "false",
-                           Patterns::Bool (),
+                           Patterns::List(Patterns::Bool()),
                            "Whether to apply the bound preserving limiter as a correction after having "
-                           "the discontinuous composition solution. Currently we apply this only to the "
-                           "compositional solution if the 'Global composition maximum' and "
-                           "'Global composition minimum' are already defined in the .prm file. "
+                           "the discontinuous composition solution. The limiter will only have an "
+                           "effect if the 'Global composition maximum' and "
+                           "'Global composition minimum' parameters are defined in the .prm file. "
                            "This limiter keeps the discontinuous solution in the range given by "
-                           "Global composition maximum' and 'Global composition minimum'.");
+                           "Global composition maximum' and 'Global composition minimum'. "
+                           "The number of input values in this parameter separated by ',' has to be "
+                           "one or the number of the compositional fields. When only one value "
+                           "is supplied, this same value is assumed for all compositional fields, otherwise "
+                           "each value represents if the limiter should be applied to the respective "
+                           "compositional field. "
+                           "Because this limiter modifies the solution it no longer "
+                           "satisfies the assembled equation. Therefore, "
+                           "the nonlinear residual for this field is meaningless, and in nonlinear "
+                           "solvers we will ignore the residual for this field to evaluate "
+                           "if the nonlinear solver has converged.");
         prm.declare_entry ("Global temperature maximum",
                            boost::lexical_cast<std::string>(std::numeric_limits<double>::max()),
                            Patterns::Double (),
@@ -1161,20 +1327,19 @@ namespace aspect
                          "\n\n"
                          "These choices correspond to the following methods by which "
                          "the temperature field gains its values:"
-                         "\\begin{itemize}"
-                         "\\item ``field'': If the temperature is marked with this "
+                         "* ``field'': If the temperature is marked with this "
                          "method, then its values are computed in each time step by "
                          "solving the temperature advection-diffusion equation. In other words, "
                          "this corresponds to the usual notion of a temperature. "
                          "\n"
-                         "\\item ``prescribed field'': The value of the temperature is determined "
+                         "* ``prescribed field'': The value of the temperature is determined "
                          "in each time step from the material model. If a compositional field is "
                          "marked with this method, then the value of a specific additional material "
                          "model output, called the `PrescribedTemperatureOutputs' is interpolated "
                          "onto the temperature. This field does not change otherwise, it is not "
                          "advected with the flow. "
                          "\n"
-                         "\\item ``prescribed field with diffusion'': If the temperature field is "
+                         "* ``prescribed field with diffusion'': If the temperature field is "
                          "marked this way, the value of a specific additional material model output, "
                          "called the `PrescribedTemperatureOutputs' is interpolated onto the field, as in "
                          "the ``prescribed field'' method. Afterwards, the field is diffused based on "
@@ -1185,11 +1350,10 @@ namespace aspect
                          "of diffusion is independent of the time step size, and that the field is not "
                          "advected with the flow."
                          "\n"
-                         "\\item ``static'': If a temperature field is marked "
+                         "* ``static'': If a temperature field is marked "
                          "this way, then it does not evolve at all. Its values are "
                          "simply set to the initial conditions, and will then "
-                         "never change."
-                         "\\end{itemize}");
+                         "never change.");
     }
     prm.leave_subsection();
 
@@ -1202,20 +1366,78 @@ namespace aspect
       prm.declare_entry ("Names of fields", "",
                          Patterns::List(Patterns::Anything()),
                          "A user-defined name for each of the compositional fields requested.");
+      prm.declare_entry ("Minimum volume fraction", "0.0",
+                         Patterns::Double(0.0, 1.0),
+                         "Chemical compositional field values strictly smaller than this value "
+                         "can be treated as absent when material models compute composition fractions. "
+                         "The default value includes every nonnegative compositional field value.");
       prm.declare_entry ("Types of fields", "unspecified",
-                         Patterns::List (Patterns::Selection("chemical composition|stress|strain|grain size|porosity|density|entropy|generic|unspecified")),
-                         "A type for each of the compositional fields requested. "
-                         "Each entry of the list must be "
-                         "one of several recognized types: chemical composition, "
-                         "stress, strain, grain size, porosity, density, entropy, "
-                         "general and unspecified. "
-                         "The generic type is intended to be a placeholder type "
-                         "that has no effect on the running of any material model, "
-                         "while the unspecified type is intended to tell ASPECT "
+                         Patterns::List (Patterns::Selection("chemical composition|stress|strain|grain size|porosity|density|entropy|reaction progress|generic|unspecified")),
+                         "A comma separated list denoting a ``type'' for each of the "
+                         "compositional fields requested. ASPECT uses these types to "
+                         "determine how fields are handled when evaluating the "
+                         "material model and when solving "
+                         "the equations as described below."
+                         "\n\n"
+                         "Each entry of the list must be one of several recognized types: "
+                         "* ``chemical composition'': This type of field represents "
+                         "the bulk composition of the modeled material. "
+                         "This type of field is generally considered by the material model to "
+                         "determine the equation of state, rheology, and reactions."
+                         "\n"
+                         "* ``stress'': This type of field represents stress in the material. "
+                         "Whether the field represents a scalar stress invariant or a "
+                         "tensor component, and which type of stress is represented "
+                         "depends on the interpretation of the material model."
+                         "\n"
+                         "* ``strain'': This type of field represents accumulated strain. "
+                         "It behaves similar to the type ``stress'' discussed above except "
+                         "tracking the accumulated strain."
+                         "\n"
+                         "* ``grain size'': This type of field represents an average "
+                         "mineral grain size of the material. It will only be considered "
+                         "in material models that include models for grain size evolution."
+                         "\n"
+                         "* ``porosity'': This type of field represents porosity in "
+                         "a two-phase flow or Darcy flow system. Note that setting the "
+                         "type of a compositional field to ``porosity'' does not "
+                         "automatically enable melt transport, which is done with "
+                         "the parameter ``Melt settings/Include melt transport''."
+                         "\n"
+                         "* ``density'': This type of field is a finite-element "
+                         "field representation of the density in the model. "
+                         "This field type is not usually used except for the "
+                         "projected density approximation of the compressible "
+                         "Stokes equations, which uses this field type to compute "
+                         "gradients and time-derivatives of the density."
+                         "\n"
+                         "* ``entropy'': This type of field represents entropy. "
+                         "If one or more entropy fields are found in a model, they "
+                         "automatically replace temperature as the main thermodynamic "
+                         "state variable in the model. The temperature equation is "
+                         "then automatically changed to a pure diffusion equation, "
+                         "which is coupled to the entropy advection equation "
+                         "as described in the paper \\cite{dannberg:etal:2022}."
+                         "\n"
+                         "* ``reaction progress'': This type of field represents the progress of a "
+                         "phase transition controlled by reaction kinetics. It will only be "
+                         "considered in material models that include models for time-dependent "
+                         "reaction progress."
+                         "* ``generic'': The generic type is intended to be a placeholder type "
+                         "that is not used by any component of ASPECT unless in user-"
+                         "provided source code."
+                         "\n"
+                         "* ``unspecified'': The unspecified type is intended to tell ASPECT "
                          "that the user has not explicitly indicated the type of "
-                         "field (facilitating parameter file checking). "
-                         "Plugins such as material models can use these types "
-                         "to affect how that plugin functions.");
+                         "this field. ASPECT will then try to detect the type "
+                         "automatically based on the name, but will default to "
+                         "``chemical composition'' if the name does not correspond to "
+                         "a known type."
+                         "\n\n"
+                         "Note that while ASPECT's functionality can make use of "
+                         "the field types, not all of the code will make use of it. It is "
+                         "the user's responsibility to check that the chosen material model "
+                         "and other plugins interpret the compositional fields as intended.");
       prm.declare_entry ("Compositional field methods", "",
                          Patterns::List (Patterns::Selection("field|particles|volume of fluid|static|melt field|darcy field|prescribed field|prescribed field with diffusion")),
                          "A comma separated list denoting the solution method of each "
@@ -1224,15 +1446,14 @@ namespace aspect
                          "\n\n"
                          "These choices correspond to the following methods by which "
                          "compositional fields gain their values:"
-                         "\\begin{itemize}"
-                         "\\item ``field'': If a compositional field is marked with this "
+                         "* ``field'': If a compositional field is marked with this "
                          "method, then its values are computed in each time step by "
                          "advecting along the values of the previous time step using the "
                          "velocity field, and applying reaction rates to it. In other words, "
                          "this corresponds to the usual notion of a composition field as "
                          "mentioned in Section~\\ref{sec:methods:compositional-fields}. "
                          "\n"
-                         "\\item ``particles'': If a compositional field is marked with "
+                         "* ``particles'': If a compositional field is marked with "
                          "this method, then its values are obtained in each time step "
                          "by interpolating the corresponding properties from the "
                          "particles located on each cell. The time evolution therefore "
@@ -1241,19 +1462,19 @@ namespace aspect
                          "See Section~\\ref{sec:methods:particles} for more information about "
                          "how particles behave."
                          "\n"
-                         "\\item ``volume of fluid``: If a compositional field "
+                         "* ``volume of fluid``: If a compositional field "
                          "is marked with this method, then its values are "
                          "obtained in each timestep by reconstructing a "
                          "polynomial finite element approximation on each cell "
                          "from a volume of fluid interface tracking method, "
                          "which is used to compute the advection updates."
                          "\n"
-                         "\\item ``static'': If a compositional field is marked "
+                         "* ``static'': If a compositional field is marked "
                          "this way, then it does not evolve at all. Its values are "
                          "simply set to the initial conditions, and will then "
                          "never change."
                          "\n"
-                         "\\item ``melt field'': If a compositional field is marked with this "
+                         "* ``melt field'': If a compositional field is marked with this "
                          "method, then its values are computed in each time step by "
                          "advecting along the values of the previous time step using the "
                          "melt velocity, and applying reaction rates to it. In other words, "
@@ -1263,7 +1484,7 @@ namespace aspect
                          "This method can only be chosen if melt transport is active in the "
                          "model."
                          "\n"
-                         "\\item ``darcy field'': If a compositional field is marked with this "
+                         "* ``darcy field'': If a compositional field is marked with this "
                          "method, then its values are computed in each time step by "
                          "advecting along the values of the previous time step using the "
                          "fluid velocity prescribed by Darcy's Law, and applying reaction rates "
@@ -1271,17 +1492,17 @@ namespace aspect
                          "field as mentioned in Section~\\ref{sec:methods:compositional-fields}, except that it is "
                          "advected with the Darcy velocity instead of the solid velocity. This method "
                          "requires there to be a compositional field named porosity that is advected "
-                         "the darcy field method. We calculate the fluid velocity $u_f$ using an "
-                         "approximation of Darcy's Law: $u_f = u_s - K_D / \\phi * (rho_s * g - rho_f * g)$."
+                         "with the Darcy field method. We calculate the fluid velocity $u_f$ using an "
+                         "approximation of Darcy's Law: $u_f = u_s - K_D / \\phi * (\\rho_s * g - \\rho_f * g)$."
                          "\n"
-                         "\\item ``prescribed field'': The value of these fields is determined "
+                         "* ``prescribed field'': The value of these fields is determined "
                          "in each time step from the material model. If a compositional field is "
                          "marked with this method, then the value of a specific additional material "
                          "model output, called the `PrescribedFieldOutputs' is interpolated "
                          "onto the field. This field does not change otherwise, it is not "
                          "advected with the flow."
                          "\n"
-                         "\\item ``prescribed field with diffusion'': If a compositional field is "
+                         "* ``prescribed field with diffusion'': If a compositional field is "
                          "marked this way, the value of a specific additional material model output, "
                          "called the `PrescribedFieldOutputs' is interpolated onto the field, as in "
                          "the ``prescribed field'' method. Afterwards, the field is diffused based on "
@@ -1290,8 +1511,7 @@ namespace aspect
                          "$(I-l^2 \\Delta) C_\\text{smoothed} = C_\\text{prescribed}$, "
                          "where $l$ is the diffusion length scale. Note that this means that the amount "
                          "of diffusion is independent of the time step size, and that the field is not "
-                         "advected with the flow."
-                         "\\end{itemize}");
+                         "advected with the flow.");
       prm.declare_entry ("Mapped particle properties", "",
                          Patterns::Map (Patterns::Anything(),
                                         Patterns::Anything()),
@@ -1319,6 +1539,10 @@ namespace aspect
                          "at every point and the global maximum is determined. "
                          "Second, the compositional fields to be normalized are "
                          "divided by this maximum.");
+      prm.declare_entry ("Use pressure gradient for darcy field", "false",
+                         Patterns::Bool (),
+                         "Whether to use the pressure gradient for advecting the darcy field. "
+                         "Set to true to use the pressure gradient, false to just use buoyancy forces.");
     }
     prm.leave_subsection ();
 
@@ -1327,13 +1551,15 @@ namespace aspect
     // preconditioner
     prm.enter_subsection ("Material model");
     {
-      prm.declare_entry ("Material averaging", "none",
+      prm.declare_entry ("Material averaging", "default averaging",
                          Patterns::Selection(MaterialModel::MaterialAveraging::
                                              get_averaging_operation_names()),
                          "Whether or not (and in the first case, how) to do any averaging of "
                          "material model output data when constructing the linear systems "
                          "for velocity/pressure, temperature, and compositions in each "
-                         "time step, as well as their corresponding preconditioners."
+                         "time step, as well as their corresponding preconditioners. "
+                         "The default value 'default averaging' will choose the averaging "
+                         "option based on the Stokes solver type."
                          "\n\n"
                          "Possible choices: " + MaterialModel::MaterialAveraging::
                          get_averaging_operation_names()
@@ -1348,8 +1574,6 @@ namespace aspect
                          "which can be used in combination with other material models.");
     }
     prm.leave_subsection ();
-
-    VolumeOfFluidHandler<dim>::declare_parameters(prm);
 
     // then, finally, let user additions that do not go through the usual
     // plugin mechanism, declare their parameters if they have subscribed
@@ -1373,9 +1597,18 @@ namespace aspect
 
     CFL_number              = prm.get_double ("CFL number");
     use_conduction_timestep = prm.get_bool ("Use conduction timestep");
-    convert_to_years        = prm.get_bool ("Use years in output instead of seconds");
+    convert_to_years        = prm.get_bool ("Use years instead of seconds");
     timing_output_frequency = prm.get_integer ("Timing output frequency");
     world_builder_file      = prm.get("World builder file");
+
+    prm.enter_subsection("Particles");
+    {
+      n_particle_managers       = prm.get_integer("Number of particle systems");
+      Assert(n_particle_managers <= ASPECT_MAX_NUM_PARTICLE_SYSTEMS,
+             ExcMessage("You have specified more particle managers (" + Utilities::int_to_string(n_particle_managers) +
+                        ") than the maximum amount of particle managers set in CMake (" + Utilities::int_to_string(ASPECT_MAX_NUM_PARTICLE_SYSTEMS) + ")."));
+    }
+    prm.leave_subsection();
 
     maximum_time_step       = prm.get_double("Maximum time step");
     if (convert_to_years == true)
@@ -1388,35 +1621,56 @@ namespace aspect
 
     {
       const std::string solver_scheme = prm.get ("Nonlinear solver scheme");
-      if (solver_scheme == "single Advection, single Stokes" || solver_scheme == "IMPES")
-        nonlinear_solver = NonlinearSolver::single_Advection_single_Stokes;
-      else if (solver_scheme == "iterated Advection and Stokes" || solver_scheme == "iterated IMPES")
-        nonlinear_solver = NonlinearSolver::iterated_Advection_and_Stokes;
-      else if (solver_scheme == "single Advection, iterated Stokes" || solver_scheme == "iterated Stokes")
-        nonlinear_solver = NonlinearSolver::single_Advection_iterated_Stokes;
-      else if (solver_scheme == "no Advection, iterated Stokes" || solver_scheme == "Stokes only")
-        nonlinear_solver = NonlinearSolver::no_Advection_iterated_Stokes;
+      if (solver_scheme == "no Advection, no Stokes")
+        nonlinear_solver = NonlinearSolver::no_Advection_no_Stokes;
       else if (solver_scheme == "no Advection, single Stokes")
         nonlinear_solver = NonlinearSolver::no_Advection_single_Stokes;
+      else if (solver_scheme == "no Advection, single Stokes first timestep only")
+        nonlinear_solver = NonlinearSolver::no_Advection_single_Stokes_first_timestep_only;
+      // deprecated: use "no Advection, single Stokes first timestep only" instead
+      else if (solver_scheme == "first timestep only, single Stokes")
+        {
+          if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+            {
+              std::cout << "Warning: You are using the deprecated solver scheme name <first timestep only, single Stokes>. " << std::endl
+                        << "         Use the new name <no Advection, single Stokes first timestep only> instead." << std::endl;
+            }
+          nonlinear_solver = NonlinearSolver::no_Advection_single_Stokes_first_timestep_only;
+        }
+      else if (solver_scheme == "no Advection, iterated Stokes")
+        nonlinear_solver = NonlinearSolver::no_Advection_iterated_Stokes;
       else if (solver_scheme == "no Advection, iterated defect correction Stokes")
         nonlinear_solver = NonlinearSolver::no_Advection_iterated_defect_correction_Stokes;
+      else if (solver_scheme == "single Advection, no Stokes")
+        nonlinear_solver = NonlinearSolver::single_Advection_no_Stokes;
+      else if (solver_scheme == "single Advection, single Stokes")
+        nonlinear_solver = NonlinearSolver::single_Advection_single_Stokes;
+      else if (solver_scheme == "single Advection, iterated Stokes")
+        nonlinear_solver = NonlinearSolver::single_Advection_iterated_Stokes;
       else if (solver_scheme == "single Advection, iterated defect correction Stokes")
         nonlinear_solver = NonlinearSolver::single_Advection_iterated_defect_correction_Stokes;
-      else if (solver_scheme == "iterated Advection and defect correction Stokes")
-        nonlinear_solver = NonlinearSolver::iterated_Advection_and_defect_correction_Stokes;
-      else if (solver_scheme == "iterated Advection and Newton Stokes" || solver_scheme == "Newton Stokes")
-        nonlinear_solver = NonlinearSolver::iterated_Advection_and_Newton_Stokes;
       else if (solver_scheme == "single Advection, iterated Newton Stokes")
         nonlinear_solver = NonlinearSolver::single_Advection_iterated_Newton_Stokes;
-      else if (solver_scheme == "single Advection, no Stokes" || solver_scheme == "Advection only")
-        nonlinear_solver = NonlinearSolver::single_Advection_no_Stokes;
-      else if (solver_scheme == "first timestep only, single Stokes")
-        nonlinear_solver = NonlinearSolver::first_timestep_only_single_Stokes;
-      else if (solver_scheme == "no Advection, no Stokes")
-        nonlinear_solver = NonlinearSolver::no_Advection_no_Stokes;
+      else if (solver_scheme == "iterated Advection, no Stokes")
+        nonlinear_solver = NonlinearSolver::iterated_Advection_no_Stokes;
+      else if (solver_scheme == "iterated Advection and Stokes")
+        nonlinear_solver = NonlinearSolver::iterated_Advection_and_Stokes;
+      else if (solver_scheme == "iterated Advection and defect correction Stokes")
+        nonlinear_solver = NonlinearSolver::iterated_Advection_and_defect_correction_Stokes;
+      else if (solver_scheme == "iterated Advection and Newton Stokes")
+        nonlinear_solver = NonlinearSolver::iterated_Advection_and_Newton_Stokes;
       else
         AssertThrow (false, ExcNotImplemented());
     }
+    nonlinear_solver_failure_strategy = NonlinearSolverFailureStrategy::parse(
+                                          prm.get("Nonlinear solver failure strategy"));
+    linear_solver_failure_strategy = LinearSolverFailureStrategy::parse(
+                                       prm.get("Linear solver failure strategy"));
+    if (linear_solver_failure_strategy ==
+        Parameters<dim>::LinearSolverFailureStrategy::continue_with_nonlinear_solver)
+      AssertThrow(Parameters<dim>::solve_Stokes_iteratively(nonlinear_solver) == true,
+                  ExcMessage("You are not allowed to select the linear solver failure strategy 'continue' "
+                             "with a solver scheme that does not iterate the Stokes equations."));
 
     prm.enter_subsection ("Solver parameters");
     {
@@ -1434,9 +1688,12 @@ namespace aspect
         stokes_solver_type = StokesSolverType::parse(prm.get("Stokes solver type"));
         if (prm.get_bool("Use direct solver for Stokes system"))
           stokes_solver_type = StokesSolverType::direct_solver;
+        use_bfbt = prm.get_bool("Use weighted BFBT for Schur complement");
         use_direct_stokes_solver        = stokes_solver_type==StokesSolverType::direct_solver;
         stokes_krylov_type = StokesKrylovType::parse(prm.get("Krylov method for cheap solver steps"));
         idr_s_parameter    = prm.get_integer("IDR(s) parameter");
+
+        stokes_gmg_type = StokesGMGType::parse(prm.get("Stokes GMG type"));
 
         linear_stokes_solver_tolerance  = prm.get_double ("Linear solver tolerance");
         n_cheap_stokes_solver_steps     = prm.get_integer ("Number of cheap Stokes solver steps");
@@ -1459,6 +1716,8 @@ namespace aspect
       prm.leave_subsection ();
       prm.enter_subsection ("Operator splitting parameters");
       {
+        reaction_solver_type                   = ReactionSolverType::parse(prm.get("Reaction solver type"));
+        ARKode_relative_tolerance              = prm.get_double("Reaction solver relative tolerance");
         reaction_time_step       = prm.get_double("Reaction time step");
         AssertThrow (reaction_time_step > 0,
                      ExcMessage("Reaction time step must be greater than 0."));
@@ -1494,9 +1753,40 @@ namespace aspect
     else if (output_directory[output_directory.size()-1] != '/')
       output_directory += "/";
 
+    // Ensure that the output directory exists. If asked for in the input file,
+    // set LFS striping as well to improve performance.
     Utilities::create_directory (output_directory,
                                  mpi_communicator,
                                  false);
+    {
+      const unsigned int lfs_stripe_count = prm.get_integer("Output directory LFS stripe count");
+      if (lfs_stripe_count != 0)
+        {
+          if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+            {
+              const std::string command = "lst setstripe -c " + std::to_string(lfs_stripe_count)
+                                          + ' ' + output_directory;
+
+              const int error_code = std::system (command.c_str());
+              std::ignore = Utilities::MPI::broadcast(mpi_communicator, error_code, /* root= */ 0);
+
+              AssertThrow (error_code == 0,
+                           ExcMessage ("Could not successfully execute the LFS file striping "
+                                       "command '" + command + "'. The error code of the "
+                                       "system() command was " +
+                                       std::to_string(error_code)));
+            }
+          else
+            {
+              const int dummy = -1;
+              const int error_code = Utilities::MPI::broadcast(mpi_communicator, dummy, /* root = */ 0);
+
+              if (error_code != 0)
+                throw QuietException();
+            }
+        }
+    }
+
 
     if (prm.get ("Resume computation") == "true")
       resume_computation = true;
@@ -1504,7 +1794,7 @@ namespace aspect
       resume_computation = false;
     else if (prm.get ("Resume computation") == "auto")
       {
-        resume_computation = Utilities::fexists(output_directory+"restart.mesh", mpi_communicator);
+        resume_computation = Utilities::fexists(output_directory+"restart/last_good_checkpoint.txt", mpi_communicator);
       }
     else
       AssertThrow (false, ExcMessage ("Resume computation parameter must be either `true', `false', or `auto'."));
@@ -1675,6 +1965,27 @@ namespace aspect
     {
       checkpoint_time_secs = prm.get_integer ("Time between checkpoint");
       checkpoint_steps     = prm.get_integer ("Steps between checkpoint");
+      // Extract the list of times at which additional checkpointing is requested,
+      // sort them and convert them to seconds if needed.
+      additional_checkpoint_times
+        = Utilities::string_to_double
+          (Utilities::split_string_list(prm.get ("Additional checkpoint times")));
+      std::sort (additional_checkpoint_times.begin(),
+                 additional_checkpoint_times.end());
+      if (convert_to_years == true)
+        for (double &additional_checkpoint_time : additional_checkpoint_times)
+          additional_checkpoint_time *= year_in_seconds;
+      n_additional_checkpoints_to_keep = additional_checkpoint_times.size();
+      n_checkpoints_to_keep = prm.get_integer ("Number of checkpoints to keep");
+      resume_checkpoint_id  = prm.get_integer ("Resume checkpoint");
+      resume_time           = prm.get_double ("Resume time");
+      if (convert_to_years && resume_time >= 0.)
+        resume_time *= year_in_seconds;
+
+      AssertThrow(!(resume_checkpoint_id != 0 && resume_time >= 0.),
+                  ExcMessage("The parameters 'Resume checkpoint' and 'Resume time' "
+                             "can not be used at the same time. Please set at most one "
+                             "of them."));
 
 #ifndef DEAL_II_WITH_ZLIB
       AssertThrow ((checkpoint_time_secs == 0)
@@ -1690,6 +2001,7 @@ namespace aspect
     prm.enter_subsection ("Compositional fields");
     {
       n_compositional_fields = prm.get_integer ("Number of fields");
+      minimum_composition_fraction = prm.get_double ("Minimum volume fraction");
     }
     prm.leave_subsection();
 
@@ -1697,7 +2009,16 @@ namespace aspect
     {
       stokes_velocity_degree = prm.get_integer ("Stokes velocity polynomial degree");
       temperature_degree     = prm.get_integer ("Temperature polynomial degree");
-      composition_degree     = prm.get_integer ("Composition polynomial degree");
+      composition_degrees    = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_unsigned_int(Utilities::split_string_list(prm.get("Composition polynomial degree"))),
+                                                                       n_compositional_fields,
+                                                                       "Composition polynomial degree");
+
+
+      if (n_compositional_fields > 0)
+        max_composition_degree = *std::max_element(composition_degrees.begin(), composition_degrees.end());
+      else
+        max_composition_degree = numbers::invalid_unsigned_int;
+
       use_locally_conservative_discretization
         = prm.get_bool ("Use locally conservative discretization");
       use_equal_order_interpolation_for_stokes
@@ -1705,11 +2026,17 @@ namespace aspect
       use_discontinuous_temperature_discretization
         = prm.get_bool("Use discontinuous temperature discretization");
       use_discontinuous_composition_discretization
-        = prm.get_bool("Use discontinuous composition discretization");
+        = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_bool(Utilities::split_string_list(prm.get("Use discontinuous composition discretization"))),
+                                                  n_compositional_fields,
+                                                  "Use discontinuous composition discretization");
+      have_discontinuous_composition_discretization =
+        (std::find(use_discontinuous_composition_discretization.begin(), use_discontinuous_composition_discretization.end(), true)
+         != use_discontinuous_composition_discretization.end());
 
-      AssertThrow(use_discontinuous_composition_discretization == true || composition_degree > 0,
-                  ExcMessage("Using a composition polynomial degree of 0 (cell-wise constant composition) "
-                             "is only supported if a discontinuous composition discretization is selected."));
+      for (unsigned int c=0; c<n_compositional_fields; ++c)
+        AssertThrow(use_discontinuous_composition_discretization[c] == true || composition_degrees[c] > 0,
+                    ExcMessage("Using a composition polynomial degree of 0 (cell-wise constant composition) "
+                               "is only supported if a discontinuous composition discretization is selected."));
 
       prm.enter_subsection ("Stabilization parameters");
       {
@@ -1729,7 +2056,10 @@ namespace aspect
         use_limiter_for_discontinuous_temperature_solution
           = prm.get_bool("Use limiter for discontinuous temperature solution");
         use_limiter_for_discontinuous_composition_solution
-          = prm.get_bool("Use limiter for discontinuous composition solution");
+          = Utilities::possibly_extend_from_1_to_N(Utilities::string_to_bool
+                                                   (Utilities::split_string_list(prm.get("Use limiter for discontinuous composition solution"))),
+                                                   n_compositional_fields,
+                                                   "Use limiter for discontinuous composition solution");
         global_temperature_max_preset       = prm.get_double ("Global temperature maximum");
         global_temperature_min_preset       = prm.get_double ("Global temperature minimum");
         global_composition_max_preset       = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double
@@ -1807,6 +2137,8 @@ namespace aspect
                                    "there has to be at least one compositional field."));
         }
 
+      use_pressure_gradient_for_darcy_field = prm.get_bool("Use pressure gradient for darcy field");
+
       names_of_compositional_fields = Utilities::split_string_list (prm.get("Names of fields"));
       AssertThrow ((names_of_compositional_fields.size() == 0) ||
                    (names_of_compositional_fields.size() == n_compositional_fields),
@@ -1856,6 +2188,12 @@ namespace aspect
       AssertThrow (normalized_fields.size() <= n_compositional_fields,
                    ExcMessage("Invalid input parameter file: Too many entries in List of normalized fields"));
 
+      for (const unsigned int field : normalized_fields)
+        {
+          AssertThrow(field<n_compositional_fields,
+                      ExcMessage("Invalid input parameter file: An entry in List of normalized fields is larger then the number of fields."));
+        }
+
       // Process the compositional field types
       // There are three valid cases:
       // 1) The user doesn't specify types of fields. This choice should
@@ -1885,9 +2223,19 @@ namespace aspect
             // choosing "chemical composition" as the standard field name
             // stress, strain, grain_size, porosity, density
             if (names_of_compositional_fields[i].find("stress") != std::string::npos)
-              x_compositional_field_types[i] = "stress";
+              {
+                x_compositional_field_types[i] = "stress";
+                // Fields that are of stress type will not be taken into
+                // account by the viscoplastic and viscoelastic material model
+                // when material properties are computed. Force the user to set a field type
+                // for fields with 'stress' in their name if elasticity is not enabled.
+                AssertThrow(enable_elasticity,
+                            ExcMessage("Even though elasticity is not enabled, ASPECT deduced a stress field type from the name of a compositional field. "
+                                       "Please specify the compositional field types explicitly. "
+                                       "At the moment the type of field " + names_of_compositional_fields[i] + " is unspecified."));
+              }
             else if ((names_of_compositional_fields[i].find("strain") != std::string::npos)
-                     || (std::regex_match(names_of_compositional_fields[i],std::regex("s[1-3][1-3]"))))
+                     || (std::regex_match(names_of_compositional_fields[i], std::regex("s[1-3][1-3]"))))
               x_compositional_field_types[i] = "strain";
             else if (names_of_compositional_fields[i].find("grain_size") != std::string::npos)
               x_compositional_field_types[i] = "grain size";
@@ -1897,6 +2245,8 @@ namespace aspect
               x_compositional_field_types[i] = "porosity";
             else if (names_of_compositional_fields[i] == "density_field")
               x_compositional_field_types[i] = "density";
+            else if (names_of_compositional_fields[i].find("reaction_progress") != std::string::npos)
+              x_compositional_field_types[i] = "reaction progress";
             else
               x_compositional_field_types[i] = "chemical composition";
           }
@@ -1997,7 +2347,7 @@ namespace aspect
           AssertThrow (porosity_idx != n_compositional_fields,
                        ExcMessage ("The Darcy advection field method only works if there is a compositional field named 'porosity'"));
           AssertThrow (compositional_field_methods[porosity_idx] == AdvectionFieldMethod::fem_darcy_field,
-                       ExcMessage ("When using the Darcy advection field method, the porosity field must be advected with the darcy method."));
+                       ExcMessage ("When using the Darcy advection field method, the porosity field must be advected with the Darcy method."));
         }
 
       for (const auto &p : x_mapped_particle_properties)
@@ -2016,7 +2366,7 @@ namespace aspect
                                    + ">."));
 
           // the easy part: get the name of the compositional field
-          const std::string key = split_parts[0];
+          const std::string &key = split_parts[0];
 
           // check that the names used are actually names of fields,
           // are solved by particles, and are unique in this list
@@ -2078,7 +2428,8 @@ namespace aspect
 
           // finally, put it into the list
           mapped_particle_properties.insert(std::make_pair(compositional_field_index,
-                                                           std::make_pair(particle_property,atoi(component.c_str()))));
+                                                           std::make_pair(particle_property,
+                                                                          std::atoi(component.c_str()))));
         }
 
       // Check that the names inside compositional_fields_with_disabled_boundary_entropy_viscosity
@@ -2139,73 +2490,6 @@ namespace aspect
     }
     prm.leave_subsection();
 
-    prm.enter_subsection ("Boundary traction model");
-    {
-      const std::vector<std::string> x_prescribed_traction_boundary_indicators
-        = Utilities::split_string_list
-          (prm.get ("Prescribed traction boundary indicators"));
-      for (const auto &p : x_prescribed_traction_boundary_indicators)
-        {
-          // each entry has the format (white space is optional):
-          // <id> [x][y][z] : <value (might have spaces)>
-          //
-          // first tease apart the two halves
-          const std::vector<std::string> split_parts = Utilities::split_string_list (p, ':');
-          AssertThrow (split_parts.size() == 2,
-                       ExcMessage ("The format for prescribed traction boundary indicators "
-                                   "requires that each entry has the form `"
-                                   "<id> [x][y][z] : <value>', but there does not "
-                                   "appear to be a colon in the entry <"
-                                   + p
-                                   + ">."));
-
-          // the easy part: get the value
-          const std::string value = split_parts[1];
-
-          // now for the rest. since we don't know whether there is a
-          // component selector, start reading at the end and subtracting
-          // letters x, y and z
-          std::string key_and_comp = split_parts[0];
-          std::string comp;
-          while ((key_and_comp.size()>0) &&
-                 ((key_and_comp[key_and_comp.size()-1] == 'x')
-                  ||
-                  (key_and_comp[key_and_comp.size()-1] == 'y')
-                  ||
-                  ((key_and_comp[key_and_comp.size()-1] == 'z') && (dim==3))))
-            {
-              comp += key_and_comp[key_and_comp.size()-1];
-              key_and_comp.erase (--key_and_comp.end());
-            }
-
-          // we've stopped reading component selectors now. there are three
-          // possibilities:
-          // - no characters are left. this means that key_and_comp only
-          //   consisted of a single word that only consisted of 'x', 'y'
-          //   and 'z's. then this would have been a mistake to classify
-          //   as a component selector, and we better undo it
-          // - the last character of key_and_comp is not a whitespace. this
-          //   means that the last word in key_and_comp ended in an 'x', 'y'
-          //   or 'z', but this was not meant to be a component selector.
-          //   in that case, put these characters back.
-          // - otherwise, we split successfully. eat spaces that may be at
-          //   the end of key_and_comp to get key
-          if (key_and_comp.size() == 0)
-            key_and_comp.swap (comp);
-          else if (key_and_comp[key_and_comp.size()-1] != ' ')
-            {
-              key_and_comp += comp;
-              comp = "";
-            }
-          else
-            {
-              while ((key_and_comp.size()>0) && (key_and_comp[key_and_comp.size()-1] == ' '))
-                key_and_comp.erase (--key_and_comp.end());
-            }
-        }
-    }
-    prm.leave_subsection ();
-
     prm.enter_subsection ("Boundary heat flux model");
     {
       try
@@ -2231,9 +2515,10 @@ namespace aspect
 
 
   template <int dim>
-  void Simulator<dim>::declare_parameters (ParameterHandler &prm)
+  void Simulator<dim>::declare_parameters (ParameterHandler &prm, const unsigned int mpi_rank)
   {
-    Parameters<dim>::declare_parameters (prm);
+    Parameters<dim>::declare_parameters (prm, mpi_rank);
+    VolumeOfFluidHandler<dim>::declare_parameters(prm);
     Melt::Parameters<dim>::declare_parameters (prm);
     Newton::Parameters::declare_parameters (prm);
     StokesMatrixFreeHandler<dim>::declare_parameters (prm);
@@ -2243,13 +2528,16 @@ namespace aspect
     TimeStepping::Manager<dim>::declare_parameters (prm);
     MaterialModel::declare_parameters<dim> (prm);
     HeatingModel::Manager<dim>::declare_parameters (prm);
+    PrescribedDilation::Manager<dim>::declare_parameters (prm);
     GeometryModel::declare_parameters <dim>(prm);
     InitialTopographyModel::declare_parameters <dim>(prm);
     GravityModel::declare_parameters<dim> (prm);
     InitialTemperature::Manager<dim>::declare_parameters (prm);
     InitialComposition::Manager<dim>::declare_parameters (prm);
+    PrescribedSolution::Manager<dim>::declare_parameters (prm);
     PrescribedStokesSolution::declare_parameters<dim> (prm);
     BoundaryTemperature::Manager<dim>::declare_parameters (prm);
+    BoundaryConvectiveHeating::Manager<dim>::declare_parameters (prm);
     BoundaryComposition::Manager<dim>::declare_parameters (prm);
     AdiabaticConditions::declare_parameters<dim> (prm);
     BoundaryVelocity::Manager<dim>::declare_parameters (prm);
@@ -2265,12 +2553,12 @@ namespace aspect
 #define INSTANTIATE(dim) \
   template Parameters<dim>::Parameters (ParameterHandler &prm, \
                                         const MPI_Comm mpi_communicator); \
-  template void Parameters<dim>::declare_parameters (ParameterHandler &prm); \
+  template void Parameters<dim>::declare_parameters (ParameterHandler &prm, const unsigned int mpi_rank); \
   template void Parameters<dim>::parse_parameters(ParameterHandler &prm, \
                                                   const MPI_Comm mpi_communicator); \
   template void Parameters<dim>::parse_geometry_dependent_parameters(ParameterHandler &prm, \
                                                                      const GeometryModel::Interface<dim> &geometry_model); \
-  template void Simulator<dim>::declare_parameters (ParameterHandler &prm);
+  template void Simulator<dim>::declare_parameters (ParameterHandler &prm, const unsigned int mpi_rank);
 
   ASPECT_INSTANTIATE(INSTANTIATE)
 

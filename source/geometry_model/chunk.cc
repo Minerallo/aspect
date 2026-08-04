@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,10 +18,16 @@
   <http://www.gnu.org/licenses/>.
 */
 
-
+#include <algorithm>
 #include <aspect/geometry_model/chunk.h>
 #include <aspect/geometry_model/initial_topography_model/zero_topography.h>
 #include <aspect/geometry_model/initial_topography_model/ascii_data.h>
+#ifdef ASPECT_WITH_WORLD_BUILDER
+#  include <world_builder/config.h>
+#  if WORLD_BUILDER_VERSION_GTE(1,1,1)
+#    include <aspect/geometry_model/initial_topography_model/world_builder.h>
+#  endif
+#endif
 
 #include <aspect/simulator_signals.h>
 #include <deal.II/grid/grid_generator.h>
@@ -38,12 +44,12 @@ namespace aspect
     namespace internal
     {
       template <int dim>
-      ChunkGeometry<dim>::ChunkGeometry(const InitialTopographyModel::Interface<dim> &topo,
+      ChunkGeometry<dim>::ChunkGeometry(const std::shared_ptr<const InitialTopographyModel::Interface<dim>> &topo,
                                         const double min_longitude,
                                         const double min_radius,
                                         const double max_depth)
         :
-        topo (&topo),
+        topo (topo),
         point1_lon(min_longitude),
         inner_radius(min_radius),
         max_depth(max_depth)
@@ -70,9 +76,9 @@ namespace aspect
         // other initial topography models. Hence only AsciiData
         // and ZeroTopography are allowed for now in Chunk<dim>::initialize().
         Tensor<1,dim-1> topo_derivatives;
-        if (const InitialTopographyModel::AsciiData<dim> *itm = dynamic_cast<const InitialTopographyModel::AsciiData<dim> *> (topo))
+        if (const InitialTopographyModel::AsciiData<dim> *itm = dynamic_cast<const InitialTopographyModel::AsciiData<dim> *> (topo.get()))
           topo_derivatives = itm->vector_gradient(push_forward_sphere(chart_point));
-        else if (dynamic_cast<const InitialTopographyModel::ZeroTopography<dim> *> (topo))
+        else if (dynamic_cast<const InitialTopographyModel::ZeroTopography<dim> *> (topo.get()))
           {
             // Gradient is zero (which it is already initialized to from before)
           }
@@ -184,7 +190,7 @@ namespace aspect
       push_forward(const Point<dim> &r_phi_theta) const
       {
         // Only take into account topography when we're not using the ZeroTopography plugin
-        if (dynamic_cast<const InitialTopographyModel::ZeroTopography<dim>*>(topo) != nullptr)
+        if (dynamic_cast<const InitialTopographyModel::ZeroTopography<dim>*>(topo.get()) != nullptr)
           return push_forward_sphere(r_phi_theta);
         else
           return push_forward_sphere(push_forward_topo(r_phi_theta));
@@ -199,7 +205,7 @@ namespace aspect
       pull_back(const Point<dim> &x_y_z) const
       {
         // Only take into account topography when we're not using the ZeroTopography plugin
-        if (dynamic_cast<const InitialTopographyModel::ZeroTopography<dim>*>(topo) != nullptr)
+        if (dynamic_cast<const InitialTopographyModel::ZeroTopography<dim>*>(topo.get()) != nullptr)
           return pull_back_sphere(x_y_z);
         else
           return pull_back_topo(pull_back_sphere(x_y_z));
@@ -439,19 +445,27 @@ namespace aspect
       template <int dim>
       double
       ChunkGeometry<dim>::
-      get_radius(const Point<dim> &x_y_z) const
+      topography_for_point(const Point<dim> &x_y_z) const
       {
-        const Point<dim> r_phi_theta = pull_back(x_y_z);
-        Point<dim-1> surface_point;
-        for (unsigned int d=0; d<dim-1; ++d)
-          surface_point[d] = r_phi_theta[d+1];
-        // Convert latitude to colatitude
-        if (dim == 3)
-          surface_point[1] = 0.5*numbers::PI - surface_point[1];
-        const double topography = topo->value(surface_point);
+        if (dynamic_cast<const InitialTopographyModel::ZeroTopography<dim>*>(topo.get()) != nullptr)
+          return 0;
+        else
+          {
+            // The natural coordinate system in chunk geometry is r/lon/lat.
+            // So, after converting the point into the spherical system we need to
+            // change the theta (co-latitudes) into latitudes.
+            const std::array<double, dim> r_phi_theta = Utilities::Coordinates::cartesian_to_spherical_coordinates(x_y_z);
 
-        // return the outer radius at this phi, theta point including topography
-        return topography + inner_radius + max_depth;
+            // Grab lon,lat coordinates
+            Point<dim-1> surface_point;
+            // Convert latitude to colatitude
+            if (dim == 3)
+              surface_point[1] = 0.5*numbers::PI - surface_point[1];
+
+            for (unsigned int d=0; d<dim-1; ++d)
+              surface_point[d] = r_phi_theta[d+1];
+            return topo->value(surface_point);
+          }
       }
     }
 
@@ -461,11 +475,22 @@ namespace aspect
     void
     Chunk<dim>::initialize ()
     {
-      AssertThrow(Plugins::plugin_type_matches<const InitialTopographyModel::ZeroTopography<dim>>(this->get_initial_topography_model()) ||
-                  Plugins::plugin_type_matches<const InitialTopographyModel::AsciiData<dim>>(this->get_initial_topography_model()),
-                  ExcMessage("At the moment, only the Zero or AsciiData initial topography model can be used with the Chunk geometry model."));
+      bool supported_topography_model =
+        Plugins::plugin_type_matches<const InitialTopographyModel::ZeroTopography<dim>>(this->get_initial_topography_model()) ||
+        Plugins::plugin_type_matches<const InitialTopographyModel::AsciiData<dim>>(this->get_initial_topography_model());
+#ifdef ASPECT_WITH_WORLD_BUILDER
+#  if WORLD_BUILDER_VERSION_GTE(1,1,1)
+      supported_topography_model =
+        supported_topography_model ||
+        Plugins::plugin_type_matches<const InitialTopographyModel::WorldBuilder<dim>>(this->get_initial_topography_model());
+#  endif
+#endif
 
-      manifold = std::make_unique<internal::ChunkGeometry<dim>>(this->get_initial_topography_model(),
+      AssertThrow(supported_topography_model,
+                  ExcMessage("At the moment, only the Zero, AsciiData, or World Builder "
+                             "initial topography model can be used with the Chunk geometry model."));
+
+      manifold = std::make_unique<internal::ChunkGeometry<dim>>(this->get_initial_topography_model_pointer(),
                                                                  point1[1],
                                                                  point1[0],
                                                                  point2[0]-point1[0]);
@@ -575,8 +600,12 @@ namespace aspect
     Chunk<dim>::depth(const Point<dim> &position) const
     {
       // depth is defined wrt the reference surface point2[0]
-      // negative depth is not allowed
-      return std::max (0., std::min (point2[0]-position.norm(), maximal_depth()));
+      // plus initial topography. Negative depth is not allowed.
+      if (this->simulator_is_past_initialization() &&
+          !Plugins::plugin_type_matches<const InitialTopographyModel::ZeroTopography<dim>>(this->get_initial_topography_model()))
+        return std::clamp(point2[0] + manifold->topography_for_point(position) - position.norm(), 0., maximal_depth());
+      else
+        return std::clamp(point2[0] - position.norm(), 0., maximal_depth());
     }
 
 
@@ -602,10 +631,9 @@ namespace aspect
       // Choose a point at the mean longitude (and latitude)
       Point<dim> p = 0.5*(point2+point1);
       // at a depth beneath the top surface
-      p[0] = point2[0]-depth;
+      p[0] = point2[0]+manifold->topography_for_point(p) - depth;
 
-      // Now convert to Cartesian coordinates. This ignores the surface topography,
-      // but that is as documented.
+      // Now convert to Cartesian coordinates.
       return manifold->push_forward_sphere(p);
     }
 
@@ -678,12 +706,12 @@ namespace aspect
     double
     Chunk<dim>::maximal_depth() const
     {
-      // The depth is defined as relative to a reference surface (without
+      // The depth is defined as relative to a reference surface (with
       // topography) and since we don't apply topography on the CMB,
       // the maximal depth really is the formula below, unless one applies a
       // topography that is always strictly below zero (i.e., where the
       // actual surface lies strictly below the reference surface).
-      return point2[0]-point1[0];
+      return point2[0] + this->get_initial_topography_model().max_topography() - point1[0];
     }
 
 
@@ -757,8 +785,11 @@ namespace aspect
       // The chunk manifold uses (radius, longitude, latitude).
       // This is exactly what we need.
 
-      // Ignore the topography to avoid a loop when calling the
-      // AsciiDataBoundary for topography which uses this function....
+      // We want to transform the current point from (x,y,z) into spherical
+      // coordinates. Whether or not we have applied topography, or whether
+      // topography has developed since the initial time, does not matter:
+      // We just have to do the Cartesian to spherical transformation, and
+      // that is exactly what pull_back_sphere() does.
       const Point<dim> transformed_point = manifold->pull_back_sphere(position_point);
       std::array<double,dim> position_array;
       for (unsigned int i = 0; i < dim; ++i)
@@ -794,14 +825,16 @@ namespace aspect
     Point<dim>
     Chunk<dim>::natural_to_cartesian_coordinates(const std::array<double,dim> &position_tensor) const
     {
-      // Ignore the topography to avoid a loop when calling the
-      // AsciiDataBoundary for topography which uses this function....
+      // We want to transform the current point from spherical into (x,y,z)
+      // coordinates. Whether or not we have applied topography, or whether
+      // topography has developed since the initial time, does not matter:
+      // We just have to do the spherical to Cartesian transformation, and
+      // that is exactly what push_forward_sphere() does.
       Point<dim> position_point;
       for (unsigned int i = 0; i < dim; ++i)
         position_point[i] = position_tensor[i];
-      const Point<dim> transformed_point = manifold->push_forward_sphere(position_point);
 
-      return transformed_point;
+      return manifold->push_forward_sphere(position_point);
     }
 
 
@@ -824,19 +857,19 @@ namespace aspect
 
           prm.declare_entry ("Chunk minimum longitude", "0.",
                              Patterns::Double (-180., 360.), // enables crossing of either hemisphere
-                             "Minimum longitude of the chunk. Units: degrees.");
+                             "Minimum longitude of the chunk. Units: \\si{\\degree}.");
           prm.declare_entry ("Chunk maximum longitude", "1.",
                              Patterns::Double (-180., 360.), // enables crossing of either hemisphere
-                             "Maximum longitude of the chunk. Units: degrees.");
+                             "Maximum longitude of the chunk. Units: \\si{\\degree}.");
 
           prm.declare_entry ("Chunk minimum latitude", "0.",
                              Patterns::Double (-90., 90.),
                              "Minimum latitude of the chunk. This value is ignored "
-                             "if the simulation is in 2d. Units: degrees.");
+                             "if the simulation is in 2d. Units: \\si{\\degree}.");
           prm.declare_entry ("Chunk maximum latitude", "1.",
                              Patterns::Double (-90., 90.),
                              "Maximum latitude of the chunk. This value is ignored "
-                             "if the simulation is in 2d. Units: degrees.");
+                             "if the simulation is in 2d. Units: \\si{\\degree}.");
 
           prm.declare_entry ("Radius repetitions", "1",
                              Patterns::Integer (1),
@@ -928,8 +961,8 @@ namespace aspect
                                    "The dimensions of the model are specified by parameters "
                                    "of the following form: "
                                    "Chunk (minimum || maximum) (longitude || latitude): "
-                                   "edges of geographical quadrangle (in degrees)"
-                                   "Chunk (inner || outer) radius: Radii at bottom and top of chunk"
+                                   "edges of geographical quadrangle (in degrees). "
+                                   "Chunk (inner || outer) radius: Radii at bottom and top of chunk. "
                                    "(Longitude || Latitude || Radius) repetitions: "
                                    "number of cells in each coordinate direction."
                                    "\n\n"

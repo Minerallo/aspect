@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2023 by the authors of the ASPECT code.
+  Copyright (C) 2023 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -32,8 +32,6 @@ namespace aspect
 {
   namespace InitialComposition
   {
-    using namespace dealii;
-
     /**
      * A class that implements subducted slab geometries as a compositional
      * field determined from an input file. The file defines the depth to
@@ -79,9 +77,9 @@ namespace aspect
         parse_parameters (ParameterHandler &prm) override;
 
         /**
-        * A function that returns the slab_boundary object to allow access
-        * in other places.
-        */
+         * A function that returns the slab_boundary object to allow access
+         * in other places.
+         */
         const Utilities::AsciiDataBoundary<dim> &get_slab_boundary() const;
 
       private:

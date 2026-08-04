@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -22,22 +22,16 @@
 #include <aspect/global.h>
 #include <aspect/geometry_model/interface.h>
 #include <aspect/simulator_access.h>
-#include <deal.II/base/exceptions.h>
-#include <tuple>
+
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/base/utilities.h>
+
+#include <tuple>
 
 namespace aspect
 {
   namespace GeometryModel
   {
-    template <int dim>
-    void
-    Interface<dim>::initialize ()
-    {}
-
-
-
     template <int dim>
     std::map<std::string,types::boundary_id>
     Interface<dim>::get_symbolic_boundary_names_map() const
@@ -128,21 +122,6 @@ namespace aspect
                           "not been implemented in this geometry model."));
       return Point<dim>();
     }
-
-
-
-    template <int dim>
-    void
-    Interface<dim>::
-    declare_parameters (dealii::ParameterHandler &)
-    {}
-
-
-
-    template <int dim>
-    void
-    Interface<dim>::parse_parameters (dealii::ParameterHandler &)
-    {}
 
 
     /* --------- functions to translate between symbolic and numeric boundary indicators ------ */
@@ -239,8 +218,8 @@ namespace aspect
     namespace
     {
       std::tuple
-      <void *,
-      void *,
+      <aspect::internal::Plugins::UnusablePluginList,
+      aspect::internal::Plugins::UnusablePluginList,
       aspect::internal::Plugins::PluginList<Interface<2>>,
       aspect::internal::Plugins::PluginList<Interface<3>>> registered_plugins;
     }
@@ -345,20 +324,6 @@ namespace aspect
 // explicit instantiations
 namespace aspect
 {
-  namespace internal
-  {
-    namespace Plugins
-    {
-      template <>
-      std::list<internal::Plugins::PluginList<GeometryModel::Interface<2>>::PluginInfo> *
-      internal::Plugins::PluginList<GeometryModel::Interface<2>>::plugins = nullptr;
-
-      template <>
-      std::list<internal::Plugins::PluginList<GeometryModel::Interface<3>>::PluginInfo> *
-      internal::Plugins::PluginList<GeometryModel::Interface<3>>::plugins = nullptr;
-    }
-  }
-
   namespace GeometryModel
   {
 #define INSTANTIATE(dim) \

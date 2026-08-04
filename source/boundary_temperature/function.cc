@@ -47,6 +47,7 @@ namespace aspect
     }
 
 
+
     template <int dim>
     void
     Function<dim>::update()
@@ -80,6 +81,7 @@ namespace aspect
     }
 
 
+
     template <int dim>
     void
     Function<dim>::declare_parameters (ParameterHandler &prm)
@@ -103,15 +105,16 @@ namespace aspect
 
           prm.declare_entry ("Minimal temperature", "273.",
                              Patterns::Double (),
-                             "Minimal temperature. Units: \\si{\\kelvin}.");
+                             "Minimal temperature. Units: $\\text{K}$.");
           prm.declare_entry ("Maximal temperature", "3773.",
                              Patterns::Double (),
-                             "Maximal temperature. Units: \\si{\\kelvin}.");
+                             "Maximal temperature. Units: $\\text{K}$.");
         }
         prm.leave_subsection();
       }
       prm.leave_subsection();
     }
+
 
 
     template <int dim>
@@ -164,8 +167,8 @@ namespace aspect
                                                "Since the symbol $t$ indicating time "
                                                "may appear in the formulas for the prescribed "
                                                "temperatures, it is interpreted as having units "
-                                               "seconds unless the global input parameter ``Use "
-                                               "years in output instead of seconds'' is set, in "
+                                               "seconds unless the global input parameter "
+                                               "``Use years instead of seconds'' is set, in "
                                                "which case we interpret the formula expressions "
                                                "as having units year."
                                                "\n\n"

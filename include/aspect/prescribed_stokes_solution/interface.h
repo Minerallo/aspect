@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -40,8 +40,6 @@ namespace aspect
    */
   namespace PrescribedStokesSolution
   {
-    using namespace dealii;
-
     /**
      * This plugin allows the user to prescribe a Stokes solution and can be
      * thought of as velocity and pressure's equivalent of the initial
@@ -53,38 +51,9 @@ namespace aspect
      * @ingroup PrescribedStokesSolution
      */
     template <int dim>
-    class Interface
+    class Interface : public Plugins::InterfaceBase
     {
       public:
-        /**
-         * Destructor. Made virtual to enforce that derived classes also have
-         * virtual destructors.
-         */
-        virtual ~Interface() = default;
-
-        /**
-         * Initialization function. This function is called once at the
-         * beginning of the program after parse_parameters is run and after
-         * the SimulatorAccess (if applicable) is initialized.
-         */
-        virtual
-        void
-        initialize ();
-
-        /**
-         * A function that is called at the beginning of each time step. The
-         * default implementation of the function does nothing, but derived
-         * classes that need more elaborate setups for a given time step may
-         * overload the function.
-         *
-         * The point of this function is to allow complex prescribed Stokes
-         * solutions to do an initialization step once at the beginning of each
-         * time step. An example would be a time-dependent prescribed velocity.
-         */
-        virtual
-        void
-        update ();
-
         /**
          * Given a position @p p, fill in desired velocity and pressure at
          * that point into @p value, which will have dim+1 components. In @p
@@ -93,27 +62,6 @@ namespace aspect
          */
         virtual
         void stokes_solution (const Point<dim> &p, Vector<double> &value) const = 0;
-
-        /**
-         * Declare the parameters this class takes through input files. The
-         * default implementation of this function does not describe any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
-         */
-        static
-        void
-        declare_parameters (ParameterHandler &prm);
-
-        /**
-         * Read the parameters this class declares from the parameter file.
-         * The default implementation of this function does not read any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
-         */
-        virtual
-        void
-        parse_parameters (ParameterHandler &prm);
-
     };
 
 

@@ -1,3 +1,11 @@
+```{tags}
+category:cookbook
+feature:2d
+feature:cartesian
+feature:particles
+```
+
+(sec:cookbooks:composition-active-particles)=
 # Using active particles.
 
 In the examples above, particle properties passively track distinct model

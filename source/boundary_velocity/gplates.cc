@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -28,6 +28,8 @@
 
 #include <boost/property_tree/xml_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
+
+#include <regex>
 
 
 namespace aspect
@@ -379,7 +381,7 @@ namespace aspect
         const double y3 = rotation_matrix[1][1];
         const double z3 = rotation_matrix[1][2];
 
-        double d1 = sqrt(x2*x2 + z2*z2);
+        double d1 = std::sqrt(x2*x2 + z2*z2);
 
         double cosTheta, sinTheta;
         if (d1 < std::numeric_limits<double>::min())
@@ -393,11 +395,11 @@ namespace aspect
             sinTheta = x2/d1;
           }
 
-        double theta = atan2(sinTheta, cosTheta);
+        double theta = std::atan2(sinTheta, cosTheta);
         orientation[1] = - theta * constants::radians_to_degree;
 
         // now rotate about x axis
-        double d = sqrt(x2*x2 + y2*y2 + z2*z2);
+        double d = std::sqrt(x2*x2 + y2*y2 + z2*z2);
 
         double sinPhi, cosPhi;
         if (d < std::numeric_limits<double>::min())
@@ -416,13 +418,13 @@ namespace aspect
             cosPhi = (x2*x2 + z2*z2)/(d1*d);
           }
 
-        double phi = atan2(sinPhi, cosPhi);
+        double phi = std::atan2(sinPhi, cosPhi);
         orientation[0] = phi * constants::radians_to_degree;
 
         // finally, rotate about z
         double x3p = x3*cosTheta - z3*sinTheta;
         double y3p = - sinPhi*sinTheta*x3 + cosPhi*y3 - sinPhi*cosTheta*z3;
-        double d2 = sqrt(x3p*x3p + y3p*y3p);
+        double d2 = std::sqrt(x3p*x3p + y3p*y3p);
 
         double cosAlpha, sinAlpha;
         if (d2 < std::numeric_limits<double>::min())
@@ -436,7 +438,7 @@ namespace aspect
             sinAlpha = x3p/d2;
           }
 
-        double alpha = atan2(sinAlpha, cosAlpha);
+        double alpha = std::atan2(sinAlpha, cosAlpha);
         orientation[2] = alpha * constants::radians_to_degree;
         return orientation;
       }
@@ -580,14 +582,33 @@ namespace aspect
 
     template <int dim>
     std::string
-    GPlates<dim>::create_filename (const int timestep) const
+    GPlates<dim>::create_filename (const unsigned int timestep) const
     {
-      std::string templ = data_directory+velocity_file_name;
-      const int size = templ.length();
-      std::vector<char> buffer(size+10);
-      snprintf (buffer.data(), size + 10, templ.c_str(), timestep);
-      std::string str_filename (buffer.data());
-      return str_filename;
+      // We allow regexes of the form '%[dui]' as well as '%0N[dui]' where
+      // in the latter case, the number N is used to pad the timestep with
+      // leading zeros. Start with the first form:
+      std::string text = std::regex_replace(velocity_file_name, std::regex("%[dui]"),
+                                            std::to_string(timestep));
+
+      // The second form is a bit more complicated, as we need to extract the number of zeros to pad with:
+      const std::regex regex("%0(\\d+)[dui]");
+      std::smatch match;
+      while (std::regex_search(text, match, regex))
+        {
+          std::string padded_timestep = Utilities::to_string(timestep);
+
+          const unsigned int n_zeros = std::stoi(match[1].str());
+          while (padded_timestep.length() < n_zeros)
+            padded_timestep.insert(/*position=*/0, /*count=*/1, '0');
+
+          // Replace the matched substring with the padded timestep.
+          // In fact, this will replace all occurrences of the regex
+          // in the string (not just the one found in 'match'), which
+          // is what we want.
+          text = std::regex_replace(text, regex, padded_timestep);
+        }
+
+      return (data_directory + text);
     }
 
 
@@ -761,14 +782,15 @@ namespace aspect
           prm.declare_entry ("Velocity file name", "phi.%d",
                              Patterns::Anything (),
                              "The file name of the material data. Provide file in format: "
-                             "(Velocity file name).\\%d.gpml where \\%d is any sprintf integer "
-                             "qualifier, specifying the format of the current file number.");
+                             "some_file_name.\\%d.gpml where \\%d will be replaced by the "
+                             "current file number. (Only \\%d is allowed here, not any of the "
+                             "other printf-style format specifiers.)");
           prm.declare_entry ("First data file model time", "0.",
                              Patterns::Double (0.),
                              "Time from which on the velocity file with number 'First velocity "
                              "file number' is used as boundary condition. Previous to this "
                              "time, a no-slip boundary condition is assumed. Depending on the setting "
-                             "of the global 'Use years in output instead of seconds' flag "
+                             "of the global 'Use years instead of seconds' flag "
                              "in the input file, this number is either interpreted as seconds or as years.");
           prm.declare_entry ("First data file number", "0",
                              Patterns::Integer (),
@@ -784,7 +806,7 @@ namespace aspect
           prm.declare_entry ("Data file time step", "1e6",
                              Patterns::Double (0.),
                              "Time step between following velocity files. "
-                             "Depending on the setting of the global 'Use years in output instead of seconds' flag "
+                             "Depending on the setting of the global 'Use years instead of seconds' flag "
                              "in the input file, this number is either interpreted as seconds or as years. "
                              "The default is one million, i.e., either one million seconds or one million years.");
           prm.declare_entry ("Scale factor", "1.",

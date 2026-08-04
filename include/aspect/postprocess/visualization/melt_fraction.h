@@ -51,6 +51,18 @@ namespace aspect
         public:
           MeltFraction ();
 
+          /**
+           * Percentage of material that is molten for a given @p temperature and
+           * @p pressure (assuming equilibrium conditions) for a given melting model.
+           */
+          double
+          melt_fraction (const double temperature,
+                         const double pressure,
+                         const std::string &melting_model) const;
+
+          /**
+           * Evaluate the melt fraction for a given set of input data.
+           */
           void
           evaluate_vector_field(const DataPostprocessorInputs::Vector<dim> &input_data,
                                 std::vector<Vector<double>> &computed_quantities) const override;
@@ -74,26 +86,65 @@ namespace aspect
            */
 
           // for the solidus temperature
+          /**
+           * This variable is read from the parameter file through a parameter called 'A1'.
+           */
           double A1;   // °C
+          /**
+           * This variable is read from the parameter file through a parameter called 'A2'.
+           */
           double A2; // °C/Pa
+          /**
+           * This variable is read from the parameter file through a parameter called 'A3'.
+           */
           double A3; // °C/(Pa^2)
 
           // for the lherzolite liquidus temperature
+          /**
+           * This variable is read from the parameter file through a parameter called 'B1'.
+           */
           double B1;   // °C
+          /**
+           * This variable is read from the parameter file through a parameter called 'B2'.
+           */
           double B2;   // °C/Pa
+          /**
+           * This variable is read from the parameter file through a parameter called 'B3'.
+           */
           double B3; // °C/(Pa^2)
 
           // for the liquidus temperature
+          /**
+           * This variable is read from the parameter file through a parameter called 'C1'.
+           */
           double C1;   // °C
+          /**
+           * This variable is read from the parameter file through a parameter called 'C2'.
+           */
           double C2;  // °C/Pa
+          /**
+           * This variable is read from the parameter file through a parameter called 'C3'.
+           */
           double C3; // °C/(Pa^2)
 
           // for the reaction coefficient of pyroxene
+          /**
+           * This variable is read from the parameter file through a parameter called 'r1'.
+           */
           double r1;     // cpx/melt
+          /**
+           * This variable is read from the parameter file through a parameter called 'r2'.
+           */
           double r2;     // cpx/melt/GPa
+          /**
+           * This variable is read from the parameter file through a parameter called 'Mass fraction cpx'.
+           */
           double M_cpx;  // mass fraction of pyroxenite
 
           // melt fraction exponent
+          /**
+           * This variable is read from the parameter file through a parameter called 'beta'.
+           */
           double beta;
 
           /**
@@ -101,13 +152,33 @@ namespace aspect
            */
 
           // for the melting temperature
+          /**
+           * This variable is read from the parameter file through a parameter called 'D1'.
+           */
           double D1;    // °C
+          /**
+           * This variable is read from the parameter file through a parameter called 'D2'.
+           */
           double D2;  // °C/Pa
+          /**
+           * This variable is read from the parameter file through a parameter called 'D3'.
+           */
           double D3; // °C/(Pa^2)
 
           // for the melt-fraction dependence of productivity
+          /**
+           * This variable is read from the parameter file through a parameter called 'E1'.
+           */
           double E1;
+          /**
+           * This variable is read from the parameter file through a parameter called 'E2'.
+           */
           double E2;
+
+          /**
+           * List of names of the melting models that are not peridotite.
+           */
+          std::vector<std::string> melting_model;
       };
     }
   }

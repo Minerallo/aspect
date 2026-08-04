@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2016 - 2019 by the authors of the ASPECT code.
+  Copyright (C) 2016 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -22,8 +22,6 @@
 #define _aspect_volume_of_fluid_field_h
 
 #include <aspect/fe_variable_collection.h>
-
-using namespace dealii;
 
 namespace aspect
 {
@@ -57,7 +55,7 @@ namespace aspect
    * Structure to package the relevant data (both state and cached) in a single
    * location for access.
    */
-  template<int dim>
+  template <int dim>
   struct VolumeOfFluidField
   {
     /**

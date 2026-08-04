@@ -6,7 +6,7 @@ set CFL number                             = 0.1
 set End time                               = 1e8
 set Output directory                       = output
 set Pressure normalization                 = no
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 
 subsection Boundary temperature model
   set List of model names = constant
@@ -108,6 +108,12 @@ subsection Initial composition model
   subsection Function
     set Variable names      = x,y
     set Function expression = if( sqrt( (x-250.e3)^2 + (y-160.e3)^2 ) < 25.e3, 1.0, 0.0)
+  end
+end
+
+subsection Solver parameters
+  subsection Stokes solver parameters
+    set Number of cheap Stokes solver steps = 400
   end
 end
 

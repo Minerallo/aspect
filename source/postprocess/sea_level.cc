@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -46,11 +46,21 @@ namespace aspect
   namespace Postprocess
   {
     template <int dim>
+    SeaLevel<dim>::SeaLevel()
+      : last_output_time(std::numeric_limits<double>::lowest())
+    {
+    }
+
+
+
+    template <int dim>
     void
     SeaLevel<dim>::initialize()
     {
       Assert(false, ExcNotImplemented(""));
     }
+
+
 
     template <>
     void
@@ -84,7 +94,7 @@ namespace aspect
       const int dim = 3;
 
       const Postprocess::Geoid<dim> &geoid =
-        this->get_postprocess_manager().template get_matching_postprocessor<Postprocess::Geoid<dim>>();
+        this->get_postprocess_manager().template get_matching_active_plugin<Postprocess::Geoid<dim>>();
 
       const double geoid_displacement = geoid.evaluate(position); // TODO: check sign of geoid_displacement
       const double topography = this->get_geometry_model().height_above_reference_surface(position);
@@ -125,7 +135,7 @@ namespace aspect
       const types::boundary_id top_boundary_id = this->get_geometry_model().translate_symbolic_boundary_name_to_id("top");
 
       const Postprocess::Geoid<dim> &geoid =
-        this->get_postprocess_manager().template get_matching_postprocessor<Postprocess::Geoid<dim>>();
+        this->get_postprocess_manager().template get_matching_active_plugin<Postprocess::Geoid<dim>>();
 
       const unsigned int quadrature_degree = this->introspection().polynomial_degree.temperature;
       const QGauss<dim-1> quadrature_formula_face(quadrature_degree);
@@ -147,8 +157,8 @@ namespace aspect
         if (cell->is_locally_owned() && cell->at_boundary())
           {
             unsigned int face_idx = numbers::invalid_unsigned_int;
-            bool at_upper_surface = false;
             {
+              bool at_upper_surface = false;
               for (const unsigned int f : cell->face_indices())
                 {
                   if (cell->at_boundary(f) && cell->face(f)->boundary_id() == top_boundary_id)
@@ -167,7 +177,9 @@ namespace aspect
             // Focus on the boundary cell's upper face if on the top boundary.
             fe_face_values.reinit(cell,face_idx);
 
-            // If the cell is at the top boundary, add its contributions to the topography/geoid displacement/ocean mask/ice height storage vectors.
+            // If the cell is at the top boundary, add its
+            // contributions to the topography/geoid
+            // displacement/ocean mask/ice height storage vectors.
             for (unsigned int q=0; q<fe_face_values.n_quadrature_points; ++q)
               {
                 const Point<dim> current_position = fe_face_values.quadrature_point(q);
@@ -200,9 +212,7 @@ namespace aspect
       integral_ice_height = Utilities::MPI::sum (integral_ice_height, this->get_mpi_communicator());
       integral_topo_geoid = Utilities::MPI::sum (integral_topo_geoid, this->get_mpi_communicator());
 
-      const double sea_level_offset = -1./integral_ocean_mask*(1./density_water*integral_ice_height+integral_topo_geoid);
-
-      return sea_level_offset;
+      return -1./integral_ocean_mask*(1./density_water*integral_ice_height+integral_topo_geoid);
     }
 
 
@@ -266,7 +276,7 @@ namespace aspect
       const types::boundary_id top_boundary_id = this->get_geometry_model().translate_symbolic_boundary_name_to_id("top");
 
       const Postprocess::Geoid<dim> &geoid =
-        this->get_postprocess_manager().template get_matching_postprocessor<Postprocess::Geoid<dim>>();
+        this->get_postprocess_manager().template get_matching_active_plugin<Postprocess::Geoid<dim>>();
 
       // Get the sea level offset (constant for every location).
       sea_level_offset = compute_sea_level_offset();
@@ -356,7 +366,7 @@ namespace aspect
       // If this is the first time we get here, set the last output time
       // to the current time - output_interval. This makes sure we
       // always produce data during the first time step.
-      if (std::isnan(last_output_time))
+      if (last_output_time < this->get_parameters().start_time - output_interval)
         {
           last_output_time = this->get_time() - output_interval;
         }
@@ -366,17 +376,17 @@ namespace aspect
                              && (this->get_timestep_number() != 0)))
         return {"Non-uniform sea level change min/max:", output_stats.str()};
 
-      const unsigned int max_data_length = Utilities::MPI::max (output_file.str().size()+1,
-                                                                this->get_mpi_communicator());
-
       const unsigned int mpi_tag = 777;
 
       // On processor 0, collect all of the data the individual processors sent
       // and concatenate them into one file.
       if (Utilities::MPI::this_mpi_process(this->get_mpi_communicator()) == 0)
         {
+          Utilities::create_directory (this->get_output_directory() + "sea_level/",
+                                       this->get_mpi_communicator(),
+                                       /* silent=*/true);
           std::string filename = this->get_output_directory() +
-                                 "nonuniform_sea_level_change." +
+                                 "sea_level/nonuniform_sea_level_change." +
                                  Utilities::int_to_string(this->get_timestep_number(), 5);
           if (this->get_parameters().run_postprocessors_on_nonlinear_iterations)
             filename.append("." + Utilities::int_to_string (this->get_nonlinear_iteration(), 4));
@@ -395,38 +405,25 @@ namespace aspect
           // First write out the data we have created locally.
           file << output_file.str();
 
-          std::string tmp;
-          tmp.resize (max_data_length, '\0');
-
           // Then loop through all of the other processors and collect
           // data, then write it to the file.
           for (unsigned int p=1; p<Utilities::MPI::n_mpi_processes(this->get_mpi_communicator()); ++p)
             {
-              MPI_Status status;
-              // Get the data. Note that MPI says that an MPI_Recv may receive
-              // less data than the length specified here. Since we have already
-              // determined the maximal message length, we use this feature here
-              // rather than trying to find out the exact message length with
-              // a call to MPI_Probe.
-              const int ierr = MPI_Recv (&tmp[0], max_data_length, MPI_CHAR, p, mpi_tag,
-                                         this->get_mpi_communicator(), &status);
-              AssertThrowMPI(ierr);
-
-              // Output the string. Note that 'tmp' has length max_data_length,
-              // but we only wrote a certain piece of it in the MPI_Recv, ended
-              // by a \0 character. Write only this part by outputting it as a
-              // C string object, rather than as a std::string.
-              file << tmp.c_str();
+              Utilities::MPI::Future<std::string> data
+                = Utilities::MPI::irecv<std::string> (this->get_mpi_communicator(), p, mpi_tag);
+              file << data.get();
             }
         }
       else
-        // On other processors, send the data to processor zero. include the \0
-        // character at the end of the string.
+        // On other processors, send the data to processor zero. By not capturing
+        // the return value, we are implementing a "waiting send" that only returns
+        // once the data has been sent completely. This may be inefficient but
+        // harmless in the current context. (It's also unavoidable: We need to
+        // wait for the operation at some point, and the end of the current
+        // function is near from here, with not many operations in between that
+        // could be executed while waiting.)
         {
-          output_file << "\0";
-          const int ierr = MPI_Send (&output_file.str()[0], output_file.str().size()+1, MPI_CHAR, 0, mpi_tag,
-                                     this->get_mpi_communicator());
-          AssertThrowMPI(ierr);
+          Utilities::MPI::isend (output_file.str(), this->get_mpi_communicator(), /* receiver = */ 0, mpi_tag);
         }
 
       // if output_interval is positive, then update the last supposed output time
@@ -514,9 +511,9 @@ namespace aspect
                              "The time interval between each generation of "
                              "text output files. A value of zero indicates "
                              "that output should be generated in each time step. "
-                             "Units: years if the "
-                             "'Use years in output instead of seconds' parameter is set; "
-                             "seconds otherwise.");
+                             "Units: \\si{\\year} if the "
+                             "'Use years instead of seconds' parameter is set; "
+                             "\\si{\\second} otherwise.");
         }
         prm.leave_subsection();
       }
@@ -565,8 +562,15 @@ namespace aspect
     SeaLevel<dim>::save (std::map<std::string, std::string> &status_strings) const
     {
       std::ostringstream os;
-      aspect::oarchive oa (os);
-      oa << (*this);
+
+      // Serialize into a stringstream. Put the following into a code
+      // block of its own to ensure the destruction of the 'oa'
+      // archive triggers a flush() on the stringstream so we can
+      // query the completed string below.
+      {
+        aspect::oarchive oa (os);
+        oa << (*this);
+      }
 
       status_strings["SeaLevel"] = os.str();
     }
@@ -596,10 +600,10 @@ namespace aspect
   {
     ASPECT_REGISTER_POSTPROCESSOR(SeaLevel,
                                   "sea level",
-                                  "A postprocessor that computes the sea level for glacial isostatic adjustment"
-                                  "modeling. When ice melts and enters the ocean, the ocean water needs to be"
-                                  "redistributed in a gravitationally consistent way. With the updated surface"
-                                  "loading (ocean and ice) the free surface deformation needs to be computed"
+                                  "A postprocessor that computes the sea level for glacial isostatic adjustment "
+                                  "modeling. When ice melts and enters the ocean, the ocean water needs to be "
+                                  "redistributed in a gravitationally consistent way. With the updated surface "
+                                  "loading (ocean and ice) the free surface deformation needs to be computed "
                                   "iteratively before moving to the next time step. "
                                   "A postprocessor intended for use with a deforming top surface. After every step "
                                   "it computes the sea level based on the topography, ocean basin, ice melt, "
@@ -607,7 +611,9 @@ namespace aspect
                                   "of the ice load, relative to a reference datum (initial "
                                   "radius for a spherical shell geometry model). "
                                   "The sea level computation is based on \\cite{Martinec2018}. "
-                                  "If 'SeaLevel.Output to file' is set to true, also outputs sea level "
+                                  "If the parameter 'Output to file' in subsection 'Postprocess/Sea level' "
+                                  "(that is, the subsection corresponding to the current postprocessor) "
+                                  "is set to true, this postprocessor also outputs sea level "
                                   "into text files named `sea_level.NNNNN' in the output directory, "
                                   "where NNNNN is the number of the time step. "
                                   "\n\n"

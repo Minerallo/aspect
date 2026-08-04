@@ -36,8 +36,8 @@ namespace aspect
              MaterialModel::MaterialModelOutputs<dim> &out) const
     {
       // set up additional output for the derivatives
-      MaterialModel::MaterialModelDerivatives<dim> *derivatives;
-      derivatives = out.template get_additional_output<MaterialModel::MaterialModelDerivatives<dim>>();
+      const std::shared_ptr<MaterialModel::MaterialModelDerivatives<dim>> derivatives
+        = out.template get_additional_output_object<MaterialModel::MaterialModelDerivatives<dim>>();
 
       EquationOfStateOutputs<dim> eos_outputs (1);
 
@@ -53,7 +53,7 @@ namespace aspect
               Assert(std::isfinite(in.strain_rate[i].norm()),
                      ExcMessage("Invalid strain_rate in the MaterialModelInputs. This is likely because it was "
                                 "not filled by the caller."));
-              const SymmetricTensor<2,dim> strain_rate_deviator = deviator(in.strain_rate[i]);
+              const SymmetricTensor<2,dim> strain_rate_deviator = Utilities::Tensors::consistent_deviator(in.strain_rate[i]);
 
               // For the very first time this function is called
               // (the first iteration of the first timestep), this function is called
@@ -64,8 +64,8 @@ namespace aspect
               // In later iterations and timesteps we calculate the second moment
               // invariant of the deviatoric strain rate tensor.
               // This is equal to the negative of the second principle
-              // invariant of the deviatoric strain rate (calculated with the function second_invariant),
-              // as shown in Appendix A of Zienkiewicz and Taylor (Solid Mechanics, 2000).
+              // invariant of the deviatoric strain rate, as shown in Appendix A of
+              // Zienkiewicz and Taylor (Solid Mechanics, 2000).
               //
               // The negative of the second principle invariant is equal to 0.5 e_dot_dev_ij e_dot_dev_ji,
               // where e_dot_dev is the deviatoric strain rate tensor. The square root of this quantity
@@ -78,7 +78,7 @@ namespace aspect
                                              // initialized. This might mean that we are
                                              // in a unit test, or at least that we can't
                                              // rely on any simulator information
-                                             std::fabs(second_invariant(strain_rate_deviator))
+                                             std::fabs(Utilities::Tensors::consistent_second_invariant_of_deviatoric_tensor(strain_rate_deviator))
                                              :
                                              // simulator object is available, but we need to treat the
                                              // first time step separately
@@ -88,7 +88,7 @@ namespace aspect
                                               ?
                                               reference_strain_rate * reference_strain_rate
                                               :
-                                              std::fabs(second_invariant(strain_rate_deviator))));
+                                              std::fabs(Utilities::Tensors::consistent_second_invariant_of_deviatoric_tensor(strain_rate_deviator))));
 
               const double strain_rate_effective = edot_ii_strict;
 
@@ -107,12 +107,15 @@ namespace aspect
                 }
               else
                 {
+                  MaterialModel::Rheology::DruckerPragerParameters drucker_prager_parameters;
+                  drucker_prager_parameters.cohesion = cohesion;
+                  drucker_prager_parameters.angle_internal_friction = angle_of_internal_friction;
+                  drucker_prager_parameters.max_yield_stress = std::numeric_limits<double>::infinity();
+
                   // plasticity
-                  const double eta_plastic = drucker_prager_plasticity.compute_viscosity(cohesion,
-                                                                                         angle_of_internal_friction,
-                                                                                         pressure,
+                  const double eta_plastic = drucker_prager_plasticity.compute_viscosity(pressure,
                                                                                          std::sqrt(strain_rate_effective),
-                                                                                         std::numeric_limits<double>::infinity());
+                                                                                         drucker_prager_parameters);
 
                   const double viscosity_pressure_derivative = drucker_prager_plasticity.compute_derivative(angle_of_internal_friction,std::sqrt(strain_rate_effective));
 
@@ -127,7 +130,7 @@ namespace aspect
                   Assert(dealii::numbers::is_finite(out.viscosities[i]),
                          ExcMessage ("Error: Averaged viscosity is not finite."));
 
-                  if (derivatives != nullptr)
+                  if (derivatives != nullptr && in.requests_property(MaterialProperties::additional_outputs))
                     {
                       const double averaging_factor = maximum_viscosity * maximum_viscosity
                                                       / ((eta_plastic + minimum_viscosity + maximum_viscosity) * (eta_plastic + minimum_viscosity + maximum_viscosity));
@@ -213,7 +216,7 @@ namespace aspect
                                "The value of the angle of internal friction $\\phi$. "
                                "For a value of zero, in 2d the von Mises "
                                "criterion is retrieved. Angles higher than 30 degrees are "
-                               "harder to solve numerically. Units: degrees.");
+                               "harder to solve numerically. Units: \\si{\\degree}.");
             prm.declare_entry ("Cohesion", "2e7",
                                Patterns::Double (0.),
                                "The value of the cohesion $C$. Units: \\si{\\pascal}.");

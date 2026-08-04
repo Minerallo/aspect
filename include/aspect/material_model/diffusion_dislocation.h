@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -23,15 +23,12 @@
 
 #include <aspect/material_model/interface.h>
 #include <aspect/simulator_access.h>
-#include <aspect/material_model/rheology/diffusion_creep.h>
-#include <aspect/material_model/rheology/dislocation_creep.h>
+#include <aspect/material_model/rheology/diffusion_dislocation.h>
 
 namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     /**
      * A material model based on a viscous rheology including diffusion and
      * dislocation creep.
@@ -107,39 +104,34 @@ namespace aspect
 
       private:
         /**
-         * Objects for computing viscous creep viscosities.
+         * Object for computing viscous creep viscosities.
          */
-        Rheology::DiffusionCreep<dim> diffusion_creep;
-        Rheology::DislocationCreep<dim> dislocation_creep;
+        Rheology::DiffusionDislocation<dim> diffusion_dislocation;
 
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Reference temperature'.
+         */
         double reference_T;
 
         /**
-         * Defining a minimum strain rate stabilizes the viscosity calculation,
-         * which involves a division by the strain rate. Units: 1/s.
+         *  This variable is read from the parameter file through a parameter called 'Thermal diffusivity'.
          */
-        double min_strain_rate;
-        double minimum_viscosity;
-        double maximum_viscosity;
-        double veff_coefficient;
-
-        double log_strain_rate_residual_threshold;
-        unsigned int stress_max_iteration_number;
-
         double thermal_diffusivity;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Heat capacity'.
+         */
         double heat_capacity;
-        double grain_size;
 
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Densities'.
+         */
         std::vector<double> densities;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Thermal expansivities'.
+         */
         std::vector<double> thermal_expansivities;
 
         MaterialUtilities::CompositionalAveragingOperation viscosity_averaging;
-
-        std::vector<double>
-        calculate_isostrain_viscosities ( const std::vector<double> &volume_fractions,
-                                          const double &pressure,
-                                          const double &temperature,
-                                          const SymmetricTensor<2,dim> &strain_rate) const;
 
     };
 

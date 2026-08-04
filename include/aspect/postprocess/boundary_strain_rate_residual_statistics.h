@@ -83,19 +83,24 @@ namespace aspect
 
         /**
          * Directory in which the input data files are present.
+         *
+         * This variable is read from the parameter file through a parameter called 'Data directory'.
          */
         std::string data_directory;
 
         /**
          * Filename of the input ascii data file containing the surface strain rate components.
+         * This variable is read from the parameter file through a parameter called 'Data file name'.
          */
         std::string data_file_name;
 
         /**
          * Scale the input data by a scalar factor. Can be used to transform
          * the unit of the data (if they are not specified in SI units (/s or
-         * /yr depending on the "Use years in output instead of seconds"
+         * /yr depending on the "Use years instead of seconds"
          * parameter).
+         *
+         * This variable is read from the parameter file through a parameter called 'Scale factor'.
          */
         double scale_factor;
     };

@@ -30,8 +30,6 @@ namespace aspect
 {
   namespace HeatingModel
   {
-    using namespace dealii;
-
     /**
      * A class that implements a heating model where each compositional field
      * is assigned a user-defined internal heating value.
@@ -52,6 +50,13 @@ namespace aspect
                   HeatingModel::HeatingModelOutputs &heating_model_outputs) const override;
 
         /**
+         * Specify which material model outputs the heating model requires
+         * for computing the heating terms.
+         */
+        MaterialModel::MaterialProperties::Property
+        get_required_properties () const override;
+
+        /**
          * Declare the parameters this class takes through input files.
          */
         static
@@ -67,6 +72,8 @@ namespace aspect
       private:
         /**
          * Magnitude of heat production for each compositional field
+         *
+         * This variable is read from the parameter file through a parameter called 'Compositional heating values'.
          */
         std::vector<double> heating_values;
 

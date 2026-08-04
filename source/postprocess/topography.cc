@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -39,6 +39,15 @@ namespace aspect
 {
   namespace Postprocess
   {
+
+    template <int dim>
+    Topography<dim>::Topography()
+      : last_output_time(std::numeric_limits<double>::lowest())
+    {
+    }
+
+
+
     template <int dim>
     std::pair<std::string,std::string>
     Topography<dim>::execute (TableHandler &statistics)
@@ -125,10 +134,8 @@ namespace aspect
       // if this is the first time we get here, set the last output time
       // to the current time - output_interval. this makes sure we
       // always produce data during the first time step
-      if (std::isnan(last_output_time))
-        {
-          last_output_time = this->get_time() - output_interval;
-        }
+      if (last_output_time < this->get_parameters().start_time - output_interval)
+        last_output_time = this->get_time() - output_interval;
 
       // Just return stats if text output is not required at all or not needed at this time
       if (!write_to_file || ((this->get_time() < last_output_time + output_interval)
@@ -136,8 +143,13 @@ namespace aspect
         return std::pair<std::string, std::string> ("Topography min/max:",
                                                     output_stats.str());
 
+
+      Utilities::create_directory (this->get_output_directory() + "topography/",
+                                   this->get_mpi_communicator(),
+                                   /* silent=*/true);
+
       std::string filename = this->get_output_directory() +
-                             "topography." +
+                             "topography/topography." +
                              Utilities::int_to_string(this->get_timestep_number(), 5);
       if (this->get_parameters().run_postprocessors_on_nonlinear_iterations)
         filename.append("." + Utilities::int_to_string (this->get_nonlinear_iteration(), 4));
@@ -157,12 +169,15 @@ namespace aspect
           // we did an output and std::floor sadly rounds to zero. This is done
           // by forcing std::floor to round 1.0-eps to 1.0.
           const double magic = 1.0+2.0*std::numeric_limits<double>::epsilon();
-          last_output_time = last_output_time + std::floor((this->get_time()-last_output_time)/output_interval*magic) * output_interval/magic;
+          last_output_time = last_output_time +
+                             std::floor((this->get_time()-last_output_time)/output_interval*magic) * output_interval/magic;
         }
 
       return std::pair<std::string, std::string> ("Topography min/max:",
                                                   output_stats.str());
     }
+
+
 
     template <int dim>
     void
@@ -182,14 +197,15 @@ namespace aspect
                              "The time interval between each generation of "
                              "text output files. A value of zero indicates "
                              "that output should be generated in each time step. "
-                             "Units: years if the "
-                             "'Use years in output instead of seconds' parameter is set; "
-                             "seconds otherwise.");
+                             "Units: \\si{\\year} if the "
+                             "'Use years instead of seconds' parameter is set; "
+                             "\\si{\\second} otherwise.");
         }
         prm.leave_subsection();
       }
       prm.leave_subsection();
     }
+
 
 
     template <int dim>
@@ -200,7 +216,7 @@ namespace aspect
       {
         prm.enter_subsection("Topography");
         {
-          write_to_file        = prm.get_bool ("Output to file");
+          write_to_file   = prm.get_bool ("Output to file");
           output_interval = prm.get_double ("Time between text output");
           if (this->convert_output_to_years())
             output_interval *= year_in_seconds;
@@ -212,6 +228,44 @@ namespace aspect
 
 
 
+    template <int dim>
+    template <class Archive>
+    void Topography<dim>::serialize (Archive &ar, const unsigned int)
+    {
+      ar &last_output_time;
+    }
+
+
+
+    template <int dim>
+    void Topography<dim>::save (std::map<std::string, std::string> &status_strings) const
+    {
+      // Serialize into a stringstream. Put the following into a code
+      // block of its own to ensure the destruction of the 'oa'
+      // archive triggers a flush() on the stringstream so we can
+      // query the completed string below.
+      std::ostringstream os;
+      {
+        aspect::oarchive oa (os);
+        oa << (*this);
+      }
+
+      status_strings["Topography"] = os.str();
+    }
+
+
+
+    template <int dim>
+    void Topography<dim>::load (const std::map<std::string, std::string> &status_strings)
+    {
+      // see if something was saved
+      if (status_strings.find("Topography") != status_strings.end())
+        {
+          std::istringstream is (status_strings.find("Topography")->second);
+          aspect::iarchive ia (is);
+          ia >> (*this);
+        }
+    }
 
   }
 }
@@ -229,7 +283,9 @@ namespace aspect
                                   "maximum and minimum topography relative to a reference datum (initial "
                                   "box height for a box geometry model or initial radius for a "
                                   "sphere/spherical shell geometry model). "
-                                  "If 'Topography.Output to file' is set to true, also outputs topography "
+                                  "If the parameter 'Output to file' in subsection 'Postprocess/Topography' "
+                                  "(that is, the subsection corresponding to the current postprocessor) "
+                                  "is set to true, this postprocessor also outputs topography "
                                   "into text files named `topography.NNNNN' in the output directory, "
                                   "where NNNNN is the number of the time step.\n"
                                   "The file format then consists of lines with Euclidean coordinates "

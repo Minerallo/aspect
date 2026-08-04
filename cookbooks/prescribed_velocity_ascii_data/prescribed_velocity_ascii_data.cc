@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -29,8 +29,6 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
   // Global variables (to be set by parameters)
   bool prescribe_internal_velocities;
   bool prescribed_velocity_ascii_file_loaded;

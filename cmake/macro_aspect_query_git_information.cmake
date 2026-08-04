@@ -1,4 +1,4 @@
-# Copyright (C) 2018 by the authors of the ASPECT code.
+# Copyright (C) 2018 - 2024 by the authors of the ASPECT code.
 #
 # This file is part of ASPECT.
 #
@@ -22,8 +22,8 @@
 # macro DEAL_II_QUERY_GIT_INFORMATION.
 #
 # Usage:
-#       ASPECT_QUERY_GIT_INFORMATION()
-#       ASPECT_QUERY_GIT_INFORMATION("CUSTOM_PREFIX")
+#       aspect_query_git_information()
+#       aspect_query_git_information("CUSTOM_PREFIX")
 #
 # This will try to gather information about current branch, as well as
 # short and long revision. If ${CMAKE_SOURCE_DIR} is the root of a git
@@ -41,72 +41,89 @@
 #       PREFIX_GIT_SHORTREV
 #
 
-MACRO(ASPECT_QUERY_GIT_INFORMATION)
+macro(ASPECT_QUERY_GIT_INFORMATION)
 
-  MESSAGE(STATUS "Query git repository information.")
+  message(STATUS "Query git repository information.")
 
   # Set prefix.
-  SET(_prefix "")
-  IF(NOT "${ARGN}" STREQUAL "")
-    SET(_prefix "${ARGN}_")
-  ENDIF()
+  set(_prefix "")
+  if(NOT "${ARGN}" STREQUAL "")
+    set(_prefix "${ARGN}_")
+  endif()
 
-  FIND_PACKAGE(Git)
+  find_package(Git)
+
+
+  set(_head_location "")
 
   #
   # Only run the following if we have git and the source directory seems to
   # be under version control.
   #
-  IF(GIT_FOUND AND EXISTS ${CMAKE_SOURCE_DIR}/.git/HEAD)
-    #
+  if(GIT_FOUND AND EXISTS ${CMAKE_SOURCE_DIR}/.git)
+
+    if (EXISTS ${CMAKE_SOURCE_DIR}/.git/HEAD)
+      # A normal git repository
+      set(_head_location ${CMAKE_SOURCE_DIR}/.git/HEAD)
+    else()
+      # Likely a git worktree: Read .git file, which has the format "gitdir: <absolute path>"
+      file(STRINGS ${CMAKE_SOURCE_DIR}/.git _gitdir LIMIT_COUNT 1)
+      string(REGEX REPLACE "gitdir: " "" _gitdir ${_gitdir})
+      if(EXISTS ${_gitdir}/HEAD)
+        set(_head_location ${_gitdir}/HEAD)
+      endif()
+    endif()
+  endif()
+
+  if (EXISTS ${_head_location})
+    # We have a git repository, now grab the details
+
     # Bogus configure_file calls to trigger a reconfigure, and thus an
     # update of branch and commit information every time HEAD has changed.
-    #
-    CONFIGURE_FILE(
-      ${CMAKE_SOURCE_DIR}/.git/HEAD
+    configure_file(
+      ${_head_location}
       ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/HEAD
       )
-    FILE(STRINGS ${CMAKE_SOURCE_DIR}/.git/HEAD _head_ref LIMIT_COUNT 1)
-    STRING(REPLACE "ref: " "" _head_ref ${_head_ref})
-    IF(EXISTS ${CMAKE_SOURCE_DIR}/.git/${_head_ref})
-      CONFIGURE_FILE(
+    file(STRINGS ${_head_location} _head_ref LIMIT_COUNT 1)
+    string(REPLACE "ref: " "" _head_ref ${_head_ref})
+    if(EXISTS ${CMAKE_SOURCE_DIR}/.git/${_head_ref})
+      configure_file(
         ${CMAKE_SOURCE_DIR}/.git/${_head_ref}
         ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/HEAD_REF
         )
-    ENDIF()
+    endif()
 
     #
     # Query for revision:
     #
-
-    EXECUTE_PROCESS(
+    execute_process(
        COMMAND ${GIT_EXECUTABLE} log -n 1 --pretty=format:"%H %h"
        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
        OUTPUT_VARIABLE _info
        RESULT_VARIABLE _result
        OUTPUT_STRIP_TRAILING_WHITESPACE
        )
-    IF(${_result} EQUAL 0)
-      STRING(REGEX REPLACE "^\"([^ ]+) ([^ ]+)\"$"
+    if(${_result} EQUAL 0)
+      string(REGEX REPLACE "^\"([^ ]+) ([^ ]+)\"$"
         "\\1" ${_prefix}GIT_REVISION "${_info}")
-      STRING(REGEX REPLACE "^\"([^ ]+) ([^ ]+)\"$"
+      string(REGEX REPLACE "^\"([^ ]+) ([^ ]+)\"$"
         "\\2" ${_prefix}GIT_SHORTREV "${_info}")
-    ENDIF()
+    endif()
 
     #
     # Query for branch:
     #
 
-    EXECUTE_PROCESS(
+    execute_process(
        COMMAND ${GIT_EXECUTABLE} symbolic-ref HEAD
        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
        OUTPUT_VARIABLE _branch
        RESULT_VARIABLE _result
        OUTPUT_STRIP_TRAILING_WHITESPACE
        )
-    IF(${_result} EQUAL 0)
-      STRING(REGEX REPLACE "refs/heads/" "" ${_prefix}GIT_BRANCH "${_branch}")
-    ENDIF()
-  ENDIF()
+    if(${_result} EQUAL 0)
+      string(REGEX REPLACE "refs/heads/" "" ${_prefix}GIT_BRANCH "${_branch}")
+    endif()
+  endif()
 
-ENDMACRO()
+endmacro()

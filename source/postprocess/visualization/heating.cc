@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -49,7 +49,7 @@ namespace aspect
       Heating<dim>::
       get_names () const
       {
-        std::vector<std::string> names = this->get_heating_model_manager().get_active_heating_model_names();
+        std::vector<std::string> names = this->get_heating_model_manager().get_active_plugin_names();
 
         // make the names valid names for output variables via DataOut
         for (auto &name : names)
@@ -66,7 +66,7 @@ namespace aspect
       get_data_component_interpretation () const
       {
         return std::vector<DataComponentInterpretation::DataComponentInterpretation>
-               (this->get_heating_model_manager().get_active_heating_model_names().size(),
+               (this->get_heating_model_manager().get_active_plugin_names().size(),
                 DataComponentInterpretation::component_is_scalar);
       }
 
@@ -89,7 +89,7 @@ namespace aspect
                             std::vector<Vector<double>> &computed_quantities) const
       {
         const unsigned int n_quadrature_points = input_data.solution_values.size();
-        const auto &heating_model_objects = this->get_heating_model_manager().get_active_heating_models();
+        const auto &heating_model_objects = this->get_heating_model_manager().get_active_plugins();
 
         // we do not want to write any output if there are no heating models
         // used in the computation
@@ -153,14 +153,14 @@ namespace aspect
           AssertThrow(false, ExcNotImplemented());
 
         unsigned int index = 0;
-        for (typename std::list<std::unique_ptr<HeatingModel::Interface<dim>>>::const_iterator
-             heating_model = heating_model_objects.begin();
-             heating_model != heating_model_objects.end(); ++heating_model, ++index)
+        for (const auto &heating_model : heating_model_objects)
           {
-            (*heating_model)->evaluate(in, out, heating_model_outputs);
+            heating_model->evaluate(in, out, heating_model_outputs);
 
             for (unsigned int q=0; q<n_quadrature_points; ++q)
               computed_quantities[q][index] = heating_model_outputs.heating_source_terms[q];
+
+            ++index;
           }
 
       }
@@ -182,7 +182,7 @@ namespace aspect
                                                   "A visualization output object that generates output "
                                                   "for all the heating terms used in the energy equation."
                                                   "\n\n"
-                                                  "Physical units: \\si{\\watt\\per\\cubic\\meter}.")
+                                                  "Physical units: $\\frac{\\text{W}}{\\text{m}^3}$\\si{\\watt\\per\\cubic\\meter}.")
     }
   }
 }

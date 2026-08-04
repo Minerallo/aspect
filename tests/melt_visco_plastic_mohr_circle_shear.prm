@@ -9,7 +9,7 @@
 
 set Dimension                              = 2
 set Adiabatic surface temperature          = 293
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 
 # Because this model aims to capture rheological behavior under a range
 # of deformation regimes, we prescribe a flow field in the section called
@@ -42,13 +42,6 @@ subsection Prescribed Stokes solution
 
   subsection Compaction pressure function
     set Function expression = 1e6*x-5e7
-  end
-end
-
-subsection Solver parameters
-  subsection Operator splitting parameters
-    set Reaction time step                     = 2e2
-    set Reaction time steps per advection step = 10
   end
 end
 
@@ -157,7 +150,7 @@ subsection Postprocess
       set List of material properties = density, viscosity
     end
 
-    # To see in which cells melt transport is modelled, it can be useful to look
+    # To see in which cells melt transport is modeled, it can be useful to look
     # at the property 'is melt cell', so we include it in the output. In addition,
     # we always visualize the compaction pressure 'p_c' if this postprocessor is
     # used.

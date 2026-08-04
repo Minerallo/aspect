@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2016 - 2022 by the authors of the ASPECT code.
+ Copyright (C) 2016 - 2024 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -28,8 +28,6 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
   template <int dim>
   class Simulator;
 

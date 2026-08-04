@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2020 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -20,6 +20,7 @@
 
 
 #include <aspect/gravity_model/function.h>
+#include <aspect/geometry_model/interface.h>
 
 #include <iostream>
 
@@ -39,10 +40,14 @@ namespace aspect
     gravity_vector (const Point<dim> &position) const
     {
       Tensor<1,dim> gravity;
+      const Utilities::NaturalCoordinate<dim> point =
+        this->get_geometry_model().cartesian_to_other_coordinates(position, coordinate_system);
+      const Point<dim> point_in_coordinate_system = Utilities::convert_array_to_point<dim>(point.get_coordinates());
       for (unsigned int d=0; d<dim; ++d)
-        gravity[d] = function.value(position,d);
+        gravity[d] = function.value(point_in_coordinate_system,d);
       return gravity;
     }
+
 
 
     template <int dim>
@@ -58,6 +63,7 @@ namespace aspect
     }
 
 
+
     template <int dim>
     void
     Function<dim>::declare_parameters (ParameterHandler &prm)
@@ -66,12 +72,24 @@ namespace aspect
       {
         prm.enter_subsection("Function");
         {
+          prm.declare_entry ("Coordinate system", "cartesian",
+                             Patterns::Selection ("cartesian|spherical|depth"),
+                             "A selection that determines the assumed coordinate "
+                             "system for the function variables. Allowed values "
+                             "are `cartesian', `spherical', and `depth'. `spherical' coordinates "
+                             "are interpreted as r,phi or r,phi,theta in 2d/3d "
+                             "respectively with theta being the polar angle. `depth' "
+                             "will create a function, in which only the first "
+                             "parameter is non-zero, which is interpreted to "
+                             "be the depth of the point.");
+
           Functions::ParsedFunction<dim>::declare_parameters (prm, dim);
         }
         prm.leave_subsection();
       }
       prm.leave_subsection();
     }
+
 
 
     template <int dim>
@@ -81,6 +99,9 @@ namespace aspect
       prm.enter_subsection("Gravity model");
       {
         prm.enter_subsection("Function");
+        {
+          coordinate_system = Utilities::Coordinates::string_to_coordinate_system(prm.get("Coordinate system"));
+        }
         try
           {
             function.parse_parameters (prm);

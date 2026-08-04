@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -26,19 +26,19 @@
  * general purpose models. For more details see that paper.
  */
 
-#ifndef __aspect__model_drucker_prager_compositions_h
-#define __aspect__model_drucker_prager_compositions_h
+#ifndef _aspect_model_drucker_prager_compositions_h
+#define _aspect_model_drucker_prager_compositions_h
 
+#include <algorithm>
 #include <aspect/material_model/interface.h>
 #include <aspect/simulator_access.h>
 #include <aspect/newton.h>
+#include <aspect/utilities.h>
 
 namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     /**
      * The same material model as Drucker Prager, but this one supports multiple
      * compositions. Designed to run the Spiegelman et al. 2016 benchmark.
@@ -171,8 +171,6 @@ namespace aspect
 #include <aspect/utilities.h>
 #include <aspect/parameters.h>
 
-using namespace dealii;
-
 namespace aspect
 {
   namespace
@@ -234,7 +232,7 @@ namespace aspect
           viscosity = prefactor;
         }
 
-      return std::max(std::min(viscosity,max_visc),min_visc);
+      return std::clamp(viscosity, min_visc, max_visc);
     }
 
     template <int dim>
@@ -244,8 +242,8 @@ namespace aspect
              MaterialModel::MaterialModelOutputs<dim> &out) const
     {
       //set up additional output for the derivatives
-      MaterialModelDerivatives<dim> *derivatives;
-      derivatives = out.template get_additional_output<MaterialModelDerivatives<dim>>();
+      const std::shared_ptr<MaterialModelDerivatives<dim>> derivatives
+        = out.template get_additional_output_object<MaterialModelDerivatives<dim>>();
 
       for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
         {
@@ -292,7 +290,7 @@ namespace aspect
               std::vector<SymmetricTensor<2,dim>> composition_viscosities_derivatives(volume_fractions.size());
               std::vector<double> composition_dviscosities_dpressure(volume_fractions.size());
 
-              const SymmetricTensor<2,dim> deviator_strain_rate = use_deviator_of_strain_rate ? deviator(in.strain_rate[i]) : in.strain_rate[i];
+              const SymmetricTensor<2,dim> deviator_strain_rate = use_deviator_of_strain_rate ? Utilities::Tensors::consistent_deviator(in.strain_rate[i]) : in.strain_rate[i];
 
               for (unsigned int c=0; c < volume_fractions.size(); ++c)
                 {
@@ -301,7 +299,9 @@ namespace aspect
                   // Otherwise, calculate the square-root of the norm of the second invariant of the deviatoric-
                   // strain rate (often simplified as epsilondot_ii)
 
-                  const double edot_ii = compute_second_invariant(deviator_strain_rate, min_strain_rate[c]);
+                  const double edot_ii = sqrt(2.0 * std::abs(use_deviator_of_strain_rate ?
+                                                             Utilities::Tensors::consistent_second_invariant_of_deviatoric_tensor(deviator_strain_rate) :
+                                                             second_invariant(deviator_strain_rate)));
 
                   // Find effective viscosities for each of the individual phases
                   // Viscosities should have same number of entries as compositional fields
@@ -311,7 +311,7 @@ namespace aspect
 
                   Assert(dealii::numbers::is_finite(composition_viscosities[c]),ExcMessage ("Error: Viscosity is not finite."));
 
-                  if (derivatives != NULL)
+                  if (derivatives != nullptr)
                     {
                       if (use_analytical_derivative)
                         {
@@ -319,17 +319,13 @@ namespace aspect
                           if (c == 0  && composition_viscosities[c] <= max_visc[c] && composition_viscosities[c] >= min_visc[c])
                             {
                               const double drucker_prager_viscosity = compute_viscosity(edot_ii,pressure,c,prefactor[c],false,min_visc[c],max_visc[c]);
-                              const double regulaization_adjustment = (ref_visc * ref_visc)
-                                                                      / (ref_visc * ref_visc + 2.0 * ref_visc * drucker_prager_viscosity
-                                                                         + drucker_prager_viscosity * drucker_prager_viscosity);
+                              const double regularization_adjustment = (ref_visc * ref_visc)
+                                                                       / ((ref_visc + drucker_prager_viscosity) * (ref_visc + drucker_prager_viscosity));
 
-                              composition_viscosities_derivatives[c] = -regulaization_adjustment *
+                              composition_viscosities_derivatives[c] = -regularization_adjustment *
                                                                        (drucker_prager_viscosity / (edot_ii * edot_ii)) * deviator_strain_rate;
 
-                              if (use_deviator_of_strain_rate == true)
-                                composition_viscosities_derivatives[c]*deviator_tensor<dim>();
-
-                              composition_dviscosities_dpressure[c] = regulaization_adjustment *
+                              composition_dviscosities_dpressure[c] = regularization_adjustment *
                                                                       ((dim == 3)
                                                                        ?
                                                                        6 * sin_phi[c] / (sqrt_3 * (3.0 + sin_phi[c]) * 2.0 * sqrt_half * edot_ii)
@@ -353,9 +349,14 @@ namespace aspect
                               const TableIndices<2> strain_rate_indices = SymmetricTensor<2,dim>::unrolled_to_component_indices (component);
 
                               // add a small difference to one independent component of the strain-rate tensor
-                              const SymmetricTensor<2,dim> strain_rate_difference_plus = deviator_strain_rate + std::max(edot_ii, min_strain_rate[c]*min_strain_rate[c]) * finite_difference_accuracy
-                                                                                         * Utilities::nth_basis_for_symmetric_tensors<dim>(component);
-                              const double second_invariant_strain_rate_difference_plus = compute_second_invariant(strain_rate_difference_plus, min_strain_rate[c]);
+                              SymmetricTensor<2,dim> strain_rate_difference_plus = in.strain_rate[i] + std::max(edot_ii, min_strain_rate[c]*min_strain_rate[c]) * finite_difference_accuracy
+                                                                                   * Utilities::nth_basis_for_symmetric_tensors<dim>(component);
+                              if (use_deviator_of_strain_rate)
+                                strain_rate_difference_plus = Utilities::Tensors::consistent_deviator(strain_rate_difference_plus);
+                              const double second_invariant_strain_rate_difference_plus =
+                                std::sqrt(2.0 * std::abs(use_deviator_of_strain_rate ?
+                                                         Utilities::Tensors::consistent_second_invariant_of_deviatoric_tensor(strain_rate_difference_plus) :
+                                                         second_invariant(strain_rate_difference_plus)));
                               const double eta_component_plus = compute_viscosity(second_invariant_strain_rate_difference_plus,pressure,c,prefactor[c],true,min_visc[c],max_visc[c]);
 
                               // compute the difference between the viscosity with and without the strain-rate difference.
@@ -397,7 +398,7 @@ namespace aspect
               out.viscosities[i] = Utilities::weighted_p_norm_average(volume_fractions, composition_viscosities, viscosity_averaging_p);
               Assert(dealii::numbers::is_finite(out.viscosities[i]),ExcMessage ("Error: Averaged viscosity is not finite."));
 
-              if (derivatives != NULL)
+              if (derivatives != nullptr)
                 {
                   derivatives->viscosity_derivative_wrt_strain_rate[i] = Utilities::derivative_of_weighted_p_norm_average(out.viscosities[i],volume_fractions, composition_viscosities, composition_viscosities_derivatives, viscosity_averaging_p);
                   derivatives->viscosity_derivative_wrt_pressure[i] = Utilities::derivative_of_weighted_p_norm_average(out.viscosities[i],volume_fractions, composition_viscosities, composition_dviscosities_dpressure, viscosity_averaging_p);
@@ -407,11 +408,11 @@ namespace aspect
                   for (int x = 0; x < dim; x++)
                     for (int y = 0; y < dim; y++)
                       if (!dealii::numbers::is_finite(derivatives->viscosity_derivative_wrt_strain_rate[i][x][y]))
-                        std::cout << "Error: Averaged viscosity to strain-rate devrivative is not finite." << std::endl;
+                        std::cout << "Error: Averaged viscosity to strain-rate derivative is not finite." << std::endl;
 
                   if (!dealii::numbers::is_finite(derivatives->viscosity_derivative_wrt_pressure[i]))
                     {
-                      std::cout << "Error: Averaged viscosity to pressure devrivative is not finite. " << std::endl;
+                      std::cout << "Error: Averaged viscosity to pressure derivative is not finite. " << std::endl;
                       for (unsigned int c=0; c < volume_fractions.size(); ++c)
                         std::cout << composition_dviscosities_dpressure[c] << ',';
                       std::cout << std::endl;

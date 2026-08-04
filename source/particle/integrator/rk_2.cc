@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -20,7 +20,7 @@
 
 #include <aspect/particle/integrator/rk_2.h>
 #include <aspect/particle/property/interface.h>
-#include <aspect/particle/world.h>
+#include <aspect/particle/manager.h>
 #include <aspect/geometry_model/interface.h>
 
 namespace aspect
@@ -41,7 +41,7 @@ namespace aspect
       void
       RK2<dim>::initialize ()
       {
-        const auto &property_information = this->get_particle_world().get_property_manager().get_data_info();
+        const auto &property_information = this->get_particle_manager(this->get_particle_manager_index()).get_property_manager().get_data_info();
         property_index_old_location = property_information.get_position_by_field_name("internal: integrator properties");
       }
 
@@ -80,8 +80,7 @@ namespace aspect
         typename std::vector<Tensor<1,dim>>::const_iterator old_velocity = old_velocities.begin();
         typename std::vector<Tensor<1,dim>>::const_iterator velocity = velocities.begin();
 
-        for (typename ParticleHandler<dim>::particle_iterator it = begin_particle;
-             it != end_particle; ++it, ++velocity, ++old_velocity)
+        for (auto it = begin_particle; it != end_particle; ++it)
           {
             ArrayView<double> properties = it->get_properties();
 
@@ -142,6 +141,9 @@ namespace aspect
                 Assert(false,
                        ExcMessage("The RK2 integrator should never continue after two integration steps."));
               }
+
+            ++old_velocity;
+            ++velocity;
           }
       }
 
@@ -188,25 +190,17 @@ namespace aspect
       void
       RK2<dim>::declare_parameters (ParameterHandler &prm)
       {
-        prm.enter_subsection("Postprocess");
+        prm.enter_subsection("Integrator");
         {
-          prm.enter_subsection("Particles");
+          prm.enter_subsection("RK2");
           {
-            prm.enter_subsection("Integrator");
-            {
-              prm.enter_subsection("RK2");
-              {
-                prm.declare_entry ("Higher order accurate in time", "true",
-                                   Patterns::Bool(),
-                                   "Whether to correctly evaluate old and current velocity "
-                                   "solution to reach higher-order accuracy in time. If set to "
-                                   "'false' only the old velocity solution is evaluated to "
-                                   "simulate a first order method in time. This is only "
-                                   "recommended for benchmark purposes.");
-              }
-              prm.leave_subsection();
-            }
-            prm.leave_subsection();
+            prm.declare_entry ("Higher order accurate in time", "true",
+                               Patterns::Bool(),
+                               "Whether to correctly evaluate old and current velocity "
+                               "solution to reach higher-order accuracy in time. If set to "
+                               "'false' only the old velocity solution is evaluated to "
+                               "simulate a first order method in time. This is only "
+                               "recommended for benchmark purposes.");
           }
           prm.leave_subsection();
         }
@@ -218,19 +212,11 @@ namespace aspect
       void
       RK2<dim>::parse_parameters (ParameterHandler &prm)
       {
-        prm.enter_subsection("Postprocess");
+        prm.enter_subsection("Integrator");
         {
-          prm.enter_subsection("Particles");
+          prm.enter_subsection("RK2");
           {
-            prm.enter_subsection("Integrator");
-            {
-              prm.enter_subsection("RK2");
-              {
-                higher_order_in_time = prm.get_bool("Higher order accurate in time");
-              }
-              prm.leave_subsection();
-            }
-            prm.leave_subsection();
+            higher_order_in_time = prm.get_bool("Higher order accurate in time");
           }
           prm.leave_subsection();
         }

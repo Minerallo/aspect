@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2023 by the authors of the ASPECT code.
+  Copyright (C) 2023 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -24,7 +24,6 @@
 #include <aspect/utilities.h>
 #include <aspect/geometry_model/interface.h>
 
-#include <array>
 #include <utility>
 #include <limits>
 
@@ -32,8 +31,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     /**
      * Volatiles material model.
      * @ingroup MaterialModels
@@ -74,9 +71,14 @@ namespace aspect
          * @param in Object that contains the current conditions.
          * @param melt_fractions Vector of doubles that is filled with the
          * allowable free fluid fraction for each given input conditions.
+         * @param out Optional pointer to the material properties provided by the
+         * material model. By default, this variable is a nullptr. If the melt
+         * fractions depend on material model properties, then this parameter
+         * must be set to a valid pointer to a MaterialModelOutputs object.
          */
         void melt_fractions (const MaterialModel::MaterialModelInputs<dim> &in,
-                             std::vector<double> &melt_fractions) const override;
+                             std::vector<double> &melt_fractions,
+                             const MaterialModel::MaterialModelOutputs<dim> *out = nullptr) const override;
 
         double reference_darcy_coefficient () const override;
 
@@ -156,14 +158,15 @@ namespace aspect
           for (unsigned int q=0; q<out.n_evaluation_points(); ++q)
             {
               const double porosity = std::max(in.composition[q][porosity_idx],0.0);
-              out.viscosities[q] *= (1.0 - porosity) * exp(- alpha_phi * porosity);
+              out.viscosities[q] *= (1.0 - porosity) * std::exp(- alpha_phi * porosity);
             }
         }
 
       // Fill the melt outputs if they exist. Note that the MeltOutputs class was originally
       // designed for two-phase flow material models in ASPECT that model the flow of melt,
       // but can be reused for a geofluid of arbitrary composition.
-      MeltOutputs<dim> *fluid_out = out.template get_additional_output<MeltOutputs<dim>>();
+      std::shared_ptr<MeltOutputs<dim>> fluid_out
+        = out.template get_additional_output_object<MeltOutputs<dim>>();
 
       if (fluid_out != nullptr)
         {
@@ -172,7 +175,7 @@ namespace aspect
               double porosity = std::max(in.composition[q][porosity_idx],0.0);
 
               fluid_out->fluid_viscosities[q] = eta_f;
-              fluid_out->permeabilities[q] = reference_permeability * std::pow(porosity,3) * std::pow(1.0-porosity,2);
+              fluid_out->permeabilities[q] = reference_permeability * Utilities::fixed_power<3>(porosity) * Utilities::fixed_power<2>(1.0-porosity);
 
               fluid_out->fluid_densities[q] = reference_rho_f * std::exp(fluid_compressibility * (in.pressure[q] - this->get_surface_pressure()));
 
@@ -185,7 +188,8 @@ namespace aspect
             }
         }
 
-      ReactionRateOutputs<dim> *reaction_rate_out = out.template get_additional_output<ReactionRateOutputs<dim>>();
+      const std::shared_ptr<ReactionRateOutputs<dim>> reaction_rate_out
+        = out.template get_additional_output_object<ReactionRateOutputs<dim>>();
       const unsigned int water_idx = this->introspection().compositional_index_for_name("water_content");
 
       // Fill reaction rate outputs if the model uses operator splitting.
@@ -234,7 +238,7 @@ namespace aspect
                             "that for more information.");
           prm.declare_entry ("Reference fluid density", "2500",
                              Patterns::Double (0),
-                             "Reference density of the melt/fluid$\\rho_{f,0}$. Units: \\si{\\kilogram\\per\\meter\\cubed}.");
+                             "Reference density of the melt/fluid$\\rho_{f,0}$. Units: $\\frac{\\text{kg}}{\\text{m}^3}$.");
           prm.declare_entry ("Shear to bulk viscosity ratio", "0.1",
                              Patterns::Double (0),
                              "Ratio between shear and bulk viscosity at the reference "
@@ -243,7 +247,7 @@ namespace aspect
                              "from the base model. Units: dimensionless.");
           prm.declare_entry ("Reference fluid viscosity", "10",
                              Patterns::Double (0),
-                             "The value of the constant melt/fluid viscosity $\\eta_f$. Units: \\si{\\pascal\\second}.");
+                             "The value of the constant melt/fluid viscosity $\\eta_f$. Units: $\\text{Pa}\\text{s}$.");
           prm.declare_entry ("Exponential fluid weakening factor", "27",
                              Patterns::Double (0),
                              "The porosity dependence of the viscosity. Units: dimensionless.");
@@ -254,7 +258,7 @@ namespace aspect
           prm.declare_entry ("Fluid compressibility", "0.0",
                              Patterns::Double (0),
                              "The value of the compressibility of the fluid. "
-                             "Units: \\si{\\per\\pascal}.");
+                             "Units: $\\frac{1}{\\text{Pa}}$.");
           prm.declare_entry ("Fluid reaction time scale for operator splitting", "1e3",
                              Patterns::Double (0),
                              "In case the operator splitting scheme is used, the porosity field can not "
@@ -272,8 +276,7 @@ namespace aspect
                              "Also note that the fluid reaction time scale has to be larger than or equal to the reaction "
                              "time step used in the operator splitting scheme, otherwise reactions can not be "
                              "computed. If the model does not use operator splitting, this parameter is not used. "
-                             "Units: yr or s, depending on the ``Use years "
-                             "in output instead of seconds'' parameter.");
+                             "Units: yr or s, depending on the ``Use years instead of seconds'' parameter.");
         }
         prm.leave_subsection();
       }
@@ -357,9 +360,10 @@ namespace aspect
     void
     Volatiles<dim>::
     melt_fractions (const MaterialModel::MaterialModelInputs<dim> &in,
-                    std::vector<double> &melt_fractions) const
+                    std::vector<double> &melt_fractions,
+                    const MaterialModel::MaterialModelOutputs<dim> *) const
     {
-      for (unsigned int q=0; q<in.temperature.size(); ++q)
+      for (unsigned int q=0; q<in.n_evaluation_points(); ++q)
         {
           const unsigned int water_idx = this->introspection().compositional_index_for_name("water_content");
           const unsigned int porosity_idx = this->introspection().compositional_index_for_name("porosity");
@@ -387,7 +391,7 @@ namespace aspect
     reference_darcy_coefficient () const
     {
       // 0.01 = 1% melt
-      return reference_permeability * std::pow(0.01,3.0) / eta_f;
+      return reference_permeability * Utilities::fixed_power<3>(0.01) / eta_f;
     }
 
 
@@ -397,9 +401,9 @@ namespace aspect
     Volatiles<dim>::create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const
     {
       if (this->get_parameters().use_operator_splitting
-          && out.template get_additional_output<ReactionRateOutputs<dim>>() == nullptr)
+          && out.template has_additional_output_object<ReactionRateOutputs<dim>>() == false)
         {
-          const unsigned int n_points = out.viscosities.size();
+          const unsigned int n_points = out.n_evaluation_points();
           out.additional_outputs.push_back(
             std::make_unique<MaterialModel::ReactionRateOutputs<dim>> (n_points, this->n_compositional_fields()));
         }

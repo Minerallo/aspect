@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -20,10 +20,7 @@
 
 #include <aspect/particle/generator/uniform_box.h>
 
-#include <random>
-
 #include <array>
-#include <deal.II/base/exceptions.h>
 
 
 namespace aspect
@@ -48,8 +45,8 @@ namespace aspect
         // Calculate separation of particles
         for (unsigned int i = 0; i < dim; ++i)
           {
-            n_particles_per_direction[i] = static_cast<unsigned int>(round(std::pow(n_particles * std::pow(P_diff[i],dim) / volume, 1./dim)));
-            spacing[i] = P_diff[i] / fmax(n_particles_per_direction[i] - 1,1);
+            n_particles_per_direction[i] = static_cast<unsigned int>(std::round(std::pow(n_particles * Utilities::pow(P_diff[i],dim) / volume, 1./dim)));
+            spacing[i] = P_diff[i] / std::fmax(n_particles_per_direction[i] - 1,1);
           }
 
         types::particle_index particle_index = 0;
@@ -83,9 +80,9 @@ namespace aspect
       void
       UniformBox<dim>::declare_parameters (ParameterHandler &prm)
       {
-        prm.enter_subsection("Postprocess");
+        prm.enter_subsection("Generator");
         {
-          prm.enter_subsection("Particles");
+          prm.enter_subsection("Uniform box");
           {
             prm.declare_entry ("Number of particles", "1000",
                                Patterns::Double (0.),
@@ -94,32 +91,24 @@ namespace aspect
                                "specify, for example, '1e4' particles) but it is interpreted as "
                                "an integer, of course.");
 
-            prm.enter_subsection("Generator");
-            {
-              prm.enter_subsection("Uniform box");
-              {
-                prm.declare_entry ("Minimum x", "0.",
-                                   Patterns::Double (),
-                                   "Minimum x coordinate for the region of particles.");
-                prm.declare_entry ("Maximum x", "1.",
-                                   Patterns::Double (),
-                                   "Maximum x coordinate for the region of particles.");
-                prm.declare_entry ("Minimum y", "0.",
-                                   Patterns::Double (),
-                                   "Minimum y coordinate for the region of particles.");
-                prm.declare_entry ("Maximum y", "1.",
-                                   Patterns::Double (),
-                                   "Maximum y coordinate for the region of particles.");
-                prm.declare_entry ("Minimum z", "0.",
-                                   Patterns::Double (),
-                                   "Minimum z coordinate for the region of particles.");
-                prm.declare_entry ("Maximum z", "1.",
-                                   Patterns::Double (),
-                                   "Maximum z coordinate for the region of particles.");
-              }
-              prm.leave_subsection();
-            }
-            prm.leave_subsection();
+            prm.declare_entry ("Minimum x", "0.",
+                               Patterns::Double (),
+                               "Minimum x coordinate for the region of particles.");
+            prm.declare_entry ("Maximum x", "1.",
+                               Patterns::Double (),
+                               "Maximum x coordinate for the region of particles.");
+            prm.declare_entry ("Minimum y", "0.",
+                               Patterns::Double (),
+                               "Minimum y coordinate for the region of particles.");
+            prm.declare_entry ("Maximum y", "1.",
+                               Patterns::Double (),
+                               "Maximum y coordinate for the region of particles.");
+            prm.declare_entry ("Minimum z", "0.",
+                               Patterns::Double (),
+                               "Minimum z coordinate for the region of particles.");
+            prm.declare_entry ("Maximum z", "1.",
+                               Patterns::Double (),
+                               "Maximum z coordinate for the region of particles.");
           }
           prm.leave_subsection();
         }
@@ -131,35 +120,27 @@ namespace aspect
       void
       UniformBox<dim>::parse_parameters (ParameterHandler &prm)
       {
-        prm.enter_subsection("Postprocess");
+        prm.enter_subsection("Generator");
         {
-          prm.enter_subsection("Particles");
+          prm.enter_subsection("Uniform box");
           {
             n_particles    = static_cast<types::particle_index>(prm.get_double ("Number of particles"));
 
-            prm.enter_subsection("Generator");
-            {
-              prm.enter_subsection("Uniform box");
+            P_min(0) = prm.get_double ("Minimum x");
+            P_max(0) = prm.get_double ("Maximum x");
+            P_min(1) = prm.get_double ("Minimum y");
+            P_max(1) = prm.get_double ("Maximum y");
+
+            AssertThrow(P_min(0) < P_max(0), ExcMessage("Minimum x must be less than maximum x"));
+            AssertThrow(P_min(1) < P_max(1), ExcMessage("Minimum y must be less than maximum y"));
+
+            if (dim == 3)
               {
-                P_min(0) = prm.get_double ("Minimum x");
-                P_max(0) = prm.get_double ("Maximum x");
-                P_min(1) = prm.get_double ("Minimum y");
-                P_max(1) = prm.get_double ("Maximum y");
+                P_min(2) = prm.get_double ("Minimum z");
+                P_max(2) = prm.get_double ("Maximum z");
 
-                AssertThrow(P_min(0) < P_max(0), ExcMessage("Minimum x must be less than maximum x"));
-                AssertThrow(P_min(1) < P_max(1), ExcMessage("Minimum y must be less than maximum y"));
-
-                if (dim == 3)
-                  {
-                    P_min(2) = prm.get_double ("Minimum z");
-                    P_max(2) = prm.get_double ("Maximum z");
-
-                    AssertThrow(P_min(2) < P_max(2), ExcMessage("Minimum z must be less than maximum z"));
-                  }
+                AssertThrow(P_min(2) < P_max(2), ExcMessage("Minimum z must be less than maximum z"));
               }
-              prm.leave_subsection();
-            }
-            prm.leave_subsection();
           }
           prm.leave_subsection();
         }

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -19,7 +19,9 @@
  */
 
 #include <aspect/particle/property/interface.h>
+
 #include <aspect/utilities.h>
+#include <aspect/advection_field.h>
 
 #include <aspect/particle/integrator/euler.h>
 #include <aspect/particle/integrator/rk_2.h>
@@ -174,6 +176,14 @@ namespace aspect
 
 
 
+      std::vector<std::string>
+      ParticlePropertyInformation::get_property_names() const
+      {
+        return field_names;
+      }
+
+
+
       unsigned int
       ParticlePropertyInformation::n_plugins() const
       {
@@ -200,13 +210,6 @@ namespace aspect
 
       template <int dim>
       void
-      Interface<dim>::initialize ()
-      {}
-
-
-
-      template <int dim>
-      void
       Interface<dim>::initialize_one_particle_property (const Point<dim> &,
                                                         std::vector<double> &) const
       {}
@@ -216,17 +219,76 @@ namespace aspect
       DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
       template <int dim>
       void
-      Interface<dim>::update_particle_property (const unsigned int data_position,
-                                                const Vector<double> &solution,
-                                                const std::vector<Tensor<1,dim>> &gradients,
-                                                typename ParticleHandler<dim>::particle_iterator &particle) const
+      Interface<dim>::update_particle_properties (const ParticleUpdateInputs<dim> &inputs,
+                                                  typename ParticleHandler<dim>::particle_iterator_range &particles) const
       {
-        // call the deprecated version of this function
-        update_one_particle_property(data_position,
-                                     particle->get_location(),
+        Vector<double> solution;
+        std::vector<Tensor<1,dim>> gradient;
+
+        bool need_solution = false;
+        bool need_gradient = false;
+        unsigned int n_components = numbers::invalid_unsigned_int;
+
+        if (inputs.solution.size() > 0)
+          {
+            n_components = inputs.solution[0].size();
+
+            for (unsigned int i=0; i<n_components; ++i)
+              if (get_update_flags(i) & update_values)
+                {
+                  need_solution = true;
+                  break;
+                }
+          }
+
+        if (inputs.gradients.size() > 0)
+          {
+            n_components = inputs.gradients[0].size();
+
+            for (unsigned int i=0; i<n_components; ++i)
+              if (get_update_flags(i) & update_gradients)
+                {
+                  need_gradient = true;
+                  break;
+                }
+          }
+
+        unsigned int i = 0;
+        for (auto particle = particles.begin(); particle != particles.end(); ++particle)
+          {
+            if (need_solution)
+              {
+                solution.reinit(inputs.solution[i].size());
+                for (unsigned int j=0; j<solution.size(); ++j)
+                  {
+                    if (get_update_flags(j) & update_values)
+                      solution[j] = inputs.solution[i][j];
+                    else
+                      solution[j] = numbers::signaling_nan<double>();
+                  }
+              }
+
+            if (need_gradient)
+              {
+                gradient.resize(inputs.gradients[i].size());
+
+                for (unsigned int j=0; j<gradient.size(); ++j)
+                  {
+                    if (get_update_flags(j) & update_gradients)
+                      gradient[j] = inputs.gradients[i][j];
+                    else
+                      gradient[j] = numbers::signaling_nan<Tensor<1,dim>>();
+                  }
+              }
+
+            // call the deprecated version of this function
+            update_particle_property(this->data_position,
                                      solution,
-                                     gradients,
-                                     particle->get_properties());
+                                     gradient,
+                                     particle);
+
+            ++i;
+          }
       }
       DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 
@@ -234,11 +296,10 @@ namespace aspect
 
       template <int dim>
       void
-      Interface<dim>::update_one_particle_property (const unsigned int,
-                                                    const Point<dim> &,
-                                                    const Vector<double> &,
-                                                    const std::vector<Tensor<1,dim>> &,
-                                                    const ArrayView<double> &) const
+      Interface<dim>::update_particle_property (const unsigned int /*data_position*/,
+                                                const Vector<double> &/*solution*/,
+                                                const std::vector<Tensor<1,dim>> &/*gradients*/,
+                                                typename ParticleHandler<dim>::particle_iterator &/*particle*/) const
       {}
 
 
@@ -249,6 +310,19 @@ namespace aspect
       {
         return update_never;
       }
+
+
+
+      DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
+      template <int dim>
+      UpdateFlags
+      Interface<dim>::get_update_flags (const unsigned int /*component*/) const
+      {
+        // If this function is not implemented by the derived class, we use
+        // the default implementation of the deprecated version of this class.
+        return get_needed_update_flags();
+      }
+      DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 
 
 
@@ -271,16 +345,33 @@ namespace aspect
 
 
       template <int dim>
-      void
-      Interface<dim>::declare_parameters (ParameterHandler &)
-      {}
+      AdvectionField
+      Interface<dim>::advection_field_for_boundary_initialization (const unsigned int /*property_component*/) const
+      {
+        AssertThrow (false,
+                     ExcMessage("The function compositional_index_for_boundary_evaluation() is not implemented "
+                                "in this particle property plugin. This function is required if the plugin makes use "
+                                "of the compositional field boundary conditions to initialize the particle properties."));
+        return AdvectionField::composition(0);
+      }
 
 
 
       template <int dim>
       void
-      Interface<dim>::parse_parameters (ParameterHandler &)
-      {}
+      Interface<dim>::set_data_position (const unsigned int index)
+      {
+        data_position = index;
+      }
+
+
+
+      template <int dim>
+      unsigned int
+      Interface<dim>::get_data_position () const
+      {
+        return data_position;
+      }
 
 
 
@@ -308,41 +399,19 @@ namespace aspect
       IntegratorProperties<dim>::parse_parameters (ParameterHandler &prm)
       {
         std::string name;
-        prm.enter_subsection ("Postprocess");
-        {
-          prm.enter_subsection ("Particles");
-          {
-            name = prm.get ("Integration scheme");
+        name = prm.get ("Integration scheme");
 
-            if (name == "rk2")
-              n_integrator_properties = Particle::Integrator::RK2<dim>::n_integrator_properties;
-            else if (name == "rk4")
-              n_integrator_properties = Particle::Integrator::RK4<dim>::n_integrator_properties;
-            else if (name == "euler")
-              n_integrator_properties = Particle::Integrator::Euler<dim>::n_integrator_properties;
-            else
-              AssertThrow(false,
-                          ExcMessage("Unknown integrator scheme. The particle property 'Integrator properties' "
-                                     "does not know how many particle properties to store for this integration scheme."));
-          }
-          prm.leave_subsection ();
-        }
-        prm.leave_subsection ();
+        if (name == "rk2")
+          n_integrator_properties = Particle::Integrator::RK2<dim>::n_integrator_properties;
+        else if (name == "rk4")
+          n_integrator_properties = Particle::Integrator::RK4<dim>::n_integrator_properties;
+        else if (name == "euler")
+          n_integrator_properties = Particle::Integrator::Euler<dim>::n_integrator_properties;
+        else
+          AssertThrow(false,
+                      ExcMessage("Unknown integrator scheme. The particle property 'Integrator properties' "
+                                 "does not know how many particle properties to store for this integration scheme."));
       }
-
-
-
-      template <int dim>
-      inline
-      Manager<dim>::Manager ()
-        = default;
-
-
-
-      template <int dim>
-      inline
-      Manager<dim>::~Manager ()
-        = default;
 
 
 
@@ -353,16 +422,30 @@ namespace aspect
         std::vector<std::vector<std::pair<std::string, unsigned int>>> info;
 
         // Get the property information of the selected plugins
-        for (const auto &p : property_list)
+        for (const auto &p : this->plugin_objects)
           {
             info.push_back(p->get_property_information());
           }
 
         // Initialize our property information
         property_information = ParticlePropertyInformation(info);
-        for (const auto &p : property_list)
+        unsigned int plugin_index = 0;
+        for (const auto &p : this->plugin_objects)
           {
+            p->set_data_position(property_information.get_position_by_plugin_index(plugin_index));
             p->initialize();
+
+            // Check that each plugin that uses the late initialization mode
+            // interpolate_respect_boundary also implements the
+            // advection_field_for_boundary_initialization function.
+            // The default implementation will throw an exception.
+            if (p->late_initialization_mode() == Property::interpolate_respect_boundary)
+              {
+                const AdvectionField f = p->advection_field_for_boundary_initialization(0);
+                (void) f;
+              }
+
+            ++plugin_index;
           }
       }
 
@@ -378,7 +461,7 @@ namespace aspect
         std::vector<double> particle_properties;
         particle_properties.reserve(property_information.n_components());
 
-        for (const auto &p : property_list)
+        for (const auto &p : this->plugin_objects)
           {
             p->initialize_one_particle_property(particle->get_location(),
                                                 particle_properties);
@@ -409,10 +492,9 @@ namespace aspect
         particle_properties.reserve(property_information.n_components());
 
         unsigned int property_index = 0;
-        for (typename std::list<std::unique_ptr<Interface<dim>>>::const_iterator
-             p = property_list.begin(); p!=property_list.end(); ++p, ++property_index)
+        for (const auto &p : this->plugin_objects)
           {
-            switch ((*p)->late_initialization_mode())
+            switch (p->late_initialization_mode())
               {
                 case aspect::Particle::Property::initialize_to_zero:
                 {
@@ -423,8 +505,8 @@ namespace aspect
 
                 case aspect::Particle::Property::initialize:
                 {
-                  (*p)->initialize_one_particle_property(particle_location,
-                                                         particle_properties);
+                  p->initialize_one_particle_property(particle_location,
+                                                      particle_properties);
                   break;
                 }
 
@@ -518,21 +600,38 @@ namespace aspect
                                                                                         std::vector<Point<dim>> (1,particle_location),
                                                                                         ComponentMask(property_information.n_components(),true),
                                                                                         found_cell);
-                      for (unsigned int property_component = 0; property_component < property_information.get_components_by_plugin_index(property_index); ++property_component)
-                        particle_properties.push_back(interpolated_properties[0][property_information.get_position_by_plugin_index(property_index)+property_component]);
+
+                      const unsigned int n_property_components = property_information.get_components_by_plugin_index(property_index);
+                      const unsigned int start_index = property_information.get_position_by_plugin_index(property_index);
+
+                      for (unsigned int property_component = 0; property_component < n_property_components; ++property_component)
+                        particle_properties.push_back(interpolated_properties[0][start_index+property_component]);
                     }
-                  // Otherwise use the boundary condition
+                  // Otherwise use the value of the boundary condition of the corresponding compositional field
                   else
                     {
-                      Assert(property_information.get_components_by_plugin_index(property_index) == this->n_compositional_fields(),
-                             ExcInternalError());
-
                       const types::boundary_id boundary_id = cell->face(boundary_face)->boundary_id();
+                      const unsigned int n_property_components = property_information.get_components_by_plugin_index(property_index);
 
-                      for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
+                      for (unsigned int particle_property_component = 0; particle_property_component < n_property_components; ++particle_property_component)
                         {
-                          const double composition = manager.boundary_composition(boundary_id,particle_location,c);
-                          particle_properties.push_back(composition);
+                          // Ask the particle property which field index to use to evaluate boundary condition
+                          const AdvectionField field_to_use = p->advection_field_for_boundary_initialization(particle_property_component);
+
+                          Assert(field_to_use.is_temperature() == false,
+                                 ExcMessage("Interpolating temperature boundary conditions to particles is not supported."));
+                          Assert(field_to_use.compositional_variable < this->n_compositional_fields(),
+                                 ExcMessage("The composition index specified in the function"
+                                            "advection_field_for_boundary_initialization() by the particle property "
+                                            "<" + property_information.get_field_name_by_index(property_index) +"> is "
+                                            "larger than the number of compositional fields. This is not possible "
+                                            "and likely a bug in the particle property plugin."));
+
+                          const double field_boundary_value = manager.boundary_composition(boundary_id,
+                                                                                           particle_location,
+                                                                                           field_to_use.compositional_variable);
+
+                          particle_properties.push_back(field_boundary_value);
                         }
                     }
 
@@ -542,6 +641,8 @@ namespace aspect
                 default:
                   Assert (false, ExcInternalError());
               }
+
+            ++property_index;
           }
 
         Assert (particle_properties.size() == property_information.n_components(), ExcInternalError());
@@ -553,18 +654,12 @@ namespace aspect
 
       template <int dim>
       void
-      Manager<dim>::update_one_particle (typename ParticleHandler<dim>::particle_iterator &particle,
-                                         const Vector<double> &solution,
-                                         const std::vector<Tensor<1,dim>> &gradients) const
+      Manager<dim>::update_particles (ParticleUpdateInputs<dim> &inputs,
+                                      typename ParticleHandler<dim>::particle_iterator_range &particles) const
       {
-        unsigned int plugin_index = 0;
-        for (typename std::list<std::unique_ptr<Interface<dim>>>::const_iterator
-             p = property_list.begin(); p!=property_list.end(); ++p,++plugin_index)
+        for (const auto &p : this->plugin_objects)
           {
-            (*p)->update_particle_property(property_information.get_position_by_plugin_index(plugin_index),
-                                           solution,
-                                           gradients,
-                                           particle);
+            p->update_particle_properties(inputs,particles);
           }
       }
 
@@ -575,7 +670,7 @@ namespace aspect
       Manager<dim>::need_update () const
       {
         UpdateTimeFlags update = update_never;
-        for (const auto &p : property_list)
+        for (const auto &p : this->plugin_objects)
           {
             update = std::max(update, p->need_update());
           }
@@ -585,16 +680,27 @@ namespace aspect
 
 
       template <int dim>
-      UpdateFlags
-      Manager<dim>::get_needed_update_flags () const
+      std::vector<UpdateFlags>
+      Manager<dim>::get_update_flags () const
       {
-        UpdateFlags update = update_default;
-        for (const auto &p : property_list)
+        const unsigned int n_components = this->introspection().n_components;
+        std::vector<UpdateFlags> update (n_components , update_default);
+        for (const auto &p : this->plugin_objects)
           {
-            update |= p->get_needed_update_flags();
+            for (unsigned int i=0; i<n_components; ++i)
+              {
+                update[i] |= p->get_update_flags(i);
+              }
           }
 
-        return (update & (update_default | update_values | update_gradients));
+        // Make sure only the flags are set that we can deal with at the moment
+        for (unsigned int i=0; i<n_components; ++i)
+          {
+            Assert ((update[i] & ~(update_gradients | update_values)) == false,
+                    ExcNotImplemented());
+          }
+
+        return update;
       }
 
 
@@ -603,7 +709,7 @@ namespace aspect
       bool
       Manager<dim>::plugin_name_exists(const std::string &name) const
       {
-        return (std::find(plugin_names.begin(),plugin_names.end(),name) != plugin_names.end());
+        return (std::find(this->plugin_names.begin(),this->plugin_names.end(),name) != this->plugin_names.end());
       }
 
 
@@ -620,8 +726,8 @@ namespace aspect
         AssertThrow(plugin_name_exists(second),
                     ExcMessage("Could not find a plugin with the name <" + second + ">."));
 
-        return (std::find(plugin_names.begin(),plugin_names.end(),first)
-                < std::find(plugin_names.begin(),plugin_names.end(),second));
+        return (std::find(this->plugin_names.begin(),this->plugin_names.end(),first)
+                < std::find(this->plugin_names.begin(),this->plugin_names.end(),second));
       }
 
 
@@ -630,15 +736,15 @@ namespace aspect
       unsigned int
       Manager<dim>::get_plugin_index_by_name(const std::string &name) const
       {
-        const std::vector<std::string>::const_iterator plugin = std::find(plugin_names.begin(),
-                                                                          plugin_names.end(),
+        const std::vector<std::string>::const_iterator plugin = std::find(this->plugin_names.begin(),
+                                                                          this->plugin_names.end(),
                                                                           name);
 
-        AssertThrow(plugin != plugin_names.end(),
+        AssertThrow(plugin != this->plugin_names.end(),
                     ExcMessage("The particle property manager was asked for a plugin "
                                "with the name <" + name + ">, but no such plugin could "
                                "be found."));
-        return std::distance(plugin_names.begin(),plugin);
+        return std::distance(this->plugin_names.begin(),plugin);
       }
 
 
@@ -670,20 +776,11 @@ namespace aspect
 
 
 
-      template <int dim>
-      unsigned int
-      Manager<dim>::get_property_component_by_name(const std::string &name) const
-      {
-        return property_information.get_position_by_field_name(name);
-      }
-
-
-
       namespace
       {
         std::tuple
-        <void *,
-        void *,
+        <aspect::internal::Plugins::UnusablePluginList,
+        aspect::internal::Plugins::UnusablePluginList,
         aspect::internal::Plugins::PluginList<Property::Interface<2>>,
         aspect::internal::Plugins::PluginList<Property::Interface<3>>> registered_plugins;
       }
@@ -694,27 +791,20 @@ namespace aspect
       void
       Manager<dim>::declare_parameters (ParameterHandler &prm)
       {
-        prm.enter_subsection("Postprocess");
-        {
-          prm.enter_subsection("Particles");
-          {
-            // finally also construct a string for Patterns::MultipleSelection that
-            // contains the names of all registered particle properties
-            const std::string pattern_of_names
-              = std::get<dim>(registered_plugins).get_pattern_of_names ();
-            prm.declare_entry("List of particle properties",
-                              "",
-                              Patterns::MultipleSelection(pattern_of_names),
-                              "A comma separated list of particle properties that should be tracked. "
-                              "By default none is selected, which means only position, velocity "
-                              "and id of the particles are output. \n\n"
-                              "The following properties are available:\n\n"
-                              +
-                              std::get<dim>(registered_plugins).get_description_string());
-          }
-          prm.leave_subsection();
-        }
-        prm.leave_subsection();
+        // finally also construct a string for Patterns::MultipleSelection that
+        // contains the names of all registered particle properties
+        const std::string pattern_of_names
+          = std::get<dim>(registered_plugins).get_pattern_of_names ();
+
+        prm.declare_entry("List of particle properties",
+                          "",
+                          Patterns::MultipleSelection(pattern_of_names),
+                          "A comma separated list of particle properties that should be tracked. "
+                          "By default none is selected, which means only position, velocity "
+                          "and id of the particles are output. \n\n"
+                          "The following properties are available:\n\n"
+                          +
+                          std::get<dim>(registered_plugins).get_description_string());
 
         // now declare the parameters of each of the registered
         // particle properties in turn
@@ -730,51 +820,55 @@ namespace aspect
         Assert (std::get<dim>(registered_plugins).plugins != nullptr,
                 ExcMessage ("No postprocessors registered!?"));
 
-        prm.enter_subsection("Postprocess");
-        {
-          prm.enter_subsection("Particles");
-          {
-            // now also see which derived quantities we are to compute
-            plugin_names = Utilities::split_string_list(prm.get("List of particle properties"));
-            AssertThrow(Utilities::has_unique_entries(plugin_names),
-                        ExcMessage("The list of strings for the parameter "
-                                   "'Postprocess/Particles/List of particle properties' contains entries more than once. "
-                                   "This is not allowed. Please check your parameter file."));
+        // now also see which derived quantities we are to compute
+        this->plugin_names = Utilities::split_string_list(prm.get("List of particle properties"));
+        AssertThrow(Utilities::has_unique_entries(this->plugin_names),
+                    ExcMessage("The list of strings for the parameter "
+                               "'Particles/List of particle properties' contains entries more than once. "
+                               "This is not allowed. Please check your parameter file."));
 
-            // see if 'all' was selected (or is part of the list). if so
-            // simply replace the list with one that contains all names
-            if (std::find (plugin_names.begin(),
-                           plugin_names.end(),
-                           "all") != plugin_names.end())
-              {
-                plugin_names.clear();
-                for (typename std::list<typename aspect::internal::Plugins::PluginList<aspect::Particle::Property::Interface<dim>>::PluginInfo>::const_iterator
-                     p = std::get<dim>(registered_plugins).plugins->begin();
-                     p != std::get<dim>(registered_plugins).plugins->end(); ++p)
-                  plugin_names.push_back (std::get<0>(*p));
-              }
+        // see if 'all' was selected (or is part of the list). if so
+        // simply replace the list with one that contains all names
+        if (std::find (this->plugin_names.begin(),
+                       this->plugin_names.end(),
+                       "all") != this->plugin_names.end())
+          {
+            this->plugin_names.clear();
+            for (const auto &p : *std::get<dim>(registered_plugins).plugins)
+              this->plugin_names.push_back (std::get<0>(p));
           }
-          prm.leave_subsection();
-        }
-        prm.leave_subsection();
 
         // then go through the list, create objects and let them parse
         // their own parameters
-        for (auto &plugin_name : plugin_names)
+        for (auto &plugin_name : this->plugin_names)
           {
-            property_list.emplace_back (std::get<dim>(registered_plugins)
-                                        .create_plugin (plugin_name,
-                                                        "Particle property plugins"));
+            this->plugin_objects.emplace_back (std::get<dim>(registered_plugins)
+                                               .create_plugin (plugin_name,
+                                                               "Particle property plugins"));
 
-            if (SimulatorAccess<dim> *sim = dynamic_cast<SimulatorAccess<dim>*>(property_list.back().get()))
+            if (SimulatorAccess<dim> *sim = dynamic_cast<SimulatorAccess<dim>*>(this->plugin_objects.back().get()))
               sim->initialize_simulator (this->get_simulator());
 
-            property_list.back()->parse_parameters (prm);
+            this->plugin_objects.back()->set_particle_manager_index(particle_manager_index);
+            this->plugin_objects.back()->parse_parameters (prm);
           }
 
-        // lastly store internal integrator properties
-        property_list.emplace_back (std::make_unique<IntegratorProperties<dim>>());
-        property_list.back()->parse_parameters (prm);
+        // lastly store internal integrator properties:
+        this->plugin_objects.emplace_back (std::make_unique<IntegratorProperties<dim>>());
+        this->plugin_objects.back()->set_particle_manager_index(particle_manager_index);
+        this->plugin_objects.back()->parse_parameters (prm);
+        this->plugin_names.emplace_back("internal: integrator properties");
+      }
+
+
+
+      template <int dim>
+      void
+      Manager<dim>::set_particle_manager_index(unsigned int particle_manager_index)
+      {
+        // Save this value. We will tell our plugins about this, once they
+        // have been created in parse_parameters().
+        this->particle_manager_index = particle_manager_index;
       }
 
 
@@ -810,19 +904,6 @@ namespace aspect
 // explicit instantiations
 namespace aspect
 {
-  namespace internal
-  {
-    namespace Plugins
-    {
-      template <>
-      std::list<internal::Plugins::PluginList<Particle::Property::Interface<2>>::PluginInfo> *
-      internal::Plugins::PluginList<Particle::Property::Interface<2>>::plugins = nullptr;
-      template <>
-      std::list<internal::Plugins::PluginList<Particle::Property::Interface<3>>::PluginInfo> *
-      internal::Plugins::PluginList<Particle::Property::Interface<3>>::plugins = nullptr;
-    }
-  }
-
   namespace Particle
   {
     namespace Property

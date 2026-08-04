@@ -1,3 +1,7 @@
+```{tags}
+category:benchmark
+```
+
 # The Rayleigh-Taylor instability benchmark
 
 The shell script `run_benchmark` loops over viscosity values and wavelength values and
@@ -11,4 +15,4 @@ This file can later be processed with the 'gnuplot_script'.
 There is also the standalone input file `rayleigh_taylor_instability.prm` which
 runs only one of the cases (isoviscous and lambda=256km).
 
-See [doc/rayleigh_taylor_instability.md](doc/rayleigh_taylor_instability.md) for more information.
+See [](doc/rayleigh_taylor_instability) for more information.

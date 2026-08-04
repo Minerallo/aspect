@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2016 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2016 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -39,11 +39,13 @@ namespace aspect
       output_interval (0),
       // initialize this to a nonsensical value; set it to the actual time
       // the first time around we get to check it
-      last_output_time (std::numeric_limits<double>::quiet_NaN()),
+      last_output_time (std::numeric_limits<double>::lowest()),
       evaluation_points_cartesian (std::vector<Point<dim>>() ),
       point_values (std::vector<std::pair<double, std::vector<Vector<double>>>>() ),
       use_natural_coordinates (false)
     {}
+
+
 
     template <int dim>
     std::pair<std::string,std::string>
@@ -52,7 +54,7 @@ namespace aspect
       // if this is the first time we get here, set the next output time
       // to the current time. this makes sure we always produce data during
       // the first time step
-      if (std::isnan(last_output_time))
+      if (last_output_time < this->get_parameters().start_time - output_interval)
         last_output_time = this->get_time() - output_interval;
 
       // see if output is requested at this time
@@ -195,9 +197,9 @@ namespace aspect
                              "The time interval between each generation of "
                              "point values output. A value of zero indicates "
                              "that output should be generated in each time step. "
-                             "Units: years if the "
-                             "'Use years in output instead of seconds' parameter is set; "
-                             "seconds otherwise.");
+                             "Units: \\si{\\year} if the "
+                             "'Use years instead of seconds' parameter is set; "
+                             "\\si{\\second} otherwise.");
           prm.declare_entry("Evaluation points", "",
                             // a list of points, separated by semicolons; each point has
                             // exactly 'dim' components/coordinates, separated by commas
@@ -288,9 +290,15 @@ namespace aspect
     void
     PointValues<dim>::save (std::map<std::string, std::string> &status_strings) const
     {
+      // Serialize into a stringstream. Put the following into a code
+      // block of its own to ensure the destruction of the 'oa'
+      // archive triggers a flush() on the stringstream so we can
+      // query the completed string below.
       std::ostringstream os;
-      aspect::oarchive oa (os);
-      oa << (*this);
+      {
+        aspect::oarchive oa (os);
+        oa << (*this);
+      }
 
       status_strings["PointValues"] = os.str();
     }
@@ -352,7 +360,7 @@ namespace aspect
                                   "coordinates of the evaluation points, and (iii) followed by the "
                                   "values of the solution vector at this point. The time is provided "
                                   "in seconds or, if the "
-                                  "global ``Use years in output instead of seconds'' parameter is "
+                                  "global ``Use years instead of seconds'' parameter is "
                                   "set, in years. In the latter case, the velocity is also converted "
                                   "to meters/year, instead of meters/second."
                                   "\n\n"

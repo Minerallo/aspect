@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -30,44 +30,15 @@ namespace aspect
 {
   namespace MaterialModel
   {
-
     template <int dim>
-    bool
-    ViscoPlastic<dim>::
-    is_yielding (const double pressure,
-                 const double temperature,
-                 const std::vector<double> &composition,
-                 const SymmetricTensor<2,dim> &strain_rate) const
+    void
+    ViscoPlastic<dim>::initialize()
     {
-      /* The following returns whether or not the material is plastically yielding
-       * as documented in evaluate.
-       */
-      bool plastic_yielding = false;
-
-      MaterialModel::MaterialModelInputs <dim> in (/*n_evaluation_points=*/1,
-                                                                           this->n_compositional_fields());
-      unsigned int i = 0;
-
-      in.pressure[i] = pressure;
-      in.temperature[i] = temperature;
-      in.composition[i] = composition;
-      in.strain_rate[i] = strain_rate;
-
-      const std::vector<double> volume_fractions = MaterialUtilities::compute_only_composition_fractions(composition,
-                                                   this->introspection().chemical_composition_field_indices());
-
-      const IsostrainViscosities isostrain_viscosities
-        = rheology->calculate_isostrain_viscosities(in, i, volume_fractions);
-
-      std::vector<double>::const_iterator max_composition
-        = std::max_element(volume_fractions.begin(),volume_fractions.end());
-
-      plastic_yielding = isostrain_viscosities.composition_yielding[std::distance(volume_fractions.begin(),
-                                                                                  max_composition)];
-
-      return plastic_yielding;
+      if (use_dominant_phase_for_viscosity)
+        {
+          phase_function_discrete->initialize();
+        }
     }
-
 
 
     template <int dim>
@@ -78,7 +49,8 @@ namespace aspect
       Assert(in.n_evaluation_points() == 1, ExcInternalError());
 
       const std::vector<double> volume_fractions = MaterialUtilities::compute_only_composition_fractions(in.composition[0],
-                                                   this->introspection().chemical_composition_field_indices());
+                                                   this->introspection().chemical_composition_field_indices(),
+                                                   this->get_parameters().minimum_composition_fraction);
 
       /* The following handles phases in a similar way as in the 'evaluate' function.
        * Results then enter the calculation of plastic yielding.
@@ -109,7 +81,7 @@ namespace aspect
 
           for (unsigned int j=0; j < phase_function.n_phase_transitions(); ++j)
             {
-              phase_inputs.phase_index = j;
+              phase_inputs.phase_transition_index = j;
               phase_function_values[j] = phase_function.compute_value(phase_inputs);
             }
         }
@@ -119,7 +91,7 @@ namespace aspect
        */
       const IsostrainViscosities isostrain_viscosities = rheology->calculate_isostrain_viscosities(in, 0, volume_fractions, phase_function_values, phase_function.n_phase_transitions_for_each_composition());
 
-      std::vector<double>::const_iterator max_composition = std::max_element(volume_fractions.begin(), volume_fractions.end());
+      const std::vector<double>::const_iterator max_composition = std::max_element(volume_fractions.begin(), volume_fractions.end());
       const bool plastic_yielding = isostrain_viscosities.composition_yielding[std::distance(volume_fractions.begin(), max_composition)];
 
       return plastic_yielding;
@@ -142,6 +114,10 @@ namespace aspect
       // While the number of phases is fixed, the value of the phase function is updated for every point
       std::vector<double> phase_function_values(phase_function.n_phase_transitions(), 0.0);
 
+      std::vector<double> phase_function_discrete_values = (use_dominant_phase_for_viscosity?
+                                                            std::vector<double>(phase_function_discrete->n_phase_transitions(), 0.0): std::vector<double>());
+
+
       // Loop through all requested points
       for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
         {
@@ -155,6 +131,23 @@ namespace aspect
                                            :
                                            eos_outputs_all_phases.densities[0];
 
+          // Collect the values of all reaction progress variables and use
+          // them to modify the equation of state properties of the individual phases
+          // before phase averaging.
+          const std::vector<unsigned int> &reaction_progress_indices =
+            this->introspection().get_indices_for_fields_of_type(CompositionalFieldDescription::reaction_progress);
+
+          if (reaction_progress_indices.size() != 0)
+            {
+              std::vector<double> reaction_progress_values(reaction_progress_indices.size(), 0.0);
+              for (unsigned int j=0; j<reaction_progress_indices.size(); ++j)
+                reaction_progress_values[j] = in.composition[i][reaction_progress_indices[j]];
+
+              reaction_progress_modify_equation_of_state_outputs(reaction_progress_values,
+                                                                 reaction_progress_mapping,
+                                                                 n_phase_transitions_for_each_chemical_composition,
+                                                                 eos_outputs_all_phases);
+            }
           // The phase index is set to invalid_unsigned_int, because it is only used internally
           // in phase_average_equation_of_state_outputs to loop over all existing phases
           MaterialUtilities::PhaseFunctionInputs<dim> phase_inputs(in.temperature[i],
@@ -166,7 +159,7 @@ namespace aspect
           // Compute value of phase functions
           for (unsigned int j=0; j < phase_function.n_phase_transitions(); ++j)
             {
-              phase_inputs.phase_index = j;
+              phase_inputs.phase_transition_index = j;
               phase_function_values[j] = phase_function.compute_value(phase_inputs);
             }
 
@@ -177,7 +170,8 @@ namespace aspect
                                                   eos_outputs);
 
           const std::vector<double> volume_fractions = MaterialUtilities::compute_only_composition_fractions(in.composition[i],
-                                                       this->introspection().chemical_composition_field_indices());
+                                                       this->introspection().chemical_composition_field_indices(),
+                                                       this->get_parameters().minimum_composition_fraction);
 
           // not strictly correct if thermal expansivities are different, since we are interpreting
           // these compositions as volume fractions, but the error introduced should not be too bad.
@@ -217,17 +211,35 @@ namespace aspect
 
           // Compute the effective viscosity if requested and retrieve whether the material is plastically yielding.
           // Also always compute the viscosity if additional outputs are requested, because the viscosity is needed
-          // to compute the elastic force term.
+          // to compute the elastic force term and the elastic reaction rates.
           bool plastic_yielding = false;
           IsostrainViscosities isostrain_viscosities;
-          if (in.requests_property(MaterialProperties::viscosity) || in.requests_property(MaterialProperties::additional_outputs))
+
+          if (in.requests_property(MaterialProperties::viscosity) || in.requests_property(MaterialProperties::additional_outputs) ||
+              (this->get_parameters().enable_elasticity && in.requests_property(MaterialProperties::reaction_rates) ))
             {
               // Currently, the viscosities for each of the compositional fields are calculated assuming
               // isostrain amongst all compositions, allowing calculation of the viscosity ratio.
               // TODO: This is only consistent with viscosity averaging if the arithmetic averaging
               // scheme is chosen. It would be useful to have a function to calculate isostress viscosities.
-              isostrain_viscosities =
-                rheology->calculate_isostrain_viscosities(in, i, volume_fractions, phase_function_values, n_phase_transitions_for_each_chemical_composition);
+              // Methods for averaging among phases depend on whether the most dominant phases are looked up
+              // for each composition in its respective lookup table. A separate phase function class
+              // manages the averaging if the user chooses this option.
+              if (use_dominant_phase_for_viscosity)
+                {
+                  for (unsigned int j=0; j < phase_function_discrete->n_phase_transitions(); ++j)
+                    {
+                      phase_inputs.phase_transition_index = j;
+                      phase_function_discrete_values[j] = phase_function_discrete->compute_value(phase_inputs);
+                    }
+                  isostrain_viscosities =
+                    rheology->calculate_isostrain_viscosities(in, i, volume_fractions, phase_function_discrete_values,  phase_function_discrete->n_phase_transitions_for_each_chemical_composition());
+                }
+              else
+                {
+                  isostrain_viscosities =
+                    rheology->calculate_isostrain_viscosities(in, i, volume_fractions, phase_function_values, n_phase_transitions_for_each_chemical_composition);
+                }
 
               // The isostrain condition implies that the viscosity averaging should be arithmetic (see above).
               // We have given the user freedom to apply alternative bounds, because in diffusion-dominated
@@ -243,11 +255,11 @@ namespace aspect
               plastic_yielding = isostrain_viscosities.composition_yielding[std::distance(volume_fractions.begin(), max_composition)];
 
               // Compute viscosity derivatives if they are requested
-              if (MaterialModel::MaterialModelDerivatives<dim> *derivatives =
-                    out.template get_additional_output<MaterialModel::MaterialModelDerivatives<dim>>())
+              if (const std::shared_ptr<MaterialModel::MaterialModelDerivatives<dim>> derivatives =
+                    out.template get_additional_output_object<MaterialModel::MaterialModelDerivatives<dim>>())
 
                 rheology->compute_viscosity_derivatives(i, volume_fractions,
-                                                        isostrain_viscosities.composition_viscosities,
+                                                        isostrain_viscosities,
                                                         in, out, phase_function_values,
                                                         n_phase_transitions_for_each_chemical_composition);
             }
@@ -257,35 +269,39 @@ namespace aspect
               // quantities we set above and that would otherwise remain uninitialized
               isostrain_viscosities.composition_yielding.clear();
               isostrain_viscosities.composition_viscosities.clear();
-              isostrain_viscosities.current_friction_angles.clear();
-              isostrain_viscosities.current_cohesions.clear();
+              isostrain_viscosities.drucker_prager_parameters.clear();
+              isostrain_viscosities.diffusion_viscosities.clear();
+              isostrain_viscosities.dislocation_viscosities.clear();
 
               out.viscosities[i] = numbers::signaling_nan<double>();
 
-              if (MaterialModel::MaterialModelDerivatives<dim> *derivatives =
-                    out.template get_additional_output<MaterialModel::MaterialModelDerivatives<dim>>())
+              if (const std::shared_ptr<MaterialModel::MaterialModelDerivatives<dim>> derivatives =
+                    out.template get_additional_output_object<MaterialModel::MaterialModelDerivatives<dim>>())
                 {
                   derivatives->viscosity_derivative_wrt_strain_rate[i] = numbers::signaling_nan<SymmetricTensor<2,dim>>();
                   derivatives->viscosity_derivative_wrt_pressure[i] = numbers::signaling_nan<double>();
                 }
             }
 
-          // Now compute changes in the compositional fields (i.e. the accumulated strain).
+          // Now compute changes in the compositional fields (e.g., the accumulated strain).
           for (unsigned int c=0; c<in.composition[i].size(); ++c)
             out.reaction_terms[i][c] = 0.0;
 
           // Calculate changes in strain invariants and update the reaction terms
+          // TODO only when requests_property is set to reaction_terms
           rheology->strain_rheology.fill_reaction_outputs(in, i, rheology->min_strain_rate, plastic_yielding, out);
 
           // Fill strain-healing diagnostic outputs (computed internally in strain rheology)
           rheology->strain_rheology.fill_strain_healing_outputs(in, i, out,rheology->min_strain_rate);
 
-          // Fill plastic outputs if they exist.
+          // Fill plastic outputs and additional viscosity outputs if they exist.
           // The values in isostrain_viscosities only make sense when the calculate_isostrain_viscosities function
           // has been called.
-          // TODO do we even need a separate function? We could compute the PlasticAdditionalOutputs here like
-          // the ElasticAdditionalOutputs.
-          rheology->fill_plastic_outputs(i, volume_fractions, plastic_yielding, in, out, isostrain_viscosities);
+          if (in.requests_property(MaterialProperties::additional_outputs))
+            {
+              rheology->fill_plastic_outputs(i, volume_fractions, plastic_yielding, in, out, isostrain_viscosities);
+              rheology->fill_viscosity_outputs(i, volume_fractions, out, isostrain_viscosities);
+            }
 
           if (this->get_parameters().enable_elasticity)
             {
@@ -293,12 +309,26 @@ namespace aspect
               average_elastic_shear_moduli[i] = MaterialUtilities::average_value(volume_fractions,
                                                                                  rheology->elastic_rheology.get_elastic_shear_moduli(),
                                                                                  rheology->viscosity_averaging);
+            }
 
-              // Fill the material properties that are part of the elastic additional outputs
-              if (ElasticAdditionalOutputs<dim> *elastic_out = out.template get_additional_output<ElasticAdditionalOutputs<dim>>())
-                {
-                  elastic_out->elastic_shear_moduli[i] = average_elastic_shear_moduli[i];
-                }
+          if (const std::shared_ptr<PrescribedPlasticDilation<dim>> plastic_dilation =
+                out.template get_additional_output_object<PrescribedPlasticDilation<dim>>())
+            {
+              const double dilation_lhs_term = MaterialUtilities::average_value(volume_fractions,
+                                                                                isostrain_viscosities.dilation_lhs_terms,
+                                                                                MaterialUtilities::arithmetic);
+              const double dilation_rhs_term = MaterialUtilities::average_value(volume_fractions,
+                                                                                isostrain_viscosities.dilation_rhs_terms,
+                                                                                MaterialUtilities::arithmetic);
+
+              // When plastic yielding occurs (RHS - LHS * p > 0$), the LHS and RHS terms are set to
+              // the values calculated by the Drucker Prager model; otherwise, the LHS and RHS terms
+              // should cancel out (RHS = LHS * p) so as to satisfy the loading-unloading conditions.
+              plastic_dilation->dilation_lhs_term[i] = dilation_lhs_term;
+              if (dilation_rhs_term - dilation_lhs_term * in.pressure[i] > 0)
+                plastic_dilation->dilation_rhs_term[i] = dilation_rhs_term;
+              else
+                plastic_dilation->dilation_rhs_term[i] = dilation_lhs_term * in.pressure[i];
             }
         }
 
@@ -307,8 +337,21 @@ namespace aspect
 
       if (this->get_parameters().enable_elasticity)
         {
+          // Fill the elastic outputs with the body force term for the RHS, the viscoelastic strain rate
+          // and the viscous dissipation.
           rheology->elastic_rheology.fill_elastic_outputs(in, average_elastic_shear_moduli, out);
+          // Fill the elastic additional outputs with the shear modulus, elastic viscosity
+          // and deviatoric stress of the current timestep.
+          // TODO requests_property is already checked in the fill_ function,
+          // but we can also do it here
+          //if (in.requests_property(MaterialProperties::additional_outputs))
+          rheology->elastic_rheology.fill_elastic_additional_outputs(in, average_elastic_shear_moduli, out);
+          // Fill the reaction terms that account for the rotation of the stresses.
           rheology->elastic_rheology.fill_reaction_outputs(in, average_elastic_shear_moduli, out);
+          // Fill the reaction_rates that apply the stress update of the previous
+          // timestep to the advected and rotated stress computed in the previous timestep ($\tau^{0}$)
+          // to obtain $\tau^{t}$.
+          rheology->elastic_rheology.fill_reaction_rates(in, average_elastic_shear_moduli, out);
         }
     }
 
@@ -341,7 +384,15 @@ namespace aspect
       {
         prm.enter_subsection ("Visco Plastic");
         {
+          prm.declare_entry ("Use dominant phase for viscosity","false",
+                             Patterns::Bool (),
+                             "Whether to look up the dominant phase for each composition in its respective "
+                             "material data file to calculate viscosity. This allows each phase to have distinct "
+                             "rheological parameterizations.");
+
           MaterialUtilities::PhaseFunction<dim>::declare_parameters(prm);
+
+          MaterialUtilities::PhaseFunctionDiscrete<dim>::declare_parameters(prm);
 
           EquationOfState::MulticomponentIncompressible<dim>::declare_parameters (prm);
 
@@ -367,6 +418,16 @@ namespace aspect
                              "those corresponding to chemical compositions. "
                              "If only one value is given, then all use the same value. "
                              "Units: \\si{\\watt\\per\\meter\\per\\kelvin}.");
+          prm.declare_entry ("Reaction progress mapping", "",
+                             Patterns::List (Patterns::Integer(0)),
+                             "A list of indices that maps each phase transition to a "
+                             "reaction-progress compositional field. For example, an entry "
+                             "of 0 indicates that the corresponding phase transition uses "
+                             "the 0th reaction-progress composition. All following phase "
+                             "transitions will be affected by the former transition's "
+                             "reaction kinetics. A negative value means the phase transition "
+                             "is assumed to be equilibrium."
+                            );
         }
         prm.leave_subsection();
       }
@@ -387,21 +448,9 @@ namespace aspect
           phase_function.initialize_simulator (this->get_simulator());
           phase_function.parse_parameters (prm);
 
-          std::vector<unsigned int> n_phases_for_each_composition = phase_function.n_phases_for_each_composition();
-
-          // Currently, phase_function.n_phases_for_each_composition() returns a list of length
-          // equal to the total number of compositions, whether or not they are chemical compositions.
-          // The equation_of_state (multicomponent incompressible) requires a list only for
-          // chemical compositions.
-          std::vector<unsigned int> n_phases_for_each_chemical_composition = {n_phases_for_each_composition[0]};
-          n_phase_transitions_for_each_chemical_composition = {n_phases_for_each_composition[0] - 1};
-          n_phases = n_phases_for_each_composition[0];
-          for (auto i : this->introspection().chemical_composition_field_indices())
-            {
-              n_phases_for_each_chemical_composition.push_back(n_phases_for_each_composition[i+1]);
-              n_phase_transitions_for_each_chemical_composition.push_back(n_phases_for_each_composition[i+1] - 1);
-              n_phases += n_phases_for_each_composition[i+1];
-            }
+          const std::vector<unsigned int> n_phases_for_each_chemical_composition = phase_function.n_phases_for_each_chemical_composition();
+          n_phase_transitions_for_each_chemical_composition = phase_function.n_phase_transitions_for_each_chemical_composition();
+          n_phases = phase_function.n_phases_over_all_chemical_compositions();
 
           // Equation of state parameters
           equation_of_state.initialize_simulator (this->get_simulator());
@@ -430,7 +479,22 @@ namespace aspect
 
           rheology = std::make_unique<Rheology::ViscoPlastic<dim>>();
           rheology->initialize_simulator (this->get_simulator());
-          rheology->parse_parameters(prm, std::make_unique<std::vector<unsigned int>>(n_phases_for_each_chemical_composition));
+
+          use_dominant_phase_for_viscosity = prm.get_bool ("Use dominant phase for viscosity");
+          if (use_dominant_phase_for_viscosity)
+            {
+              phase_function_discrete = std::make_unique<MaterialUtilities::PhaseFunctionDiscrete<dim>>();
+              phase_function_discrete->initialize_simulator (this->get_simulator());
+              phase_function_discrete->parse_parameters (prm);
+              rheology->parse_parameters(prm, std::make_unique<std::vector<unsigned int>>(phase_function_discrete->n_phases_for_each_chemical_composition()));
+            }
+          else
+            {
+              rheology->parse_parameters(prm, std::make_unique<std::vector<unsigned int>>(n_phases_for_each_chemical_composition));
+            }
+
+          reaction_progress_mapping = Utilities::string_to_unsigned_int
+                                      (Utilities::split_string_list(prm.get ("Reaction progress mapping")));
         }
         prm.leave_subsection();
       }
@@ -451,11 +515,12 @@ namespace aspect
     ViscoPlastic<dim>::create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const
     {
       rheology->create_plastic_outputs(out);
+      rheology->create_viscosity_outputs(out);
 
       rheology->strain_rheology.create_strain_healing_outputs(out);
 
       if (this->get_parameters().enable_elasticity)
-        rheology->elastic_rheology.create_elastic_outputs(out);
+        rheology->elastic_rheology.create_elastic_additional_outputs(out);
     }
 
   }
@@ -511,7 +576,7 @@ namespace aspect
                                    "\n\n"
                                    "The first plasticity mechanism limits viscous stress through a "
                                    "Drucker Prager yield criterion, where the yield stress in 3d is  "
-                                   "$\\sigma_y = \\frac{6C\\cos(\\phi) + 2P\\sin(\\phi)} "
+                                   "$\\sigma_y = \\frac{6C\\cos(\\phi) + 6P\\sin(\\phi)} "
                                    "{\\sqrt{3}(3+\\sin(\\phi))}$ "
                                    "and "
                                    "$\\sigma_y = C\\cos(\\phi) + P\\sin(\\phi)$ "
@@ -583,10 +648,13 @@ namespace aspect
                                    "compositional fields representing these components must be named "
                                    "and listed in a very specific format, which is designed to minimize "
                                    "mislabeling stress tensor components as distinct 'compositional "
-                                   "rock types' (or vice versa). For 2d models, the first three "
-                                   "compositional fields must be labeled 'stress\\_xx', 'stress\\_yy' and 'stress\\_xy'. "
-                                   "In 3d, the first six compositional fields must be labeled 'stress\\_xx', "
-                                   "'stress\\_yy', 'stress\\_zz', 'stress\\_xy', 'stress\\_xz', 'stress\\_yz'. "
+                                   "rock types' (or vice versa). For 2d models, three plus three consecutive "
+                                   "compositional fields must be labeled 'stress\\_xx', 'stress\\_yy', 'stress\\_xy', "
+                                   "'stress\\_xx\\_old', 'stress\\_yy\\_old', and 'stress\\_xy\\_old'. "
+                                   "In 3d, six plus six compositional fields must be labeled 'stress\\_xx', "
+                                   "'stress\\_yy', 'stress\\_zz', 'stress\\_xy', 'stress\\_xz', 'stress\\_yz', "
+                                   "'stress\\_xx\\_old', 'stress\\_yy\\_old', 'stress\\_zz\\_old', 'stress\\_xy\\_old', "
+                                   "'stress\\_xz\\_old', 'stress\\_yz\\_old'. "
                                    "\n\n "
                                    "Combining this viscoelasticity implementation with non-linear viscous flow "
                                    "and plasticity produces a constitutive relationship commonly referred to "
@@ -602,10 +670,10 @@ namespace aspect
                                    "\n\n "
                                    "The overview below directly follows Moresi et al. (2003) eqns. 23-38. "
                                    "However, an important distinction between this material model and "
-                                   "the studies above is the use of compositional fields, rather than "
+                                   "the studies above is the option to use compositional fields, rather than "
                                    "particles, to track individual components of the viscoelastic stress "
-                                   "tensor. The material model will be updated when an option to track "
-                                   "and calculate viscoelastic stresses with particles is implemented. "
+                                   "tensor. Calculating viscoelastic stresses with particles is also implemented, "
+                                   "and can be switched on by using particles with the particle property 'elastic stress'. "
                                    "\n\n "
                                    "Moresi et al. (2003) begins (eqn. 23) by writing the deviatoric "
                                    "rate of deformation ($\\hat{D}$) as the sum of elastic "
@@ -655,8 +723,9 @@ namespace aspect
                                    "viscosity is reduced relative to the initial viscosity. "
                                    "\n\n "
                                    "Elastic effects are introduced into the governing Stokes equations through "
-                                   "an elastic force term (eqn. 30) using stresses from the previous time step: "
-                                   "$F^{e,t} = -\\frac{\\eta_{eff}}{\\mu \\Delta t^{e}} \\tau^{t}$. "
+                                   "an elastic force term (eqn. 30 updated to the term in eqn. 5 in Farrington et al. 2014) "
+                                   "using stresses from the previous time step rotated and advected into the current time step: "
+                                   "$F^{e,t} = -\\frac{\\eta_{eff}}{\\mu \\Delta t^{e}} \\tau^{0adv}$. "
                                    "This force term is added onto the right-hand side force vector in the "
                                    "system of equations. "
                                    "\n\n "

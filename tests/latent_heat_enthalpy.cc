@@ -33,14 +33,12 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     template <int dim>
     class LatentHeatEnthalpy : public MaterialModel::Interface<dim>, public ::aspect::SimulatorAccess<dim>
     {
       public:
         void
-        initialize()
+        initialize() override
         {
           const std::string datadirectory = Utilities::expand_ASPECT_SOURCE_DIR("$ASPECT_SOURCE_DIR/data/material-model/latent-heat-enthalpy-test/");
           const std::string material_file_names  = "testdata.txt";
@@ -51,21 +49,18 @@ namespace aspect
         }
 
         bool
-        is_compressible () const
+        is_compressible () const override
         {
           return false;
         }
 
         void
-        evaluate(const typename Interface<dim>::MaterialModelInputs &in, typename Interface<dim>::MaterialModelOutputs &out) const
+        evaluate(const typename Interface<dim>::MaterialModelInputs &in, typename Interface<dim>::MaterialModelOutputs &out) const override
         {
           const double reference_rho              = 3400;
           const double density_jump               = 115.6;
-          const double reference_T                = 1000;
           const double eta                        = 8.44e21;
           const double k_value                    = 2.38;
-          const double reference_specific_heat    = 1000;
-          const double thermal_alpha              = 0;
 
           double dHdT = 0.0;
           double dHdp = 0.0;

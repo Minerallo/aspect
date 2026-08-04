@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2019 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -28,8 +28,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     namespace Rheology
     {
       /**
@@ -45,6 +43,11 @@ namespace aspect
         double activation_energy;
         double activation_volume;
         double stress_exponent;
+
+        /**
+         * Constructor. Initializes all values to NaN.
+         */
+        DislocationCreepParameters();
       };
 
       template <int dim>
@@ -125,23 +128,29 @@ namespace aspect
 
           /**
            * List of dislocation creep prefactors A.
+           *
+           * This variable is read from the parameter file through a parameter called 'Prefactors for dislocation creep'.
            */
-          std::vector<double> prefactors_dislocation;
+          std::vector<double> prefactors;
 
           /**
            * List of dislocation creep stress exponents n.
+           * This variable is read from the parameter file through a parameter called 'Stress exponents for dislocation creep'.
            */
-          std::vector<double> stress_exponents_dislocation;
+          std::vector<double> stress_exponents;
 
           /**
            * List of dislocation creep activation energies E.
+           * This variable is read from the parameter file through a parameter called 'Activation energies for dislocation creep'.
            */
-          std::vector<double> activation_energies_dislocation;
+          std::vector<double> activation_energies;
 
           /**
            * List of dislocation creep activation volumes V.
+           *
+           * This variable is read from the parameter file through a parameter called 'Activation volumes for dislocation creep'.
            */
-          std::vector<double> activation_volumes_dislocation;
+          std::vector<double> activation_volumes;
 
       };
     }

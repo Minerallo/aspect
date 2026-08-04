@@ -1,3 +1,13 @@
+```{tags}
+category:cookbook
+feature:2d
+feature:3d
+feature:cartesian
+feature:nonlinear-solver
+feature:mesh-deformation
+feature:plasticity
+```
+
 (sec:cookbooks:crustal-deformation)=
 # Crustal deformation
 
@@ -77,7 +87,7 @@ If we now set this parameter to 1 and allow the simulation to evolve for
 500kyr, a central graben or plateau (depending on the nature of the boundary
 conditions) develops and deepens/thickens over time, nicely showcasing the
 unique capabilities of the code to handle free surface large deformation,
-localised strain rates through visco-plasticity and adaptive mesh refinement
+localized strain rates through visco-plasticity and adaptive mesh refinement
 as shown in {numref}`fig:extcompr`.
 
 ```{figure-md} fig:meshes
@@ -87,8 +97,8 @@ as shown in {numref}`fig:extcompr`.
 ```
 
 Deformation localizes at the basal velocity discontinuity and plastic shear
-bands form at an angle of approximately $53^\circ$ to the bottom in extension
-and $35^\circ$ in compression, both of which correspond to the reported
+bands form at an angle of approximately $53^{\circ}$ to the bottom in extension
+and $35^{\circ}$ in compression, both of which correspond to the reported
 Arthur angle {cite}`kaus:2010,buiter:2012`.
 
 ```{figure-md} fig:extcompr

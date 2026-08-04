@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018-2024 by the authors of the World Builder code.
+  Copyright (C) 2018-2026 by the authors of the World Builder code.
 
   This file is part of the World Builder.
 
@@ -60,8 +60,8 @@ namespace WorldBuilder
                           const std::string &name,
                           const std::string &documentation) const override final;
 
-        unsigned int value {0};
-        unsigned int default_value;
+        int value {0};
+        int default_value;
 
       protected:
         /**

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -129,7 +129,7 @@ namespace aspect
                                                   "showing the value of the artificial viscosity for a "
                                                   "compositional field on each cell."
                                                   "\n\n"
-                                                  "Physical units: \\si{\\meter\\squared\\per\\second}.")
+                                                  "Physical units: $\\frac{\\text{m}^2}{\\text{s}}$.")
     }
   }
 }

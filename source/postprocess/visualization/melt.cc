@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -126,7 +126,8 @@ namespace aspect
         MeltHandler<dim>::create_material_model_outputs(out);
 
         this->get_material_model().evaluate(in, out);
-        MaterialModel::MeltOutputs<dim> *melt_outputs = out.template get_additional_output<MaterialModel::MeltOutputs<dim>>();
+        const std::shared_ptr<const MaterialModel::MeltOutputs<dim>> melt_outputs
+          = out.template get_additional_output_object<MaterialModel::MeltOutputs<dim>>();
         AssertThrow(melt_outputs != nullptr,
                     ExcMessage("Need MeltOutputs from the material model for computing the melt properties."));
 

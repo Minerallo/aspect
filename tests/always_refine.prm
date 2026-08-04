@@ -5,7 +5,7 @@
 set Dimension                              = 2
 set Start time                             = 0
 set End time                               = 0.5
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 
 subsection Geometry model
   set Model name = box
@@ -32,7 +32,6 @@ subsection Boundary velocity model
 
   subsection Function
     set Variable names      = x,z,t
-    set Function constants  = pi=3.1415926
     set Function expression = if(x>1+sin(0.5*pi*t), 1, -1); 0
   end
 end
@@ -82,8 +81,12 @@ subsection Postprocess
 
   subsection Visualization
     set Interpolate output = false
-    set List of output variables = density
+    set List of output variables = material properties
     set Time between graphical output = 0
+
+    subsection Material properties
+      set List of material properties = density
+    end
   end
 end
 

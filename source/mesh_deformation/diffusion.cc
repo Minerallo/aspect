@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2020 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2020 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -26,12 +26,14 @@
 #include <aspect/geometry_model/two_merged_boxes.h>
 #include <aspect/simulator.h>
 #include <aspect/geometry_model/initial_topography_model/zero_topography.h>
+#include <aspect/linear_algebra_types.h>
 
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/base/symmetric_tensor.h>
 #include <deal.II/numerics/vector_tools.h>
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/trilinos_precondition.h>
+#include <deal.II/lac/sparsity_tools.h>
 #include <boost/lexical_cast.hpp>
 
 namespace aspect
@@ -93,7 +95,8 @@ namespace aspect
       check_diffusion_time_step(mesh_deformation_dof_handler, boundary_ids);
 
       // Set up constraints
-      AffineConstraints<double> matrix_constraints(mesh_locally_relevant);
+      AffineConstraints<double> matrix_constraints(mesh_locally_relevant, mesh_locally_relevant);
+
       DoFTools::make_hanging_node_constraints(mesh_deformation_dof_handler, matrix_constraints);
 
       std::set<types::boundary_id> periodic_boundary_indicators;
@@ -127,35 +130,62 @@ namespace aspect
       const std::set<types::boundary_id> tangential_velocity_boundary_indicators =
         this->get_boundary_velocity_manager().get_tangential_boundary_velocity_indicators();
 
-      // The list of all tangential mesh deformation boundary indicators.
-      std::set<types::boundary_id> tmp_tangential_boundaries, tmp2_tangential_boundaries, all_tangential_boundaries;
-      std::set_union(tangential_velocity_boundary_indicators.begin(),tangential_velocity_boundary_indicators.end(),
-                     additional_tangential_mesh_boundary_indicators.begin(),additional_tangential_mesh_boundary_indicators.end(),
-                     std::inserter(tmp_tangential_boundaries, tmp_tangential_boundaries.end()));
-      std::set_union(tmp_tangential_boundaries.begin(),tmp_tangential_boundaries.end(),
-                     periodic_boundary_indicators.begin(),periodic_boundary_indicators.end(),
-                     std::inserter(tmp2_tangential_boundaries, tmp2_tangential_boundaries.end()));
-      // Tangential Stokes velocity boundaries can also be mesh deformation boundaries,
-      // so correct for that.
-      std::set_difference(tmp2_tangential_boundaries.begin(),tmp2_tangential_boundaries.end(),
-                          boundary_ids.begin(),boundary_ids.end(),
-                          std::inserter(all_tangential_boundaries, all_tangential_boundaries.end()));
+      // Here we start to construct the list of all
+      // tangential mesh deformation boundary indicators.
+      std::set<types::boundary_id> tangential_stokes_and_mesh_boundaries;
+      std::set<types::boundary_id> tangential_stokes_and_mesh_and_periodic_boundaries;
+      std::set<types::boundary_id> all_tangential_mesh_deformation_boundaries;
 
-      // The list of mesh deformation boundary indicators of boundaries that are allowed to move either
-      // tangentially or in all directions.
-      std::set<types::boundary_id> all_deformable_boundaries;
-      std::set_union(all_tangential_boundaries.begin(),all_tangential_boundaries.end(),
-                     boundary_ids.begin(),boundary_ids.end(),
-                     std::inserter(all_deformable_boundaries, all_deformable_boundaries.end()));
+      // tangential_stokes_and_mesh_boundaries contains both the tangential Stokes velocity boundaries
+      // and the additional tangential mesh boundaries.
+      std::set_union(tangential_velocity_boundary_indicators.begin(),
+                     tangential_velocity_boundary_indicators.end(),
+                     additional_tangential_mesh_boundary_indicators.begin(),
+                     additional_tangential_mesh_boundary_indicators.end(),
+                     std::inserter(tangential_stokes_and_mesh_boundaries,
+                                   tangential_stokes_and_mesh_boundaries.end()));
 
-      // The list of mesh deformation boundary indicators of boundaries that are not allowed to move.
-      std::set<types::boundary_id> all_fixed_boundaries;
-      std::set_difference(all_boundaries.begin(),all_boundaries.end(),
-                          all_deformable_boundaries.begin(),all_deformable_boundaries.end(),
-                          std::inserter(all_fixed_boundaries, all_fixed_boundaries.end()));
+      // tangential_stokes_and_mesh_and_periodic_boundaries contains also the periodic boundaries.
+      std::set_union(tangential_stokes_and_mesh_boundaries.begin(),
+                     tangential_stokes_and_mesh_boundaries.end(),
+                     periodic_boundary_indicators.begin(),
+                     periodic_boundary_indicators.end(),
+                     std::inserter(tangential_stokes_and_mesh_and_periodic_boundaries,
+                                   tangential_stokes_and_mesh_and_periodic_boundaries.end()));
 
-      // Make the no flux boundary constraints
-      for (const types::boundary_id &boundary_id : all_fixed_boundaries)
+      // The set of tangential_velocity_boundary_indicators might already contain the
+      // diffusion boundaries (i.e. those boundaries contained in the set boundary_ids).
+      // These are not boundaries on which the mesh deforms tangentially,
+      // so we here create a new set containing only tangential_mesh_deformation_boundaries
+      std::set_difference(tangential_stokes_and_mesh_and_periodic_boundaries.begin(),
+                          tangential_stokes_and_mesh_and_periodic_boundaries.end(),
+                          boundary_ids.begin(),
+                          boundary_ids.end(),
+                          std::inserter(all_tangential_mesh_deformation_boundaries,
+                                        all_tangential_mesh_deformation_boundaries.end()));
+
+      // We now add the diffusion boundaries to the list of tangential mesh deformation boundaries
+      // to create a set of all boundaries on which the mesh is allowed to deform in some way.
+      std::set<types::boundary_id> all_deformable_mesh_boundaries;
+      std::set_union(all_tangential_mesh_deformation_boundaries.begin(),
+                     all_tangential_mesh_deformation_boundaries.end(),
+                     boundary_ids.begin(),
+                     boundary_ids.end(),
+                     std::inserter(all_deformable_mesh_boundaries,
+                                   all_deformable_mesh_boundaries.end()));
+
+      // Finally, we get the set of all fixed mesh boundaries by
+      // subtracting the deformable mesh boundaries from all boundaries.
+      std::set<types::boundary_id> all_fixed_mesh_boundaries;
+      std::set_difference(all_boundaries.begin(),
+                          all_boundaries.end(),
+                          all_deformable_mesh_boundaries.begin(),
+                          all_deformable_mesh_boundaries.end(),
+                          std::inserter(all_fixed_mesh_boundaries,
+                                        all_fixed_mesh_boundaries.end()));
+
+      // Make the no flux boundary constraints for boundaries on which the mesh is fixed
+      for (const types::boundary_id &boundary_id : all_fixed_mesh_boundaries)
         {
           VectorTools::interpolate_boundary_values (this->get_mapping(),
                                                     mesh_deformation_dof_handler,
@@ -164,12 +194,20 @@ namespace aspect
                                                     matrix_constraints);
         }
 
-      // Make the no normal flux boundary constraints
+      // Make the no normal flux boundary constraints for boundaries on which the mesh is
+      // allowed to move tangentially. We can use the manifold information to
+      // compute the normal vector because these boundaries do not move normal to themselves.
       VectorTools::compute_no_normal_flux_constraints (mesh_deformation_dof_handler,
                                                        /* first_vector_component= */
                                                        0,
-                                                       all_tangential_boundaries,
-                                                       matrix_constraints, this->get_mapping());
+                                                       all_tangential_mesh_deformation_boundaries,
+                                                       matrix_constraints,
+                                                       this->get_mapping(),
+                                                       /* use_manifold_for_normal= */
+                                                       true);
+
+      // Note that we do not apply any constraints on the mesh of the diffusing boundaries
+      // listed in boundary_ids. Their displacement is governed by the diffusion equation.
 
       matrix_constraints.close();
 
@@ -177,15 +215,21 @@ namespace aspect
       LinearAlgebra::SparseMatrix matrix;
 
       // Sparsity of the matrix
-      TrilinosWrappers::SparsityPattern sp (mesh_locally_owned,
-                                            mesh_locally_owned,
-                                            mesh_locally_relevant,
-                                            this->get_mpi_communicator());
-      DoFTools::make_sparsity_pattern (mesh_deformation_dof_handler, sp, matrix_constraints, false,
+      LinearAlgebra::DynamicSparsityPattern dsp (mesh_locally_relevant);
+      DoFTools::make_sparsity_pattern (mesh_deformation_dof_handler,
+                                       dsp,
+                                       matrix_constraints,
+                                       false,
                                        Utilities::MPI::this_mpi_process(this->get_mpi_communicator()));
 
-      sp.compress();
-      matrix.reinit (sp);
+      SparsityTools::distribute_sparsity_pattern(dsp,
+                                                 mesh_locally_owned,
+                                                 this->get_mpi_communicator(),
+                                                 mesh_locally_relevant);
+
+      matrix.reinit (mesh_locally_owned,
+                     dsp,
+                     this->get_mpi_communicator());
 
       LinearAlgebra::Vector system_rhs, solution;
       system_rhs.reinit(mesh_locally_owned, this->get_mpi_communicator());
@@ -221,7 +265,7 @@ namespace aspect
       std::vector<Tensor<1, dim>> initial_topography_values(n_fs_face_q_points);
 
       // The global displacements on the MeshDeformation FE
-      LinearAlgebra::Vector displacements = this->get_mesh_deformation_handler().get_mesh_displacements();
+      const LinearAlgebra::Vector &displacements = this->get_mesh_deformation_handler().get_mesh_displacements();
 
       // The global initial topography on the MeshDeformation FE
       // TODO Once the initial mesh deformation is ready, this
@@ -276,10 +320,10 @@ namespace aspect
                 cell_matrix = 0;
 
                 // Loop over the quadrature points of the current face
-                for (unsigned int point=0; point<n_fs_face_q_points; ++point)
+                for (unsigned int q=0; q<n_fs_face_q_points; ++q)
                   {
                     // Get the gravity vector to compute the outward direction of displacement
-                    Tensor<1,dim> direction = -(this->get_gravity_model().gravity_vector(fs_fe_face_values.quadrature_point(point)));
+                    Tensor<1,dim> direction = -(this->get_gravity_model().gravity_vector(fs_fe_face_values.quadrature_point(q)));
                     // Normalize direction vector
                     if (direction.norm() > 0.0)
                       direction *= 1./direction.norm();
@@ -294,15 +338,16 @@ namespace aspect
 
                     // Compute the total displacement in the gravity direction,
                     // i.e. the initial topography + any additional mesh displacement.
-                    const double displacement = direction * (displacement_values[point] + initial_topography_values[point]);
+                    const double displacement = direction * (displacement_values[q] + initial_topography_values[q]);
 
                     // To project onto the tangent space of the surface,
                     // we define the projection P:= I- n x n,
                     // with I the unit tensor and n the unit normal to the surface.
                     // The surface gradient then is P times the usual gradient of the shape functions.
                     const Tensor<2, dim, double> projection = unit_symmetric_tensor<dim>() -
-                                                              outer_product(fs_fe_face_values.normal_vector(point), fs_fe_face_values.normal_vector(point));
+                                                              outer_product(fs_fe_face_values.normal_vector(q), fs_fe_face_values.normal_vector(q));
 
+                    const double JxW = fs_fe_face_values.JxW(q);
 
                     // The shape values for the i-loop
                     std::vector<double> phi(dofs_per_cell);
@@ -322,12 +367,12 @@ namespace aspect
                         if (mesh_deformation_dof_handler.get_fe().system_to_component_index(i).first == dim-1)
                           {
                             // Precompute shape values and projected shape value gradients
-                            phi[i] = fs_fe_face_values.shape_value (i, point);
-                            projected_grad_phi[i] = projection * fs_fe_face_values.shape_grad(i, point);
+                            phi[i] = fs_fe_face_values.shape_value (i, q);
+                            projected_grad_phi[i] = projection * fs_fe_face_values.shape_grad(i, q);
 
                             // Assemble the RHS
                             // RHS = M*H_old
-                            cell_vector(i) += phi[i] * displacement * fs_fe_face_values.JxW(point);
+                            cell_vector(i) += phi[i] * displacement * JxW;
 
                             for (unsigned int j=0; j<dofs_per_cell; ++j)
                               {
@@ -339,12 +384,12 @@ namespace aspect
                                     // Matrix := (M+dt*K) = (M+dt*B^T*kappa*B)
                                     cell_matrix(i,j) +=
                                       (
-                                        phi[i] * fs_fe_face_values.shape_value (j, point) +
+                                        phi[i] * fs_fe_face_values.shape_value (j, q) +
                                         this->get_timestep() * diffusivity *
                                         projected_grad_phi[i] *
-                                        (projection * fs_fe_face_values.shape_grad(j, point))
+                                        (projection * fs_fe_face_values.shape_grad(j, q))
                                       )
-                                      * fs_fe_face_values.JxW(point);
+                                      * JxW;
                                   }
                               }
                           }
@@ -361,13 +406,32 @@ namespace aspect
       // Jacobi seems to be fine here.  Other preconditioners (ILU, IC) run into trouble
       // because the matrix is mostly empty, since we don't touch internal vertices.
       LinearAlgebra::PreconditionJacobi preconditioner_mass;
+#ifndef ASPECT_USE_TPETRA
       LinearAlgebra::PreconditionJacobi::AdditionalData preconditioner_control(1,1e-16,1);
+#else
+      // The interface for the structure changed. The functionality is the same as before.
+      LinearAlgebra::PreconditionJacobi::AdditionalData preconditioner_control(1,true,1e-16,1);
+#endif
       preconditioner_mass.initialize(matrix, preconditioner_control);
 
       this->get_pcout() << "   Solving mesh surface diffusion" << std::endl;
       SolverControl solver_control(5*system_rhs.size(), this->get_parameters().linear_stokes_solver_tolerance*system_rhs.l2_norm());
       SolverCG<LinearAlgebra::Vector> cg(solver_control);
-      cg.solve (matrix, solution, system_rhs, preconditioner_mass);
+      try
+        {
+          cg.solve (matrix, solution, system_rhs, preconditioner_mass);
+        }
+      catch (const std::exception &exc)
+        {
+          // if the solver fails, report the error from processor 0 with some additional
+          // information about its location, and throw a quiet exception on all other
+          // processors
+          Utilities::throw_linear_solver_failure_exception("iterative diffusion surface deformation solver",
+                                                           "MeshDeformation::Diffusion::diffuse_boundary()",
+                                                           std::vector<SolverControl> {solver_control},
+                                                           exc,
+                                                           this->get_mpi_communicator());
+        }
 
       // Distribute constraints on mass matrix
       matrix_constraints.distribute (solution);
@@ -376,10 +440,18 @@ namespace aspect
       // Therefore, we compute v=d_displacement/d_t.
       // d_displacement are the new mesh node locations
       // minus the old locations, which are initial_topography + displacements.
-      LinearAlgebra::Vector velocity(mesh_locally_owned, mesh_locally_relevant, this->get_mpi_communicator());
+      LinearAlgebra::Vector velocity(mesh_locally_owned, this->get_mpi_communicator());
       velocity = solution;
-      velocity -= initial_topography;
-      velocity -= displacements;
+      {
+        LinearAlgebra::Vector initial_topography_distributed(mesh_locally_owned, this->get_mpi_communicator());
+        initial_topography_distributed = initial_topography;
+        velocity -= initial_topography_distributed;
+      }
+      {
+        LinearAlgebra::Vector displacements_distributed(mesh_locally_owned, this->get_mpi_communicator());
+        displacements_distributed = displacements;
+        velocity -= displacements_distributed;
+      }
 
       // The velocity
       if (this->get_timestep() > 0.)
@@ -413,7 +485,7 @@ namespace aspect
 
                 // Calculate the corresponding conduction timestep
                 min_local_conduction_timestep = std::min(min_local_conduction_timestep,
-                                                         this->get_parameters().CFL_number*std::pow(fscell->face(face_no)->minimum_vertex_distance(),2.)
+                                                         this->get_parameters().CFL_number*Utilities::fixed_power<2>(fscell->face(face_no)->minimum_vertex_distance())
                                                          / diffusivity);
               }
 
@@ -437,7 +509,7 @@ namespace aspect
     void
     Diffusion<dim>::compute_velocity_constraints_on_boundary(const DoFHandler<dim> &mesh_deformation_dof_handler,
                                                              AffineConstraints<double> &mesh_velocity_constraints,
-                                                             const std::set<types::boundary_id> &boundary_id) const
+                                                             const std::set<types::boundary_id> &boundary_ids) const
     {
       if (!apply_diffusion)
         return;
@@ -445,31 +517,34 @@ namespace aspect
       LinearAlgebra::Vector boundary_velocity;
 
       const IndexSet &mesh_locally_owned = mesh_deformation_dof_handler.locally_owned_dofs();
-      IndexSet mesh_locally_relevant;
-      DoFTools::extract_locally_relevant_dofs (mesh_deformation_dof_handler,
-                                               mesh_locally_relevant);
+      const IndexSet mesh_locally_relevant = DoFTools::extract_locally_relevant_dofs (mesh_deformation_dof_handler);
       boundary_velocity.reinit(mesh_locally_owned, mesh_locally_relevant,
                                this->get_mpi_communicator());
 
       // Determine the mesh velocity at the surface based on diffusion of
       // the topography
       diffuse_boundary(mesh_deformation_dof_handler, mesh_locally_owned,
-                       mesh_locally_relevant, boundary_velocity, boundary_id);
+                       mesh_locally_relevant, boundary_velocity, boundary_ids);
 
       // now insert the relevant part of the solution into the mesh constraints
       const IndexSet constrained_dofs =
         DoFTools::extract_boundary_dofs(mesh_deformation_dof_handler,
                                         ComponentMask(dim, true),
-                                        boundary_id);
+                                        boundary_ids);
 
-      for (unsigned int i = 0; i < constrained_dofs.n_elements();  ++i)
+      for (const types::global_dof_index index : constrained_dofs)
         {
-          types::global_dof_index index = constrained_dofs.nth_index_in_set(i);
           if (mesh_velocity_constraints.can_store_line(index))
             if (mesh_velocity_constraints.is_constrained(index)==false)
               {
+#if DEAL_II_VERSION_GTE(9,6,0)
+                mesh_velocity_constraints.add_constraint(index,
+                                                         {},
+                                                         boundary_velocity[index]);
+#else
                 mesh_velocity_constraints.add_line(index);
                 mesh_velocity_constraints.set_inhomogeneity(index, boundary_velocity[index]);
+#endif
               }
         }
     }

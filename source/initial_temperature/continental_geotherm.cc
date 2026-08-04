@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -43,7 +43,7 @@ namespace aspect
     initialize ()
     {
       // Check that the required radioactive heating model ("compositional heating") is used
-      const std::vector<std::string> &heating_models = this->get_heating_model_manager().get_active_heating_model_names();
+      const std::vector<std::string> &heating_models = this->get_heating_model_manager().get_active_plugin_names();
       AssertThrow(std::find(heating_models.begin(), heating_models.end(), "compositional heating") != heating_models.end(),
                   ExcMessage("The continental geotherm initial temperature plugin requires the compositional heating plugin."));
 
@@ -80,10 +80,10 @@ namespace aspect
 
       // Temperature in layer 1
       if (depth <= thicknesses[0])
-        return -0.5*densities[0]*heat_productivities[0]/conductivities[0]*std::pow(depth,2) + (0.5*densities[0]*heat_productivities[0]*thicknesses[0]/conductivities[0] + (T1-T0)/thicknesses[0])*depth + T0;
+        return -0.5*densities[0]*heat_productivities[0]/conductivities[0]*Utilities::fixed_power<2>(depth) + (0.5*densities[0]*heat_productivities[0]*thicknesses[0]/conductivities[0] + (T1-T0)/thicknesses[0])*depth + T0;
       // Temperature in layer 2
       else if (depth <= thicknesses[0]+thicknesses[1])
-        return -0.5*densities[1]*heat_productivities[1]/conductivities[1]*std::pow(depth-thicknesses[0],2.) + (0.5*densities[1]*heat_productivities[1]*thicknesses[1]/conductivities[1] + (T2-T1)/thicknesses[1])*(depth-thicknesses[0]) + T1;
+        return -0.5*densities[1]*heat_productivities[1]/conductivities[1]*Utilities::fixed_power<2>(depth-thicknesses[0]) + (0.5*densities[1]*heat_productivities[1]*thicknesses[1]/conductivities[1] + (T2-T1)/thicknesses[1])*(depth-thicknesses[0]) + T1;
       // Temperature in layer 3
       else if (depth <= thicknesses[0]+thicknesses[1]+thicknesses[2])
         return (LAB_isotherm-T2)/thicknesses[2] *(depth-thicknesses[0]-thicknesses[1]) + T2;

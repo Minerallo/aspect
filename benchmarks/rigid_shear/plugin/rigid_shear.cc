@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2019 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -22,7 +22,7 @@
 #include <aspect/material_model/interface.h>
 #include <aspect/postprocess/particles.h>
 #include <aspect/particle/property/interface.h>
-#include <aspect/particle/world.h>
+#include <aspect/particle/manager.h>
 #include <aspect/boundary_velocity/interface.h>
 #include <aspect/postprocess/interface.h>
 #include <aspect/simulator_access.h>
@@ -39,8 +39,6 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
   namespace RigidShearBenchmark
   {
     /**
@@ -68,7 +66,7 @@ namespace aspect
         return std::exp(t)-1.;
       }
 
-      template<int dim>
+      template <int dim>
       double
       density(const Point<dim> &p,
               const double t,
@@ -83,7 +81,7 @@ namespace aspect
       /**
        * The exact solution for the Rigid Shear benchmark.
        */
-      template<int dim>
+      template <int dim>
       class FunctionRigidShear : public Function<dim>
       {
         public:
@@ -121,14 +119,14 @@ namespace aspect
      * A material model for the stationary form of the rigid shear benchmark. All properties
      * are defined in dependence of position.
      */
-    template<int dim>
+    template <int dim>
     class RigidShearMaterial : public MaterialModel::Interface<dim>, public SimulatorAccess<dim>
     {
       public:
         void evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
                       MaterialModel::MaterialModelOutputs<dim> &out) const override
         {
-          const double t = (this->simulator_is_past_initialization()) ? this->get_time() : 0.0;
+          const double t = (this->simulator_is_past_initialization()) ? this->get_time() : this->get_parameters().start_time;
 
           for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
             {
@@ -222,7 +220,7 @@ namespace aspect
         Tensor<1,dim> gravity_vector (const Point<dim> &pos) const override
         {
           const double pi = numbers::PI;
-          const double t = (this->simulator_is_past_initialization()) ? this->get_time() : 0.0;
+          const double t = (this->simulator_is_past_initialization()) ? this->get_time() : this->get_parameters().start_time;
 
           const RigidShearMaterial<dim> &
           material_model
@@ -246,7 +244,7 @@ namespace aspect
      * The implementation of error evaluators that correspond to the
      * benchmarks defined in the paper Gassmoeller et al. referenced above.
      */
-    template<int dim>
+    template <int dim>
     class RigidShearPostprocessor : public Postprocess::Interface<dim>, public ::aspect::SimulatorAccess<dim>
     {
       public:

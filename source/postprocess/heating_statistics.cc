@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -54,8 +54,8 @@ namespace aspect
 
       std::vector<std::vector<double>> composition_values (this->n_compositional_fields(),std::vector<double> (quadrature_formula.size()));
 
-      const auto &heating_model_objects = this->get_heating_model_manager().get_active_heating_models();
-      const std::vector<std::string> &heating_model_names = this->get_heating_model_manager().get_active_heating_model_names();
+      const auto &heating_model_objects = this->get_heating_model_manager().get_active_plugins();
+      const std::vector<std::string> &heating_model_names = this->get_heating_model_manager().get_active_plugin_names();
 
       HeatingModel::HeatingModelOutputs heating_model_outputs(n_q_points, this->n_compositional_fields());
 
@@ -97,15 +97,15 @@ namespace aspect
               local_mass += out.densities[q] * fe_values.JxW(q);
 
             unsigned int index = 0;
-            for (typename std::list<std::unique_ptr<HeatingModel::Interface<dim>>>::const_iterator
-                 heating_model = heating_model_objects.begin();
-                 heating_model != heating_model_objects.end(); ++heating_model, ++index)
+            for (const auto &heating_model : heating_model_objects)
               {
-                (*heating_model)->evaluate(in, out, heating_model_outputs);
+                heating_model->evaluate(in, out, heating_model_outputs);
 
                 for (unsigned int q=0; q<n_q_points; ++q)
                   local_heating_integrals[index] += heating_model_outputs.heating_source_terms[q]
                                                     * fe_values.JxW(q);
+
+                ++index;
               }
           }
 
@@ -118,10 +118,7 @@ namespace aspect
                            global_heating_integrals);
       global_mass = Utilities::MPI::sum (local_mass, this->get_mpi_communicator());
 
-      unsigned int index = 0;
-      for (typename std::list<std::unique_ptr<HeatingModel::Interface<dim>>>::const_iterator
-           heating_model = heating_model_objects.begin();
-           heating_model != heating_model_objects.end(); ++heating_model, ++index)
+      for (unsigned int index=0; index<heating_model_objects.size(); ++index)
         {
           // finally produce something for the statistics file
           const std::string name1("Average " + heating_model_names[index] + " rate (W/kg)");

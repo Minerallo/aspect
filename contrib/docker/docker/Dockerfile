@@ -2,8 +2,8 @@ FROM ubuntu:22.04
 
 LABEL maintainer <rene.gassmoeller@mailbox.org>
 
-ARG VERSION=9.5.1
-ARG REPO=ppa:ginggs/deal.ii-9.5.1-backports
+ARG VERSION=9.6.0
+ARG REPO=ppa:ginggs/deal.ii-9.6.0-backports
 
 RUN DEBIAN_FRONTEND=noninteractive apt update && apt upgrade -yq && \
   apt install -yq --install-recommends sudo software-properties-common \
@@ -44,9 +44,12 @@ RUN git clone https://github.com/geodynamics/aspect.git $Aspect_DIR && \
     cd ${Aspect_DIR}/build && \
     cmake -DCMAKE_BUILD_TYPE=DebugRelease -DCMAKE_INSTALL_PREFIX=$Aspect_DIR \
     -DASPECT_INSTALL_EXAMPLES=ON .. && \
-    make -j2 && make install && make clean && \
+    make -j 4 && make install && make clean && \
     ln -s $Aspect_DIR/bin/aspect $Aspect_DIR/aspect && \
     ln -s $Aspect_DIR/bin/aspect-release $Aspect_DIR/aspect-release
 
 WORKDIR $Aspect_DIR
 ENV PATH $Aspect_DIR/bin:$PATH
+
+# Prevent an OpenMPI warning in Ubuntu 22.04 (see https://github.com/openwall/john/issues/5088)
+ENV HWLOC_HIDE_ERRORS=2

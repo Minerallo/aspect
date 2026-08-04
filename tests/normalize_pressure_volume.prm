@@ -1,5 +1,5 @@
 # test that pressure "volume" normalization works correctly.
-# note that the solution is kind of non-sensical..
+# note that the solution is kind of nonsensical..
 
 set Dimension = 2
 set CFL number                             = 1.0
@@ -7,7 +7,7 @@ set End time                               = 0
 set Start time                             = 0
 set Adiabatic surface temperature          = 0
 set Surface pressure                       = 0
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set Nonlinear solver scheme                = single Advection, single Stokes
 set Pressure normalization                 = volume
 

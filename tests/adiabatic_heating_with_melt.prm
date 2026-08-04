@@ -20,7 +20,7 @@ set Nonlinear solver scheme                = iterated Advection and Stokes
 
 # There are several global variables that have to do with what
 # time system we want to work in and what the end time is.
-set Use years in output instead of seconds = false
+set Use years instead of seconds           = false
 set End time                               = 2.5e13
 set Pressure normalization                 = surface
 set Surface pressure                       = 0
@@ -135,7 +135,11 @@ subsection Postprocess
   subsection Visualization
     set Interpolate output = false
     set Time between graphical output = 0.01
-    set List of output variables = viscosity, density, nonadiabatic temperature
+    set List of output variables = material properties, nonadiabatic temperature
+
+    subsection Material properties
+      set List of material properties = viscosity, density
+    end
   end
 end
 

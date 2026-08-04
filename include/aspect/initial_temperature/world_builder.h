@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -23,8 +23,6 @@
 
 #include <aspect/global.h>
 
-#ifdef ASPECT_WITH_WORLD_BUILDER
-
 #include <aspect/initial_temperature/interface.h>
 #include <aspect/simulator_access.h>
 
@@ -37,10 +35,11 @@ namespace WorldBuilder
 
 namespace aspect
 {
+
+#ifdef ASPECT_WITH_WORLD_BUILDER
+
   namespace InitialTemperature
   {
-    using namespace dealii;
-
     /**
      * A class that implements temperature initial conditions based on a
      * functional description provided in the input file through the
@@ -78,7 +77,8 @@ namespace aspect
         std::shared_ptr<const ::WorldBuilder::World> world_builder;
     };
   }
+#endif
+
 }
 
-#endif
 #endif

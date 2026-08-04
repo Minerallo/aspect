@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -42,7 +42,7 @@ namespace aspect
 
 
 
-      template<int dim>
+      template <int dim>
       std::pair<std::string, std::unique_ptr<Vector<float>>>
       ISARotationTimescale<dim>::execute() const
       {
@@ -110,7 +110,7 @@ namespace aspect
                                                   "along with the grain lag angle $\\Theta$, "
                                                   "to calculate the grain orientation lag parameter."
                                                   "\n\n"
-                                                  "Physical units: \\si{\\second}.")
+                                                  "Physical units: $\\text{s}$.")
     }
   }
 }

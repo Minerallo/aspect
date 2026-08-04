@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -25,13 +25,12 @@
 #include <aspect/simulator_access.h>
 #include <aspect/postprocess/melt_statistics.h>
 #include <aspect/melt.h>
+#include <aspect/material_model/reaction_model/katz2003_mantle_melting.h>
 
 namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     /**
      * A material model that implements a simple formulation of the
      * material parameters required for the modeling of melt transport,
@@ -79,7 +78,8 @@ namespace aspect
                       typename Interface<dim>::MaterialModelOutputs &out) const override;
 
         void melt_fractions (const MaterialModel::MaterialModelInputs<dim> &in,
-                             std::vector<double> &melt_fractions) const override;
+                             std::vector<double> &melt_fractions,
+                             const MaterialModel::MaterialModelOutputs<dim> *out = nullptr) const override;
 
         /**
          * @name Reference quantities
@@ -117,84 +117,51 @@ namespace aspect
 
 
       private:
-        double reference_rho_s;
-        double reference_rho_f;
-        double reference_T;
-        double eta_0;
-        double xi_0;
-        double eta_f;
-        double thermal_viscosity_exponent;
-        double thermal_bulk_viscosity_exponent;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Use full compressibility'.
+         */
+        bool model_is_compressible;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Thermal expansion coefficient'.
+         */
         double thermal_expansivity;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Reference shear viscosity'.
+         */
+        double eta_0;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Reference specific heat'.
+         */
         double reference_specific_heat;
         double thermal_conductivity;
-        double reference_permeability;
-        double alpha_phi;
-        double extraction_depth;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Solid compressibility'.
+         */
         double compressibility;
-        double melt_compressibility;
-        double melt_bulk_modulus_derivative;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Thermal viscosity exponent'.
+         */
+        double thermal_viscosity_exponent;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Reference temperature'.
+         */
+        double reference_T;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Depletion density change'.
+         */
         double depletion_density_change;
-        double depletion_solidus_change;
-        bool model_is_compressible;
-        bool fractional_melting;
-        double freezing_rate;
-        double melting_time_scale;
-
         /**
-         * Parameters for anhydrous melting of peridotite after Katz, 2003
+         *  This variable is read from the parameter file through a parameter called 'Reference solid density'.
          */
+        double reference_rho_solid;
 
-        // for the solidus temperature
-        double A1;   // °C
-        double A2; // °C/Pa
-        double A3; // °C/(Pa^2)
 
-        // for the lherzolite liquidus temperature
-        double B1;   // °C
-        double B2;   // °C/Pa
-        double B3; // °C/(Pa^2)
 
-        // for the liquidus temperature
-        double C1;   // °C
-        double C2;  // °C/Pa
-        double C3; // °C/(Pa^2)
+        /*
+        * Object for computing the melt parameters
+        */
+        ReactionModel::Katz2003MantleMelting<dim> katz2003_model;
 
-        // for the reaction coefficient of pyroxene
-        double r1;     // cpx/melt
-        double r2;     // cpx/melt/GPa
-        double M_cpx;  // mass fraction of pyroxene
-
-        // melt fraction exponent
-        double beta;
-
-        // entropy change upon melting
-        double peridotite_melting_entropy_change;
-
-        /**
-         * Percentage of material that is molten for a given @p temperature and
-         * @p pressure (assuming equilibrium conditions). Melting model after Katz,
-         * 2003, for dry peridotite.
-         */
-        virtual
-        double
-        melt_fraction (const double temperature,
-                       const double pressure) const;
-
-        /**
-         * Compute the change in entropy due to melting for a given @p temperature
-         * and @p pressure, and under the assumption that a fraction
-         * @p maximum_melt_fraction of the material has already been molten
-         * previously. The entropy change is computed with respect to temperature
-         * or pressure, depending on @p dependence.
-         * This is needed to calculate the latent heat of melt.
-         */
-        virtual
-        double
-        entropy_change (const double temperature,
-                        const double pressure,
-                        const double maximum_melt_fraction,
-                        const NonlinearDependence::Dependence dependence) const;
     };
 
   }

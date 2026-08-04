@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -22,7 +22,6 @@
 #include <aspect/material_model/interface.h>
 
 #include <deal.II/base/point.h>
-#include <deal.II/base/exceptions.h>
 
 
 namespace aspect
@@ -32,8 +31,6 @@ namespace aspect
    */
   namespace NSinkerBenchmark
   {
-    using namespace dealii;
-
     /**
      * @note This benchmark only talks about the flow field, not about a
      * temperature field. All quantities related to the temperature are
@@ -201,7 +198,7 @@ namespace aspect
     };
 
 
-    template<int dim>
+    template <int dim>
     NSinkerMaterial<dim>::NSinkerMaterial ()
     {
       delta = 2*200.0;
@@ -311,7 +308,7 @@ namespace aspect
         {
           double dist = p.distance(Point<2>(centers[s](0), centers[s](1)));
           double temp = 1-std::exp(-delta*
-                                   std::pow(std::max(0.0,dist-omega/2.0),2));
+                                   Utilities::fixed_power<2>(std::max(0.0,dist-omega/2.0)));
           chi *= temp;
         }
       return chi;
@@ -329,7 +326,7 @@ namespace aspect
         {
           double dist = p.distance(centers[s]);
           double temp = 1-std::exp(-delta*
-                                   std::pow(std::max(0.0,dist-omega/2.0),2));
+                                   Utilities::fixed_power<2>(std::max(0.0,dist-omega/2.0)));
           chi *= temp;
         }
       return chi;

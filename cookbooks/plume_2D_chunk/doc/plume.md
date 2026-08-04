@@ -1,3 +1,11 @@
+```{tags}
+category:cookbook
+feature:2d
+feature:spherical
+feature:nonlinear-solver
+```
+
+(sec:cookbooks:plume-2d-chunk)=
 # Plume in a 2D chunk
 
 *This section was contributed by Cedric Thieulot and Paul Bremner.*

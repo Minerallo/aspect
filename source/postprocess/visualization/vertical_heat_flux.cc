@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -100,7 +100,7 @@ namespace aspect
                                                   "the sum of the advective and the conductive heat flux, "
                                                   "with the sign convention of positive flux upwards."
                                                   "\n\n"
-                                                  "Physical units: \\si{\\watt\\per\\square\\meter}.")
+                                                  "Physical units: $\\frac{\\text{W}}{\\text{m}^2}$.")
     }
   }
 }

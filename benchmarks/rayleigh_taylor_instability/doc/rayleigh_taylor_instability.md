@@ -1,3 +1,12 @@
+```{tags}
+category:benchmark
+feature:2d
+feature:cartesian
+feature:community-benchmark
+feature:analytical-solution
+```
+
+(sec:benchmarks:rayleigh_taylor_instability)=
 # The Rayleigh-Taylor instability
 
 *This section was contributed by Cedric Thieulot.*
@@ -7,7 +16,7 @@ slip are imposed on the sides while no-slip boundary conditions are imposed on
 the top and the bottom of the box. Fluid 1 $(\rho_1,\eta_1)$ of thickness
 $h_1$ overlays fluid 2 $(\rho_2,\eta_2)$ of thickness $h_2$ (with
 $h_1+h_2=L_y$). An initial sinusoidal disturbance of the interface between
-these layers is introduced and is characterised by an amplitude $\Delta$ and a
+these layers is introduced and is characterized by an amplitude $\Delta$ and a
 wavelength $\lambda=L_x/2$ as shown in {numref}`fig:RTi_setup`.
 
 ```{figure-md} fig:RTi_setup
@@ -40,10 +49,10 @@ j_{22} &= \frac{\eta_1 2 \phi_1^2 \phi_2}{\eta_2(\cosh 2\phi_1 -1-2\phi_1^2)} - 
 \phi_2&=\frac{2\pi h_2}{\lambda}
 ```
 We set
-$L_x=L_y=\text{ 512 km}$, $h_1=h_2=\text{ 256 km}$,
-$|\boldsymbol{g}|=\text{10 m/s^2}$, $\Delta=\text{3 km}$,
-$\rho_1=\text{3300 kg/m^3}$, $\rho_2=\text{3000 kg/m^3}$,
-$\eta_1=\text{1e21 Pa.s}$. $\eta_2$ is varied between $10^{20}$ and $10^{23}$
+$L_x=L_y=512 \text{ km}$, $h_1=h_2=256 \text{ km}$,
+$|\boldsymbol{g}|=10\text{m}/\text{s}^2$, $\Delta=3\text{ km}$,
+$\rho_1=3300\text{ kg}/\text{m}^3$, $\rho_2=3000\text{kg}/\text{m}^3$,
+$\eta_1=1e21\text{ Pa s}$. $\eta_2$ is varied between $10^{20}$ and $10^{23}$
 and 3 values of $\lambda$ (64, 128, and 256km) are used. Adaptive mesh
 refinement based on density is used to capture the interface between the two
 fluids, as shown in {numref}`fig:RTi_grids_a` and {numref}`fig:RTi_grids_b`. This translates as follows in the input
@@ -57,7 +66,7 @@ file:
     end
 
 
-**[Description of benchmark files](../README.md)**
+**[Description of benchmark files](https://github.com/geodynamics/aspect/blob/main/benchmarks/rayleigh_taylor_instability/README.md)**
 
 ```{figure-md} fig:RTi_grids_a
 <img src="grid.*" style="width:44.0%" />

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2017 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2017 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -29,8 +29,6 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
   template <int dim>
   class Simulator;
 
@@ -100,7 +98,8 @@ namespace aspect
                                 const unsigned int        n_compositional_fields,
                                 const unsigned int        stokes_dofs_per_cell,
                                 const bool                add_compaction_pressure,
-                                const bool                rebuild_matrix);
+                                const bool                rebuild_matrix,
+                                const bool                use_bfbt);
           StokesPreconditioner (const StokesPreconditioner &scratch);
 
           ~StokesPreconditioner () override;
@@ -110,10 +109,10 @@ namespace aspect
           void reinit (const typename DoFHandler<dim>::active_cell_iterator &cell_ref);
 
           std::vector<types::global_dof_index> local_dof_indices;
-          std::vector<unsigned int>            dof_component_indices;
           std::vector<SymmetricTensor<2,dim>> grads_phi_u;
           std::vector<double>                  div_phi_u;
           std::vector<double>                  phi_p;
+          std::vector<Tensor<1,dim>>           phi_u;
           std::vector<double>                  phi_p_c;
           std::vector<Tensor<1,dim>>          grad_phi_p;
 
@@ -158,7 +157,8 @@ namespace aspect
                         const bool                add_compaction_pressure,
                         const bool                use_reference_density_profile,
                         const bool                rebuild_stokes_matrix,
-                        const bool                rebuild_newton_stokes_matrix);
+                        const bool                rebuild_newton_stokes_matrix,
+                        const bool                use_bfbt);
 
           StokesSystem (const StokesSystem<dim> &scratch);
 
@@ -222,7 +222,7 @@ namespace aspect
                            const UpdateFlags         update_flags,
                            const UpdateFlags         face_update_flags,
                            const unsigned int        n_compositional_fields,
-                           const typename Simulator<dim>::AdvectionField     &field);
+                           const AdvectionField     &field);
           AdvectionSystem (const AdvectionSystem &scratch);
 
           FEValues<dim> finite_element_values;
@@ -316,7 +316,7 @@ namespace aspect
            * fields. See the documentation of the AdvectionField class for
            * more details.
            */
-          const typename Simulator<dim>::AdvectionField *advection_field;
+          const AdvectionField *advection_field;
 
           /**
            * The amount of entropy viscosity that should be applied to the
@@ -369,16 +369,16 @@ namespace aspect
           StokesPreconditioner<dim> &operator= (const StokesPreconditioner<dim> &data) = default;
 
           FullMatrix<double> local_matrix;
+          Vector<double> local_inverse_lumped_mass_matrix;
           std::vector<types::global_dof_index> local_dof_indices;
 
           /**
            * Extract the values listed in @p all_dof_indices only if
            * it corresponds to the Stokes component and copy it to the variable
            * local_dof_indices declared above in the same class as this function
-          */
+           */
           void extract_stokes_dof_indices(const std::vector<types::global_dof_index> &all_dof_indices,
-                                          const Introspection<dim>                   &introspection,
-                                          const FiniteElement<dim>                   &finite_element);
+                                          const Introspection<dim>                   &introspection);
         };
 
         /**
@@ -485,7 +485,6 @@ namespace aspect
    */
   namespace Assemblers
   {
-
     /**
      * For a reference cell (which is typically obtained by asking the finite
      * element to be used), determine how many interface matrices are needed.
@@ -495,16 +494,18 @@ namespace aspect
      * accommodates the fact that the neighbors of a cell can all be refined,
      * though they can only be refined once.
      */
+    template <int dim>
     unsigned int
-    n_interface_matrices (const ReferenceCell &reference_cell);
+    n_interface_matrices (const ReferenceCell<dim> &reference_cell);
 
     /**
      * For a given reference cell, and a given face we are currently
      * assembling on, return which element of an array of size
      * `n_interface_matrices(reference_cell)` to use.
      */
+    template <int dim>
     unsigned int
-    nth_interface_matrix (const ReferenceCell &reference_cell,
+    nth_interface_matrix (const ReferenceCell<dim> &reference_cell,
                           const unsigned int face);
 
     /**
@@ -512,8 +513,9 @@ namespace aspect
      * currently assembling on, return which element of an array of size
      * `n_interface_matrices(reference_cell)` to use.
      */
+    template <int dim>
     unsigned int
-    nth_interface_matrix (const ReferenceCell &reference_cell,
+    nth_interface_matrix (const ReferenceCell<dim> &reference_cell,
                           const unsigned int face,
                           const unsigned int sub_face);
 
@@ -532,14 +534,9 @@ namespace aspect
      * which equation is solved.
      */
     template <int dim>
-    class Interface
+    class Interface : public Plugins::InterfaceBase
     {
       public:
-        /**
-         * Destructor
-         */
-        virtual ~Interface () = default;
-
         /**
          * Execute this assembler object. This function performs the primary work
          * of an assembler. More precisely, it uses information for the current
@@ -563,7 +560,8 @@ namespace aspect
          * and allows the assembler to attach AdditionalOutputs. The
          * function might be called more than once for a
          * MaterialModelOutput, so it is recommended to check if
-         * get_additional_output() returns an instance before adding a new
+         * MaterialModelOutputs<dim>::get_additional_output_object()
+         * returns an instance before adding a new
          * one to the additional_outputs vector. By default this function does
          * not create additional outputs.
          *

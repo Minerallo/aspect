@@ -9,7 +9,7 @@
 set Dimension                              = 2
 set Start time                             = 0
 set End time                               = 5e7
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set Nonlinear solver scheme                = single Advection, iterated Stokes
 set Max nonlinear iterations               = 1
 set Output directory                       = visco_plastic_yield_total_strain_healing
@@ -134,9 +134,13 @@ subsection Postprocess
 
   subsection Visualization
     set Interpolate output = false
-    set List of output variables = viscosity, strain rate, named additional outputs
+    set List of output variables = material properties, strain rate, named additional outputs
     set Output format            = gnuplot
     set Time between graphical output = 5e7
+
+    subsection Material properties
+      set List of material properties = viscosity
+    end
   end
 end
 

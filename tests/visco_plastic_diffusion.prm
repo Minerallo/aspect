@@ -10,7 +10,7 @@
 set Dimension                              = 2
 set Start time                             = 0
 set End time                               = 0
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set Nonlinear solver scheme                = single Advection, iterated Stokes
 set Max nonlinear iterations               = 1
 set Surface pressure                       = 3.e9
@@ -98,8 +98,12 @@ subsection Postprocess
 
   subsection Visualization
     set Interpolate output = false
-    set List of output variables = viscosity, strain rate
+    set List of output variables = material properties, strain rate
     set Output format            = gnuplot
+
+    subsection Material properties
+      set List of material properties = viscosity
+    end
   end
 end
 

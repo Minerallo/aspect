@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2020 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2020 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -31,8 +31,10 @@
 #include <aspect/material_model/rheology/frank_kamenetskii.h>
 #include <aspect/material_model/rheology/peierls_creep.h>
 #include <aspect/material_model/rheology/constant_viscosity_prefactors.h>
+#include <aspect/material_model/rheology/compositional_viscosity_prefactors.h>
 #include <aspect/material_model/rheology/drucker_prager.h>
 #include <aspect/material_model/rheology/elasticity.h>
+#include <aspect/material_model/rheology/grain_boundary_sliding.h>
 #include <aspect/simulator_access.h>
 
 #include<deal.II/fe/component_mask.h>
@@ -41,8 +43,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     /**
      * Additional output fields for the plastic parameters weakened (or hardened)
      * by strain to be added to the MaterialModel::MaterialModelOutputs structure
@@ -71,7 +71,8 @@ namespace aspect
         std::vector<double> friction_angles;
 
         /**
-         * The plastic yield stress.
+         * The current plastic yield stress, depending on composition,
+         * pressure, and strain.
          */
         std::vector<double> yield_stresses;
 
@@ -80,6 +81,58 @@ namespace aspect
          * and viscosity is rescaled back to the yield envelope.
          */
         std::vector<double> yielding;
+
+    };
+
+    /**
+    * Additional output fields for diffusion and dislocation viscosities.
+    */
+    template <int dim>
+    class ViscosityAdditionalOutputs : public NamedAdditionalMaterialOutputs<dim>
+    {
+      public:
+        /**
+        * Enumeration of viscosity properties that can be exposed through
+        * additional material model outputs.
+        */
+        enum class Property
+        {
+          diffusion_viscosity,
+          dislocation_viscosity
+        };
+
+        /**
+         * Constructor.
+         */
+        ViscosityAdditionalOutputs(const unsigned int n_points,
+                                   const std::vector<Property> &active_properties);
+
+        std::vector<double>
+        get_nth_output(const unsigned int idx) const override;
+
+      private:
+        /**
+         * The viscosity properties that are active for the selected rheology
+         * and should be exposed to postprocessors.
+         */
+        std::vector<Property> active_properties;
+
+      public:
+        /**
+         * Diffusion viscosities. These are the diffusion viscosities that are computed
+         * in Rheology::DiffusionCreep::compute_viscosity() function before yielding.
+         * The values are only relevant when diffusion creep is present,
+         * i.e., viscous flow law is either diffusion or composite.
+         */
+        std::vector<double> diffusion_viscosities;
+
+        /**
+         * Dislocation viscosities. These are the dislocation viscosities that are computed
+         * in Rheology::DiffusionCreep::compute_viscosity() function before yielding.
+         * The values are only relevant when dislocation creep is present,
+         * i.e., viscous flow law is either dislocation or composite.
+         */
+        std::vector<double> dislocation_viscosities;
 
     };
 
@@ -99,14 +152,33 @@ namespace aspect
       std::vector<bool> composition_yielding;
 
       /**
-       * The current friction angle.
+       * All the drucker prager plasticity parameters.
        */
-      std::vector<double> current_friction_angles;
+      std::vector<Rheology::DruckerPragerParameters> drucker_prager_parameters;
 
       /**
-       * The current cohesion.
+       * The LHS term corresponding to plastic dilation in the
+       * Stokes system. For details, see the comments of
+       * MaterialModel::PrescribedDilation::dilation_lhs_term.
        */
-      std::vector<double> current_cohesions;
+      std::vector<double> dilation_lhs_terms;
+
+      /**
+       * The RHS term corresponding to plastic dilation in the
+       * Stokes system. For details, see the comments of
+       * MaterialModel::PrescribedDilation::dilation_rhs_term.
+       */
+      std::vector<double> dilation_rhs_terms;
+
+      /**
+      * Diffusion viscosities for each composition.
+      */
+      std::vector<double> diffusion_viscosities;
+
+      /**
+       * Dislocation viscosities for each composition.
+       */
+      std::vector<double> dislocation_viscosities;
     };
 
     namespace Rheology
@@ -148,7 +220,7 @@ namespace aspect
            */
           void compute_viscosity_derivatives(const unsigned int point_index,
                                              const std::vector<double> &volume_fractions,
-                                             const std::vector<double> &composition_viscosities,
+                                             const IsostrainViscosities &isostrain_values,
                                              const MaterialModel::MaterialModelInputs<dim> &in,
                                              MaterialModel::MaterialModelOutputs<dim> &out,
                                              const std::vector<double> &phase_function_values = std::vector<double>(),
@@ -199,14 +271,31 @@ namespace aspect
                                     const MaterialModel::MaterialModelInputs<dim> &in,
                                     MaterialModel::MaterialModelOutputs<dim> &out,
                                     const IsostrainViscosities &isostrain_viscosities) const;
+          /**
+          * Create additional outputs for diffusion and dislocation viscosities.
+          */
+          void
+          create_viscosity_outputs(MaterialModel::MaterialModelOutputs<dim> &out) const;
+
+          /**
+           * Fill additional outputs for diffusion and dislocation viscosities,
+           * if viscosity additional output object is created.
+           */
+          void fill_viscosity_outputs(const unsigned int point_index,
+                                      const std::vector<double> &volume_fractions,
+                                      MaterialModel::MaterialModelOutputs<dim> &out,
+                                      const IsostrainViscosities &isostrain_viscosities) const;
 
           /**
            * Minimum strain rate used to stabilize the strain rate dependent rheology.
+           *
+           * This variable is read from the parameter file through a parameter called 'Minimum strain rate'.
            */
           double min_strain_rate;
 
           /**
            * Enumeration for selecting which viscosity averaging scheme to use.
+           * This variable is read from the parameter file through a parameter called 'Viscosity averaging scheme'.
            */
           MaterialUtilities::CompositionalAveragingOperation viscosity_averaging;
 
@@ -231,6 +320,7 @@ namespace aspect
           /**
            * Reference strain rate for the first non-linear iteration
            * in the first time step.
+           * This variable is read from the parameter file through a parameter called 'Reference strain rate'.
            */
           double ref_strain_rate;
 
@@ -238,21 +328,31 @@ namespace aspect
            * Minimum and maximum viscosities used to improve the
            * stability of the rheology model.
            * These parameters contain one value per composition and phase (potentially the same value).
+           * This variable is read from the parameter file through a parameter called 'Minimum viscosity'.
            */
           std::vector<double> minimum_viscosity;
+          /**
+           *  This variable is read from the parameter file through a parameter called 'Maximum viscosity'.
+           */
           std::vector<double> maximum_viscosity;
 
           /**
            * Enumeration for selecting which type of viscous flow law to use.
-           * Select between diffusion, dislocation, frank_kamenetskii or composite.
+           * Select between diffusion, dislocation, frank_kamenetskii, composite,
+           * or the minimum of the diffusion and dislocation viscosities.
            */
           enum ViscosityScheme
           {
             diffusion,
             dislocation,
             frank_kamenetskii,
-            composite
-          } viscous_flow_law;
+            composite,
+            minimum_diffusion_dislocation
+          };
+          /**
+           *  This variable is read from the parameter file through a parameter called 'Viscous flow law'.
+           */
+          ViscosityScheme viscous_flow_law;
 
           /**
            * Enumeration for selecting which type of yield mechanism to use.
@@ -262,12 +362,17 @@ namespace aspect
           {
             stress_limiter,
             drucker_prager
-          } yield_mechanism;
+          };
+          /**
+           *  This variable is read from the parameter file through a parameter called 'Yield mechanism'.
+           */
+          YieldScheme yield_mechanism;
 
           /**
            * Whether to allow negative pressures to be used in the computation
            * of plastic yield stresses and viscosities. If false, the minimum
            * pressure in the plasticity formulation will be set to zero.
+           * This variable is read from the parameter file through a parameter called 'Allow negative pressures in plasticity'.
            */
           bool allow_negative_pressures_in_plasticity;
 
@@ -278,17 +383,30 @@ namespace aspect
            * large negative value arising from large negative dynamic pressure,
            * resulting in solver convergence issue and in some cases a viscosity
            * of zero.
+           * This variable is read from the parameter file through a parameter called 'Use adiabatic pressure in creep viscosity'.
            */
           bool use_adiabatic_pressure_in_creep;
 
           /**
+           * Whether to use the adiabatic pressure instead of the full pressure
+           * when calculating the plastic yield stress.
+           * This may be helpful in models where the full pressure has
+           * large variations resulting in solver convergence issues.
+           * Be aware that this setting will change the plastic shear band angle.
+           * This variable is read from the parameter file through a parameter called 'Use adiabatic pressure in plasticity'.
+           */
+          bool use_adiabatic_pressure_in_plasticity;
+
+          /**
            * List of exponents controlling the behavior of the stress limiter
            * yielding mechanism.
+           * This variable is read from the parameter file through a parameter called 'Stress limiter exponents'.
            */
           std::vector<double> exponents_stress_limiter;
 
           /**
            * Temperature gradient added to temperature used in the flow law.
+           * This variable is read from the parameter file through a parameter called 'Adiabat temperature gradient for viscosity'.
            */
           double adiabatic_temperature_gradient_for_viscosity;
 
@@ -300,7 +418,20 @@ namespace aspect
           std::unique_ptr<Rheology::FrankKamenetskii<dim>> frank_kamenetskii_rheology;
 
           /**
+           * Whether to include grain boundary sliding in the constitutive formulation.
+           * This variable is read from the parameter file through a parameter called 'Include Grain Boundary Sliding'.
+           */
+          bool use_grain_boundary_sliding;
+
+          /**
+            Object for computing grain boundary sliding viscosities.
+           */
+          std::unique_ptr<Rheology::GrainBoundarySliding<dim>> grain_boundary_sliding_rheology;
+
+          /**
            * Whether to include Peierls creep in the constitutive formulation.
+           *
+           * This variable is read from the parameter file through a parameter called 'Include Peierls creep'.
            */
           bool use_peierls_creep;
 
@@ -316,15 +447,15 @@ namespace aspect
            */
           Rheology::ConstantViscosityPrefactors<dim> constant_viscosity_prefactors;
 
+          /**
+           * Object for computing the viscosity multiplied by a given prefactor term.
+           */
+          Rheology::CompositionalViscosityPrefactors<dim> compositional_viscosity_prefactors;
+
           /*
            * Object for computing plastic stresses, viscosities, and additional outputs
            */
           Rheology::DruckerPrager<dim> drucker_prager_plasticity;
-
-          /*
-           * Input parameters for the drucker prager plasticity.
-           */
-          Rheology::DruckerPragerParameters drucker_prager_parameters;
 
       };
     }

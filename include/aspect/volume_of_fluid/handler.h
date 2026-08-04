@@ -28,8 +28,6 @@
 
 #include <boost/serialization/map.hpp>
 
-using namespace dealii;
-
 namespace aspect
 {
   /**
@@ -122,14 +120,14 @@ namespace aspect
        * approximation that is bilinear on the unit cell and write that field
        * to the specified AdvectionField
        */
-      void update_volume_of_fluid_composition (const typename Simulator<dim>::AdvectionField &composition_field,
+      void update_volume_of_fluid_composition (const AdvectionField &composition_field,
                                                const VolumeOfFluidField<dim> &volume_of_fluid_field,
                                                LinearAlgebra::BlockVector &solution);
 
       /**
        * Do single timestep update, includes logic for doing Strang split update
        */
-      void do_volume_of_fluid_update (const typename Simulator<dim>::AdvectionField &advection_field);
+      void do_volume_of_fluid_update (const AdvectionField &advection_field);
 
       /**
        * Assemble matrix and RHS for the specified field and dimension
@@ -220,6 +218,23 @@ namespace aspect
 
       friend class Simulator<dim>;
   };
+
+
+  // Declare the existence of explicit specializations
+  template <>
+  void VolumeOfFluidHandler<2>::update_volume_of_fluid_normals (const VolumeOfFluidField<2> &field,
+                                                                LinearAlgebra::BlockVector &solution);
+  template <>
+  void VolumeOfFluidHandler<3>::update_volume_of_fluid_normals (const VolumeOfFluidField<3> &/*field*/,
+                                                                LinearAlgebra::BlockVector &/*solution*/);
+  template <>
+  void VolumeOfFluidHandler<2>::update_volume_of_fluid_composition (const typename Simulator<2>::AdvectionField &composition_field,
+                                                                    const VolumeOfFluidField<2> &volume_of_fluid_field,
+                                                                    LinearAlgebra::BlockVector &solution);
+  template <>
+  void VolumeOfFluidHandler<3>::update_volume_of_fluid_composition (const Simulator<3>::AdvectionField &/*composition_field*/,
+                                                                    const VolumeOfFluidField<3> &/*volume_of_fluid_field*/,
+                                                                    LinearAlgebra::BlockVector &/*solution*/);
 
 }
 

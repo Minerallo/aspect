@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -38,47 +38,15 @@ namespace aspect
    */
   namespace BoundaryTraction
   {
-    using namespace dealii;
-
     /**
      * A base class for parameterizations of traction boundary conditions.
      *
      * @ingroup BoundaryTractions
      */
     template <int dim>
-    class Interface
+    class Interface : public Plugins::InterfaceBase
     {
       public:
-        /**
-         * Destructor. Made virtual to enforce that derived classes also have
-         * virtual destructors.
-         */
-        virtual ~Interface() = default;
-
-        /**
-         * Initialization function. This function is called once at the
-         * beginning of the program after parse_parameters is run and after the
-         * SimulatorAccess (if applicable) is initialized.
-         */
-        virtual
-        void
-        initialize ();
-
-        /**
-         * A function that is called at the beginning of each time step.
-         * The default implementation of the function does nothing, but
-         * derived classes that need more elaborate setups for a given time
-         * step may overload the function.
-         *
-         * The point of this function is to allow complex boundary traction
-         * models to do an initialization step once at the beginning of each
-         * time step. An example would be a model that needs to call an
-         * external program to compute stresses for a set of plates.
-         */
-        virtual
-        void
-        update ();
-
         /**
          * Return the traction that is to hold at a particular position on
          * the boundary of the domain.
@@ -98,61 +66,16 @@ namespace aspect
         boundary_traction (const types::boundary_id boundary_indicator,
                            const Point<dim> &position,
                            const Tensor<1,dim> &normal_vector) const = 0;
-
-        /**
-         * Declare the parameters this class takes through input files. The
-         * default implementation of this function does not describe any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
-         */
-        static
-        void
-        declare_parameters (ParameterHandler &prm);
-
-        /**
-         * Read the parameters this class declares from the parameter file.
-         * The default implementation of this function does not read any
-         * parameters. Consequently, derived classes do not have to overload
-         * this function if they do not take any runtime parameters.
-         */
-        virtual
-        void
-        parse_parameters (ParameterHandler &prm);
-
-      protected:
-        /**
-         * Pointer to the geometry object in use.
-         */
-        const GeometryModel::Interface<dim> *geometry_model;
     };
 
     template <int dim>
-    class Manager : public ::aspect::SimulatorAccess<dim>
+    class Manager : public Plugins::ManagerBase<Interface<dim>>, public SimulatorAccess<dim>
     {
       public:
         /**
-         * Destructor. Made virtual since this class has virtual member
-         * functions.
-         */
-        ~Manager () override;
-
-        /**
-         * A function that is called at the beginning of each time step and
-         * calls the corresponding functions of all created plugins.
-         *
-         * The point of this function is to allow complex boundary traction
-         * models to do an initialization step once at the beginning of each
-         * time step. An example would be a model that needs to call an
-         * external program to compute the traction change at a boundary.
-         */
-        virtual
-        void
-        update ();
-
-        /**
          * A function that calls the boundary_traction functions of all the
-         * individual boundary traction objects and uses the stored operators
-         * to combine them.
+         * individual boundary traction objects that are active for boundary id
+         * @p boundary_indicator and uses the stored operators to combine them.
          */
         Tensor<1,dim>
         boundary_traction (const types::boundary_id boundary_indicator,
@@ -160,17 +83,21 @@ namespace aspect
                            const Tensor<1,dim> &normal_vector) const;
 
         /**
-           * Return the names of all prescribed boundary traction models currently
-           * used in the computation as specified in the input file. The function
-           * returns a map between a boundary identifier and a pair. The
-           * first part of the pair is a string that represents the prescribed
-           * traction components on this boundary (e.g. y, xz, or xyz) and the
-           * second part is a vector of strings that represent the names of
-           * boundary traction plugins for this boundary.
-           * If there are no prescribed boundary traction plugins
-           * for a particular boundary, this boundary identifier will not appear
-           * in the map.
-           */
+         * Return the names of all prescribed boundary traction models currently
+         * used in the computation as specified in the input file. The function
+         * returns a map between a boundary identifier and a pair. The
+         * first part of the pair is a string that represents the prescribed
+         * traction components on this boundary (e.g. y, xz, or xyz) and the
+         * second part is a vector of strings that represent the names of
+         * boundary traction plugins for this boundary.
+         * If there are no prescribed boundary traction plugins
+         * for a particular boundary, this boundary identifier will not appear
+         * in the map.
+         *
+         * @deprecated This function will be removed. Use the function
+         * get_active_plugin_names() of the base class ManagerBase instead.
+         */
+        DEAL_II_DEPRECATED
         const std::map<types::boundary_id, std::pair<std::string,std::vector<std::string>>> &
         get_active_boundary_traction_names () const;
 
@@ -182,9 +109,42 @@ namespace aspect
          * boundary models for this boundary. If there are no prescribed
          * boundary traction plugins for a particular boundary this boundary
          * identifier will not appear in the map.
+         *
+         * @deprecated This function has been removed. Use the function
+         * get_active_plugins() of the base class ManagerBase instead.
          */
+        DEAL_II_DEPRECATED
         const std::map<types::boundary_id,std::vector<std::unique_ptr<BoundaryTraction::Interface<dim>>>> &
         get_active_boundary_traction_conditions () const;
+
+        /**
+         * Return a set of boundary indicators for which boundary
+         * tractions are prescribed.
+         */
+        const std::set<types::boundary_id> &
+        get_prescribed_boundary_traction_indicators () const;
+
+        /**
+         * Return a list of boundary indicators that indicate for
+         * each active plugin which boundary id
+         * it is responsible for. The list of active plugins can be
+         * requested by calling get_active_plugins().
+         */
+        const std::vector<types::boundary_id> &
+        get_active_plugin_boundary_indicators() const;
+
+        /**
+         * Return a component mask that indicates for the given
+         * @p boundary_id which traction components are prescribed by
+         * this manager class. All plugins that are responsible
+         * for this boundary use the same component mask.
+         * The list of plugin objects can be
+         * requested by calling get_active_plugins() and the
+         * list of boundaries they are responsible for is
+         * returned by get_active_plugin_boundary_indicators().
+         */
+        ComponentMask
+        get_component_mask(const types::boundary_id boundary_id) const;
 
         /**
          * Declare the parameters of all known boundary traction plugins, as
@@ -200,7 +160,7 @@ namespace aspect
          * then let these objects read their parameters as well.
          */
         void
-        parse_parameters (ParameterHandler &prm);
+        parse_parameters (ParameterHandler &prm) override;
 
         /**
          * For the current plugin subsystem, write a connection graph of all of the
@@ -226,21 +186,21 @@ namespace aspect
                         << "> among the names of registered boundary traction objects.");
 
         /**
-        * Register a traction boundary conditions model so that it can be
-        * selected from the parameter file.
-        *
-        * @param name A string that identifies the traction boundary conditions
-        * model
-        * @param description A text description of what this model does and that
-        * will be listed in the documentation of the parameter file.
-        * @param declare_parameters_function A pointer to a function that can be
-        * used to declare the parameters that this traction boundary conditions
-        * model wants to read from input files.
-        * @param factory_function A pointer to a function that can create an
-        * object of this traction boundary conditions model.
-        *
-        * @ingroup BoundaryTractions
-        */
+         * Register a traction boundary conditions model so that it can be
+         * selected from the parameter file.
+         *
+         * @param name A string that identifies the traction boundary conditions
+         * model
+         * @param description A text description of what this model does and that
+         * will be listed in the documentation of the parameter file.
+         * @param declare_parameters_function A pointer to a function that can be
+         * used to declare the parameters that this traction boundary conditions
+         * model wants to read from input files.
+         * @param factory_function A pointer to a function that can create an
+         * object of this traction boundary conditions model.
+         *
+         * @ingroup BoundaryTractions
+         */
         static
         void
         register_boundary_traction (const std::string &name,
@@ -250,8 +210,36 @@ namespace aspect
 
       private:
         /**
+         * A list of boundary indicators that indicate for
+         * each plugin in the list of plugin_objects which boundary id
+         * it is responsible for. By default each plugin
+         * is active for all boundaries, but this list
+         * can be modified by derived classes to limit the application
+         * of plugins to specific boundaries.
+         */
+        std::vector<types::boundary_id> boundary_indicators;
+
+        /**
+         * A list of boundary indicators that indicate for
+         * each plugin in the list of plugin_objects which components
+         * it is responsible for. By default each plugin
+         * is active for all components, but this list
+         * can be modified by derived classes to limit the application
+         * of plugins to specific boundaries.
+         */
+        std::vector<ComponentMask> component_masks;
+
+        /**
+         * A set of boundary indicators, on which tractions are prescribed.
+         */
+        std::set<types::boundary_id> prescribed_traction_boundary_indicators;
+
+        /**
          * A list of boundary traction objects that have been requested in the
          * parameter file.
+         *
+         * @deprecated This variable is no longer used, but needed to issue a proper
+         * error message in the function get_active_boundary_traction_conditions().
          */
         std::map<types::boundary_id,std::vector<std::unique_ptr<BoundaryTraction::Interface<dim>>>> boundary_traction_objects;
 
@@ -262,6 +250,11 @@ namespace aspect
          * mapped to one of the plugins of traction boundary conditions (e.g.
          * "function"). If the components string is empty, it is assumed the
          * plugins are used for all components.
+         *
+         * @deprecated Remove this variable when the deprecated functions
+         * get_active_boundary_traction_names and
+         * get_active_boundary_traction_conditions are removed. Use the base class
+         * variable plugin_names instead.
          */
         std::map<types::boundary_id, std::pair<std::string,std::vector<std::string>>> boundary_traction_indicators;
 

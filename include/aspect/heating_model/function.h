@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2014 - 2019 by the authors of the ASPECT code.
+  Copyright (C) 2014 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -31,8 +31,6 @@ namespace aspect
 {
   namespace HeatingModel
   {
-    using namespace dealii;
-
     /**
      * A class that implements a heating model based on a functional
      * description provided in the input file.
@@ -66,6 +64,13 @@ namespace aspect
         update () override;
 
         /**
+         * Specify which material model outputs the heating model requires
+         * for computing the heating terms.
+         */
+        MaterialModel::MaterialProperties::Property
+        get_required_properties () const override;
+
+        /**
          * Declare the parameters this class takes through input files.
          */
         static
@@ -83,6 +88,14 @@ namespace aspect
          * A function object representing the components of the velocity.
          */
         Functions::ParsedFunction<dim> heating_model_function;
+
+        /**
+         * The coordinate representation to evaluate the function. Possible
+         * choices are depth, cartesian and spherical.
+         *
+         * This variable is read from the parameter file through a parameter called 'Coordinate system'.
+         */
+        Utilities::Coordinates::CoordinateSystem coordinate_system;
     };
   }
 }

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2023 by the authors of the ASPECT code.
+  Copyright (C) 2023 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -27,15 +27,11 @@
 #include <aspect/material_model/grain_size.h>
 #include <aspect/simulator_access.h>
 #include <aspect/material_model/rheology/ascii_depth_profile.h>
-#include <array>
 
 namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
-
     /**
      * A material model to set up mantle flow models based on
      * an input tomography model and a temperature model.
@@ -69,7 +65,7 @@ namespace aspect
      * "High-resolution mantle flow models reveal importance of plate boundary geometry and slab pull
      * forces on generating tectonic plate motions", J. Geophys. Research.:Solid Earth,
      * 128, e2022JB025877.
-
+     *
      * @ingroup MaterialModels
      */
     template <int dim>
@@ -106,6 +102,13 @@ namespace aspect
          */
         double
         get_depth_of_base_of_uppermost_mantle () const;
+
+        /**
+         * Return the lithosphere thickness to be used to compute material properties in
+         * the model.
+         */
+        double
+        get_lithosphere_thickness (const Point<dim> &position) const;
 
         /**
          * Compute the scaling factors for each depth layer such that the laterally
@@ -149,6 +152,7 @@ namespace aspect
 
       protected:
         double reference_rho;
+        double reference_T;
         double thermal_alpha;
         double reference_specific_heat;
 
@@ -232,6 +236,46 @@ namespace aspect
          * The column indices of the density scaling column in the ascii profile file.
          */
         unsigned int temperature_scaling_index;
+
+        /**
+         * The compositional field index for the Vs anomaly.
+         */
+        unsigned int vs_anomaly_index;
+
+        /**
+         * The boundary indicator for the top boundary.
+         */
+        unsigned int surface_boundary_id;
+
+        /**
+         * The compositional field index for the continental cratons.
+         */
+        unsigned int craton_index;
+
+        /**
+         * The compositional field index for the grain size.
+         */
+        unsigned int grain_size_index;
+
+        /**
+         * The compositional field index for mid-ocean ridges.
+         */
+        unsigned int ridge_index;
+
+        /**
+         * The compositional field index for subduction zone trenches.
+         */
+        unsigned int trench_index;
+
+        /**
+         * The compositional field index for faults.
+         */
+        unsigned int fault_index;
+
+        /**
+         * The compositional field index for slabs.
+         */
+        unsigned int slab_index;
 
         /**
          * An object of ascii data boundary to input crustal depths.
@@ -339,6 +383,11 @@ namespace aspect
                                     const std::vector<double> &compositional_fields,
                                     const Point<dim> &position) const;
 
+        double specific_heat (const double temperature,
+                              const double pressure,
+                              const std::vector<double> &compositional_fields,
+                              const Point<dim> &position) const;
+
         /**
          * Returns the p-wave velocity as calculated by HeFESTo.
          */
@@ -400,25 +449,25 @@ namespace aspect
         /**
          * Parameter value that determines whether to read the viscosity with depth
          * from an ascii data file.
-        */
+         */
         bool use_depth_dependent_viscosity;
 
         /**
          * Parameter value that determines whether to read the density scaling with depth
          * from an ascii data file.
-        */
+         */
         bool use_depth_dependent_rho_vs;
 
         /**
          * Parameter value that determines whether to read the thermal expansivity
          * from an ascii data file.
-        */
+         */
         bool use_depth_dependent_thermal_expansivity;
 
         /**
          * Parameter value that determines whether to read the temperature scaling with depth
          * from an ascii data file.
-        */
+         */
         bool use_depth_dependent_dT_vs;
 
         /**
@@ -426,6 +475,25 @@ namespace aspect
          * compositional field.
          */
         bool use_faults;
+
+        /**
+         * Parameter that determines if we want to input slabs from the slab2 model (Hayes et al.,2018) as an
+         * ascii boundary with columns representing the slab depths and thickness.
+         * Hayes, G. P., Moore, G. L., Portner, D. E., Hearne, M., Flamme, H., Furtney, M., & Smoczyk, G. M. (2018).
+         * Slab2, a comprehensive subduction zone geometry model. Science, 362(6410), 58-61.
+         */
+        bool use_slab2_database;
+
+        /**
+         * Parameter that determines the temperature of slabs
+         */
+        double slab_temperature_anomaly;
+
+        /**
+         * Parameter that determines if we want to scale the cold regions, i.e., slabs
+         * or cratons, in the asthenosphere.
+         */
+        bool scale_cold_regions_in_asthenosphere;
 
         /**
          * Parameter that determines the viscosity of faults or plate boundaries.
@@ -453,10 +521,32 @@ namespace aspect
         double trench_viscosity;
 
         /**
+        * Parameter that determines the thickness of weak zones above the slabs
+        * in the slab2 model.
+        */
+        double trench_weak_zone_thickness;
+
+        /**
+        * Parameter that determines the depth to the top of the mid mantle layer
+        */
+        double depth_to_top_of_mid_mantle_viscosity_layer;
+
+        /**
+        * Parameter that determines the depth to the base of the mid mantle layer
+        */
+        double depth_to_base_of_mid_mantle_viscosity_layer;
+
+        /**
          * Parameter that determines the asthenosphere viscosity. By default, use
          * the value from the Steinberger & Calderwood reference viscosity profile.
          */
         double asthenosphere_viscosity;
+
+        /**
+         * Parameter that determines the mid mantle viscosity in models with slab2. By default, use
+         * a value of 1e20.
+         */
+        double mid_mantle_viscosity;
 
         /**
          * Parameter that determines if we want to use viscous and neutrally buoyant cratons as
@@ -470,11 +560,9 @@ namespace aspect
         double craton_viscosity;
 
         /**
-         * Approximate lithosphere thickness used to separate the regions of
-         * temperature derived from seismic tomography and linear temperature
-         * gradient.
-        */
-        double lithosphere_thickness;
+         * Parameter that determines the viscosity for cratons.
+         */
+        double slab_viscosity;
 
         /**
          * Parameter used to describe the uppermost mantle based on Tutu (2018).
@@ -499,12 +587,20 @@ namespace aspect
         std::vector<std::shared_ptr<MaterialModel::MaterialUtilities::Lookup::MaterialLookup>> material_lookup;
 
         /**
-        * A shared pointer to the initial temperature object
-        * that ensures that the current object can continue
-        * to access the initial composition object beyond the
-        * first time step.
-        */
+         * A shared pointer to the initial temperature object
+         * that ensures that the current object can continue
+         * to access the initial temperature object beyond the
+         * first time step.
+         */
         std::shared_ptr<const aspect::InitialTemperature::Manager<dim>> initial_temperature_manager;
+
+        /**
+         * A shared pointer to the initial composition object
+         * that ensures that the current object can continue
+         * to access the initial composition object beyond the
+         * first time step.
+         */
+        std::shared_ptr<const aspect::InitialComposition::Manager<dim>> initial_composition_manager;
     };
 
   }

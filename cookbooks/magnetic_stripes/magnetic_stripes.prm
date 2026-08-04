@@ -10,7 +10,7 @@ set Additional shared libraries = ./libmagnetic_stripes.so
 set Dimension                              = 2
 set Start time                             = 0
 set End time                               = 83.5e6
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set Output directory                       = output-magnetic-stripes
 
 subsection Discretization
@@ -107,7 +107,7 @@ end
 
 subsection Boundary composition model
   set Fixed composition boundary indicators = bottom
-  set Model name = initial composition
+  set List of model names = initial composition
 end
 
 subsection Material model
@@ -236,6 +236,10 @@ subsection Postprocess
 
   subsection Visualization
     set Time between graphical output = 1e5
-    set List of output variables = density, heat flux map, vertical heat flux
+    set List of output variables = material properties, heat flux map, vertical heat flux
+
+    subsection Material properties
+      set List of material properties = density
+    end
   end
 end

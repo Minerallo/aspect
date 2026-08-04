@@ -21,7 +21,7 @@
 
 #include <aspect/postprocess/memory_statistics.h>
 #include <aspect/simulator.h>
-#include <aspect/stokes_matrix_free.h>
+#include <aspect/simulator/solver/stokes_matrix_free.h>
 
 
 namespace aspect
@@ -35,35 +35,29 @@ namespace aspect
       // memory consumption:
       const double mb = 1024*1024; // convert from bytes into mb
 
-      statistics.add_value ("System matrix memory consumption (MB) ", this->get_system_matrix().memory_consumption()/mb);
-      statistics.add_value ("Triangulation memory consumption (MB) ", this->get_triangulation().memory_consumption()/mb);
-      statistics.add_value ("p4est memory consumption (MB) ", this->get_triangulation().memory_consumption_p4est()/mb);
+      statistics.add_value ("System matrix memory consumption (MB)", this->get_system_matrix().memory_consumption()/mb);
+      statistics.add_value ("Triangulation memory consumption (MB)", this->get_triangulation().memory_consumption()/mb);
+      statistics.add_value ("p4est memory consumption (MB)", this->get_triangulation().memory_consumption_p4est()/mb);
 
       double dof_handler_mem = this->get_dof_handler().memory_consumption();
       double constraints_mem = this->get_current_constraints().memory_consumption();
       if (this->is_stokes_matrix_free())
         {
-          dof_handler_mem += this->get_stokes_matrix_free().get_dof_handler_v().memory_consumption()
-                             + this->get_stokes_matrix_free().get_dof_handler_p().memory_consumption();
-
-          dof_handler_mem  += this->get_stokes_matrix_free().get_dof_handler_projection().memory_consumption();
-
-          constraints_mem += this->get_stokes_matrix_free().get_constraints_v().memory_consumption()
-                             + this->get_stokes_matrix_free().get_constraints_p().memory_consumption();
+          dof_handler_mem += this->get_stokes_matrix_free().get_dof_handler_memory_consumption();
+          constraints_mem += this->get_stokes_matrix_free().get_constraint_memory_consumption();
         }
-      statistics.add_value ("DoFHandler memory consumption (MB) ", dof_handler_mem/mb);
-      statistics.add_value ("AffineConstraints<double> memory consumption (MB) ", constraints_mem/mb);
+      statistics.add_value ("DoFHandler memory consumption (MB)", dof_handler_mem/mb);
+      statistics.add_value ("AffineConstraints<double> memory consumption (MB)", constraints_mem/mb);
 
-      statistics.add_value ("Solution vector memory consumption (MB) ", this->get_solution().memory_consumption()/mb);
+      statistics.add_value ("Solution vector memory consumption (MB)", this->get_solution().memory_consumption()/mb);
 
       if (this->is_stokes_matrix_free())
         {
-          const double mg_transfer_mem = this->get_stokes_matrix_free().get_mg_transfer_A().memory_consumption()
-                                         + this->get_stokes_matrix_free().get_mg_transfer_S().memory_consumption();
-          statistics.add_value ("MGTransfer memory consumption (MB) ", mg_transfer_mem/mb);
+          const double mg_transfer_mem = this->get_stokes_matrix_free().get_mg_transfer_memory_consumption();
+          statistics.add_value ("MGTransfer memory consumption (MB)", mg_transfer_mem/mb);
 
           const double cell_data_mem = this->get_stokes_matrix_free().get_cell_data_memory_consumption();
-          statistics.add_value ("Matrix-free cell data memory consumption (MB) ", cell_data_mem/mb);
+          statistics.add_value ("Matrix-free cell data memory consumption (MB)", cell_data_mem/mb);
         }
 
       if (output_vmpeak)
@@ -72,7 +66,7 @@ namespace aspect
           dealii::Utilities::System::MemoryStats stats;
           dealii::Utilities::System::get_memory_stats(stats);
           const double max_vmpeak = dealii::Utilities::MPI::max(stats.VmPeak/1024.0, this->get_mpi_communicator());
-          statistics.add_value ("Peak virtual memory usage (VmPeak) (MB) ", max_vmpeak);
+          statistics.add_value ("Peak virtual memory usage (VmPeak) (MB)", max_vmpeak);
         }
 
       std::ostringstream output;

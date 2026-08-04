@@ -24,13 +24,12 @@
 
 
 #include <aspect/adiabatic_conditions/interface.h>
+#include <aspect/initial_composition/interface.h>
 
 namespace aspect
 {
   namespace AdiabaticConditions
   {
-    using namespace dealii;
-
     /**
      * A model in which the adiabatic profile is
      * calculated by solving the hydrostatic equations for
@@ -110,11 +109,15 @@ namespace aspect
 
         /**
          * Number of points at which we compute the adiabatic values.
+         *
+         * This variable is read from the parameter file through a parameter called 'Number of points'.
          */
         unsigned int n_points;
 
         /**
          * Starting entropy for the profile.
+         *
+         * This variable is read from the parameter file through a parameter called 'Surface entropy'.
          */
         double surface_entropy;
 
@@ -132,6 +135,14 @@ namespace aspect
          * with regard to the depth coordinate.
          */
         double delta_z;
+
+        /**
+         * A shared pointer to the initial composition object
+         * that ensures that the current object can continue
+         * to access the initial composition object beyond the
+         * first time step.
+         */
+        std::shared_ptr<const aspect::InitialComposition::Manager<dim>> initial_composition_manager;
 
         /**
          * Internal helper function. Returns the reference property at a

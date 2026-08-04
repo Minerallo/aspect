@@ -1,3 +1,11 @@
+```{tags}
+category:cookbook
+feature:2d
+feature:cartesian
+feature:compositional-fields
+```
+
+(sec:cookbooks:composition-active)=
 # The active case.
 
 The next step, of course, is to make the flow actually depend on the

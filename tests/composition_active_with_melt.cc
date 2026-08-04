@@ -29,8 +29,6 @@
 
 namespace aspect
 {
-  using namespace dealii;
-
   template <int dim>
   class SimpleWithMelt:
     public MaterialModel::MeltInterface<dim>
@@ -83,7 +81,8 @@ namespace aspect
           }
 
         // fill melt outputs if they exist
-        aspect::MaterialModel::MeltOutputs<dim> *melt_out = out.template get_additional_output<aspect::MaterialModel::MeltOutputs<dim>>();
+        const std::shared_ptr<aspect::MaterialModel::MeltOutputs<dim>> melt_out
+          = out.template get_additional_output_object<aspect::MaterialModel::MeltOutputs<dim>>();
 
         if (melt_out != nullptr)
           {
@@ -122,7 +121,7 @@ namespace aspect
                            "fields, then the density only depends on the first one in such a way that "
                            "the density has an additional term of the kind $+\\Delta \\rho \\; c_1(\\mathbf x)$. "
                            "This parameter describes the value of $\\Delta \\rho$. "
-                           "Units: \\si{\\kilogram\\per\\meter\\cubed}/unit change in composition.");
+                           "Units: $\\frac{\\text{kg}}{\\text{m}^3}$/unit change in composition.");
       }
       prm.leave_subsection();
     }

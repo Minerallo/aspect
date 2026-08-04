@@ -11,7 +11,7 @@ set Dimension                              = 2
 # There are several global variables that have to do with what
 # time system we want to work in and what the end time is. We
 # also designate an output directory.
-set Use years in output instead of seconds = true
+set Use years instead of seconds           = true
 set End time                               = 1.0e8
 
 #set Output directory                       = output
@@ -57,7 +57,7 @@ subsection Initial temperature model
 
   subsection Function
     set Variable names      = x,z
-    set Function constants  = p=10.0, L=3.0e6, pi=3.1415926536, k=1
+    set Function constants  = p=10.0, L=3.0e6, k=1
     set Function expression = 2773.0 - z/L*(2500.0) + p*cos(k*pi*x/L)*sin(k*pi*z/L/2.0)
   end
 end

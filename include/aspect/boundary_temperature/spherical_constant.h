@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2019 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -43,8 +43,8 @@ namespace aspect
     {
       public:
         /**
-        * Initialize some variables.
-        */
+         * Initialize some variables.
+         */
         void
         initialize() override;
 
@@ -92,8 +92,16 @@ namespace aspect
       private:
         /**
          * Temperatures at the inner and outer boundaries.
+         *
+         * This variable is read from the parameter file through a parameter called 'Inner temperature'.
          */
         double inner_temperature;
+
+        /**
+         * Temperatures at the inner and outer boundaries.
+         *
+         * This variable is read from the parameter file through a parameter called 'Outer temperature'.
+         */
         double outer_temperature;
 
         /**

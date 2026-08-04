@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -36,7 +36,7 @@ namespace aspect
     {
       indicators = 0;
 
-//TODO: if the density doesn't actually depend on the solution
+      //TODO: if the density doesn't actually depend on the solution
       // then we can get away with simply interpolating it spatially
 
 

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -30,8 +30,6 @@ namespace aspect
 {
   namespace GeometryModel
   {
-    using namespace dealii;
-
     /**
      * A class that describes a box geometry of certain width, height, and
      * depth (in 3d), and, possibly, topography.
@@ -46,18 +44,6 @@ namespace aspect
          * the SimulatorAccess (if applicable) is initialized.
          */
         void initialize () override;
-
-        /**
-         * Add initial topography to the mesh.
-         */
-        void topography (typename parallel::distributed::Triangulation<dim> &grid) const;
-
-        /**
-         * Relocate the vertical coordinate of the given point based on
-         * the topography at the surface specified by the initial topography
-         * model.
-         */
-        Point<dim> add_topography (const Point<dim> &x_y_z) const;
 
         /**
          * Generate a coarse mesh for the geometry described by this class.
@@ -92,7 +78,6 @@ namespace aspect
          * We return 1/100th of the diameter of the box.
          */
         double length_scale () const override;
-
 
         /**
          * Return the depth that corresponds to the given
@@ -223,28 +208,46 @@ namespace aspect
         parse_parameters (ParameterHandler &prm) override;
 
       private:
+
         /**
-         * A pointer to the initial topography model.
+         * Add initial topography to the mesh.
          */
-        InitialTopographyModel::Interface<dim> *topo_model;
+        void add_topography_to_mesh (typename parallel::distributed::Triangulation<dim> &grid) const;
+
+        /**
+         * Relocate the vertical coordinate of the given point based on
+         * the topography at the surface specified by the initial topography
+         * model.
+         */
+        Point<dim> add_topography_to_point (const Point<dim> &x_y_z) const;
 
         /**
          * Extent of the box in x-, y-, and z-direction (in 3d).
+         *
+         * This variable is read from the parameter file through parameters called
+         * 'X extent', 'Y extent', and 'Z extent'.
          */
         Point<dim> extents;
 
         /**
          * Origin of the box in x, y, and z (in 3d) coordinates.
+         * This variable is read from the parameter file through parameters called
+         * 'Box origin X coordinate', 'Box origin Y coordinate', and 'Box origin Z coordinate'.
          */
         Point<dim> box_origin;
 
         /**
          * Flag whether the box is periodic in the x-, y-, and z-direction.
+         * This variable is read from the parameter file through parameters called
+         * 'X periodic', 'Y periodic', 'Z periodic'.
          */
         std::array<bool, dim> periodic;
 
         /**
          * The number of cells in each coordinate direction.
+         *
+         * This variable is read from the parameter file through parameters called
+         * 'X repetitions', 'Y repetitions', and 'Z repetitions'.
          */
         std::array<unsigned int, dim> repetitions;
     };

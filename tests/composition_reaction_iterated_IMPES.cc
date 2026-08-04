@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -32,8 +32,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     template <int dim>
     class IteratedReaction : public MaterialModel::CompositionReaction<dim>
     {
@@ -85,7 +83,7 @@ namespace aspect
                                    "iterated reaction",
                                    "A simple material model that is like the "
                                    "'composition reaction' model, but requires an "
-                                   "iterated IMPES scheme to converge to the correct "
+                                   "iterated Advection and Stokes scheme to converge to the correct "
                                    "solution.")
   }
 }

@@ -1,9 +1,10 @@
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 3.13.4)
 
 project(WorldBuilder C CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # SWIG: use standard target name.
 if(POLICY CMP0078)
@@ -93,20 +94,23 @@ else()
   message(STATUS "SWIG was not found, disabling python wrapper compilation.")
 endif()
 
+# Check if MPI is requested
+set(USE_MPI OFF CACHE BOOL "Whether or not to enable MPI when compiling the world builder. MPI is optional.")
 
-# Find MPI if available.
-find_package(MPI)
+if(USE_MPI)
+  # Find MPI if available.
+  find_package(MPI)
 
-if(MPI_FOUND AND ${CMAKE_VERSION} VERSION_GREATER "3.9.0" )
-  message(STATUS "MPI found.")
-  set(USE_MPI ON CACHE BOOL "Whether or not to enable MPI when compiling the world builder.")
-else()
-  message(STATUS "MPI not found or cmake version lower than 3.9.0.")
-  set(USE_MPI OFF CACHE BOOL "Whether or not to enable MPI when compiling the world builder." FORCE)
+  if(MPI_FOUND AND ${CMAKE_VERSION} VERSION_GREATER "3.9.0" )
+    message(STATUS "MPI found.")
+  else()
+    message(STATUS "MPI not found or cmake version lower than 3.9.0.")
+    set(USE_MPI OFF CACHE BOOL "Whether or not to enable MPI when compiling the world builder. MPI is optional." FORCE)
+  endif()
 endif()
 
 if(USE_MPI)
-  message(STATUS "Using MPI.")
+  message(STATUS "Using MPI found in: ${MPI_INCLUDE_PATH}")
   include_directories(${MPI_INCLUDE_PATH})
 else()
   message(STATUS "Not using MPI.")
@@ -114,9 +118,9 @@ endif()
 
 
 #find python libs
-SET(WB_ENABLE_PYTHON ON CACHE BOOL "Whether or not to enable Python when compiling the world builder.") 
+SET(WB_ENABLE_PYTHON ON CACHE BOOL "Whether or not to enable Python when compiling the world builder.")
 if(${WB_ENABLE_PYTHON})
-  if(${CMAKE_VERSION} VERSION_LESS "3.12.0") 
+  if(${CMAKE_VERSION} VERSION_LESS "3.12.0")
     FIND_PACKAGE(PythonLibs 3.0)
     FIND_PACKAGE(PythonInterp 3.0)
 
@@ -203,7 +207,7 @@ endforeach( OUTPUTCONFIG CMAKE_CONFIGURATION_TYPES )
 if(MAKE_PYTHON_WRAPPER)
   set(CMAKE_SWIG_OUTDIR ${PROJECT_BINARY_DIR}/lib)
 endif()
-if(CMAKE_Fortran_COMPILER)
+if(WB_MAKE_FORTRAN_WRAPPER)
   set(CMAKE_Fortran_MODULE_DIRECTORY ${PROJECT_BINARY_DIR}/mod)
 endif()
 
@@ -230,7 +234,7 @@ include_directories("include/" "tests/" "${CMAKE_CURRENT_BINARY_DIR}/include")
 # Add source directory
 file(GLOB_RECURSE SOURCES_CXX "source/world_builder/*.cc" "${PROJECT_BINARY_DIR}/source/world_builder/*.cc")
 
-if(CMAKE_Fortran_COMPILER)
+if(WB_MAKE_FORTRAN_WRAPPER)
   file(GLOB_RECURSE SOURCES_FORTRAN "source/world_builder/*.f90")
 endif()
 
@@ -257,6 +261,7 @@ if(NOT DEFINED WB_TARGET)
   set(WB_TARGET "WorldBuilder" CACHE STRING "")
 endif()
 add_library(${WB_TARGET} ${SOURCES})
+set_property(TARGET ${WB_TARGET} PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 IF(NOT CMAKE_VERSION VERSION_LESS 3.16)
   SET(WB_UNITY_BUILD ON CACHE BOOL "Combine source files into less compile targets to speedup compile time. Currently only supported for cmake 3.16 and newer versions.")
@@ -294,7 +299,7 @@ if(MAKE_PYTHON_WRAPPER)
 
   # Add swig module
   SET_SOURCE_FILES_PROPERTIES(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/source/world_builder/wrapper_cpp.i PROPERTIES CPLUSPLUS ON)
-  if(${CMAKE_VERSION} VERSION_LESS "3.8.0") 
+  if(${CMAKE_VERSION} VERSION_LESS "3.8.0")
     swig_add_module(gwb python ${CMAKE_CURRENT_SOURCE_DIR}/source/world_builder/wrapper_cpp.i)
   else()
     swig_add_library(gwb LANGUAGE python SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/source/world_builder/wrapper_cpp.i)
@@ -302,7 +307,7 @@ if(MAKE_PYTHON_WRAPPER)
 
 endif()
 
-# Find if we are using make or ninja. 
+# Find if we are using make or ninja.
 IF(CMAKE_GENERATOR MATCHES "Ninja")
   SET(_make_command "ninja")
 ELSE()
@@ -349,8 +354,8 @@ SET(FORCE_COLORED_OUTPUT ON CACHE BOOL "Forces colored output when compiling wit
 
 IF ( CMAKE_BUILD_TYPE STREQUAL Coverage )
   SET(CMAKE_VERBOSE_MAKEFILE on )
-  SET(WB_COMPILER_OPTIONS_PRIVATE_COVERAGE_NEW --coverage -fprofile-arcs -ftest-coverage -g)
-  SET(WB_COMPILER_OPTIONS_PRIVATE_COVERAGE_OLD "--coverage -fprofile-arcs -ftest-coverage -g")
+  SET(WB_COMPILER_OPTIONS_PRIVATE_COVERAGE_NEW --coverage -fprofile-arcs -ftest-coverage -g -fprofile-update=atomic)
+  SET(WB_COMPILER_OPTIONS_PRIVATE_COVERAGE_OLD "--coverage -fprofile-arcs -ftest-coverage -g -fprofile-update=atomic")
 
   ## for old versions of cmake
   SET(WB_FORTRAN_COMPILER_FLAGS_COVERAGE "--coverage")
@@ -366,19 +371,19 @@ if (NOT MSVC AND NOT APPLE)
    #TODO: if other compiles need to be threaded, see https://computing.llnl.gov/tutorials/pthreads/#Compiling to add the correct cases.
    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER MATCHES "AppleClang")
       # Preventing issues with older cmake compilers (<3.7) which do not support VERSION_GREATER_EQUAL
-      # cmake vesrion 3.12.0 introduces COMPILE_LANGUAGE:FORTRAN, otherwise this would be >=2.8.12
+      # cmake version 3.12.0 introduces COMPILE_LANGUAGE:FORTRAN, otherwise this would be >=2.8.12
       if(NOT ${CMAKE_VERSION} VERSION_LESS "3.9.0")
-        SET(WB_COMPILER_OPTIONS_PRIVATE -pedantic -fPIC -Wall -Wextra  
-        $<$<COMPILE_LANGUAGE:CXX>:-std=c++14 -Wmost -Wconversion -Wunreachable-code -Wuninitialized -Wmissing-braces -Wunused-parameter -Wold-style-cast -Wshadow -Wfloat-equal -Wpointer-arith -Wwrite-strings
-        -Wsynth -Wsign-compare -Woverloaded-virtual -Wliteral-range -Wparentheses -Wunused-local-typedefs -Wcast-qual -fstrict-aliasing -Werror=uninitialized -Wundef 
+        SET(WB_COMPILER_OPTIONS_PRIVATE -pedantic -Wall -Wextra -fno-fast-math -ffp-contract=off -frounding-math -ffp-contract=off
+        $<$<COMPILE_LANGUAGE:CXX>:-Wmost  -Wunreachable-code -Wuninitialized -Wmissing-braces -Wunused-parameter -Wold-style-cast -Wshadow -Wfloat-equal -Wpointer-arith -Wwrite-strings
+        -Wsynth -Wsign-compare -Woverloaded-virtual -Wliteral-range -Wparentheses -Wunused-local-typedefs -Wcast-qual -fstrict-aliasing -Werror=uninitialized -Wundef
         -Wcast-align -Wmissing-declarations -Wredundant-decls -Wdiv-by-zero -Wdisabled-optimization -Wswitch-default -Wunused>)
 
         if (${FORCE_COLORED_OUTPUT})
-          SET(WB_COMPILER_OPTIONS_PRIVATE -fcolor-diagnostics ${WB_COMPILER_OPTIONS_PRIVATE})
+          SET(WB_COMPILER_OPTIONS_PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fcolor-diagnostics> ${WB_COMPILER_OPTIONS_PRIVATE})
         endif ()
 
       else()
-        SET(WB_COMPILER_OPTIONS_PRIVATE "-std=c++14 -pedantic -fPIC -Wall -Wextra -Wmost -Wconversion -Wunreachable-code -Wuninitialized -Wmissing-braces -Wunused-parameter -Wold-style-cast -Wshadow -Wfloat-equal -Wpointer-arith -Wwrite-strings -Wsynth -Wsign-compare -Woverloaded-virtual -Wliteral-range -Wparentheses -Wunused-local-typedefs -Wcast-qual -fstrict-aliasing -Werror=uninitialized -Wundef -Wcast-align -Wmissing-declarations -Wredundant-decls -Wdiv-by-zero -Wdisabled-optimization -Wswitch-default -Wunused")
+        SET(WB_COMPILER_OPTIONS_PRIVATE "-fno-fast-math -ffp-contract=off -frounding-math -ffp-contract=off -pedantic -Wall -Wextra -Wmost -Wunreachable-code -Wuninitialized -Wmissing-braces -Wunused-parameter -Wold-style-cast -Wshadow -Wfloat-equal -Wpointer-arith -Wwrite-strings -Wsynth -Wsign-compare -Woverloaded-virtual -Wliteral-range -Wparentheses -Wunused-local-typedefs -Wcast-qual -fstrict-aliasing -Werror=uninitialized -Wundef -Wcast-align -Wmissing-declarations -Wredundant-decls -Wdiv-by-zero -Wdisabled-optimization -Wswitch-default -Wunused")
 
         if (${FORCE_COLORED_OUTPUT})
           SET(WB_COMPILER_OPTIONS_PRIVATE "-fcolor-diagnostics ${WB_COMPILER_OPTIONS_PRIVATE}")
@@ -387,22 +392,23 @@ if (NOT MSVC AND NOT APPLE)
       endif()
 
    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Intel")
-   SET(WB_COMPILER_OPTIONS_PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-std=c++14 -pthread -pedantic -fPIC -Wall -Wextra -Wpointer-arith -Wwrite-strings -Wsign-compare 
-   -Woverloaded-virtual -Wno-parentheses -Wcast-qual -fstrict-aliasing -Wmaybe-uninitialized -Werror=maybe-uninitialized>)
+     SET(WB_COMPILER_OPTIONS_PRIVATE -fno-fast-math -ffp-contract=off -frounding-math -ffp-contract=off $<$<COMPILE_LANGUAGE:CXX>:-pthread -pedantic -Wall -Wextra -Wpointer-arith -Wwrite-strings -Wsign-compare
+     -Woverloaded-virtual -Wno-parentheses -Wcast-qual -fstrict-aliasing -Wmaybe-uninitialized -Werror=maybe-uninitialized >)
    else()
       # gcc linux
 
       # Preventing issues with older cmake compilers (<3.7) which do not support VERSION_GREATER_EQUAL
-      # cmake vesrion 3.12.0 introduces COMPILE_LANGUAGE:FORTRAN, otherwise this would be >=2.8.12
+      # cmake version 3.12.0 introduces COMPILE_LANGUAGE:FORTRAN, otherwise this would be >=2.8.12
+      # -Warith-conversion was added in gcc 10, add back in when the minimum becomes gcc 10.
       if(NOT ${CMAKE_VERSION} VERSION_LESS "3.9.0")
-        SET(WB_COMPILER_OPTIONS_PRIVATE -pedantic -fPIC -Wall -Wextra  $<$<COMPILE_LANGUAGE:CXX>:-std=c++14 -Wunused-variable -Wmissing-braces -Wunused-parameter -Wpointer-arith -Wwrite-strings -Wsynth -Wsign-compare -Woverloaded-virtual -Wno-placement-new -Wno-literal-suffix -Wno-parentheses -Wno-unused-local-typedefs -Wcast-qual -fstrict-aliasing -Wmaybe-uninitialized -Werror=maybe-uninitialized -Wparentheses -Wfloat-equal -Wundef -Wcast-align -Wlogical-op -Wmissing-declarations -Wredundant-decls -Wdiv-by-zero -Wdisabled-optimization -Wswitch-default -Wno-unused>)
+        SET(WB_COMPILER_OPTIONS_PRIVATE -fno-fast-math -ffp-contract=off -frounding-math -ffp-contract=off -pedantic -Wall -Wextra  $<$<COMPILE_LANGUAGE:CXX>:-Wunused-variable -Wold-style-cast -Wconversion -Wsign-conversion -Wmissing-braces -Wunused-parameter -Wpointer-arith -Wwrite-strings -Wsynth -Wsign-compare -Woverloaded-virtual -Wno-placement-new -Wno-literal-suffix -Wno-parentheses -Wno-unused-local-typedefs -Wcast-qual -fstrict-aliasing -Wmaybe-uninitialized -Werror=maybe-uninitialized -Wparentheses -Wfloat-equal -Wundef -Wcast-align -Wlogical-op -Wmissing-declarations -Wredundant-decls -Wdiv-by-zero -Wdisabled-optimization -Wswitch-default -Wno-unused>)
 
         if (${FORCE_COLORED_OUTPUT})
           SET(WB_COMPILER_OPTIONS_PRIVATE -fdiagnostics-color=always ${WB_COMPILER_OPTIONS_PRIVATE})
         endif()
 
       else()
-        SET(WB_COMPILER_OPTIONS_PRIVATE "-std=c++14 -pedantic -fPIC -Wall -Wextra -Wunused-variable -Wmissing-braces -Wunused-parameter -Wpointer-arith -Wwrite-strings -Wsynth -Wsign-compare -Woverloaded-virtual -Wno-placement-new -Wno-literal-suffix -Wno-parentheses -Wno-unused-local-typedefs -Wcast-qual -fstrict-aliasing -Wmaybe-uninitialized -Werror=maybe-uninitialized -Wparentheses -Wfloat-equal -Wundef -Wcast-align -Wlogical-op -Wmissing-declarations -Wredundant-decls -Wdiv-by-zero -Wdisabled-optimization -Wswitch-default -Wno-unused>")
+        SET(WB_COMPILER_OPTIONS_PRIVATE "-fno-fast-math -ffp-contract=off -frounding-math -ffp-contract=off -pedantic -Wall -Wextra -Wold-style-cast -Wconversion -Wsign-conversion -Wunused-variable -Wmissing-braces -Wunused-parameter -Wpointer-arith -Wwrite-strings -Wsynth -Wsign-compare -Woverloaded-virtual -Wno-placement-new -Wno-literal-suffix -Wno-parentheses -Wno-unused-local-typedefs -Wcast-qual -fstrict-aliasing -Wmaybe-uninitialized -Werror=maybe-uninitialized -Wparentheses -Wfloat-equal -Wundef -Wcast-align -Wlogical-op -Wmissing-declarations -Wredundant-decls -Wdiv-by-zero -Wdisabled-optimization -Wswitch-default -Wno-unused>")
 
         if (${FORCE_COLORED_OUTPUT})
           SET(WB_COMPILER_OPTIONS_PRIVATE "-fdiagnostics-color=always ${WB_COMPILER_OPTIONS_PRIVATE}")
@@ -433,21 +439,18 @@ if (NOT MSVC AND NOT APPLE)
    endif()
    IF ( CMAKE_BUILD_TYPE STREQUAL Coverage )
      if(NOT ${CMAKE_VERSION} VERSION_LESS "3.13.0") # Preventing issues with older cmake compilers which do not support VERSION_GREATER_EQUAL
-     SET(WB_LINKER_OPTIONS -lstdc++ --coverage -fprofile-arcs -ftest-coverage)
+     SET(WB_LINKER_OPTIONS --coverage -fprofile-arcs -ftest-coverage)
      else()
-      SET(WB_LINKER_OPTIONS "-lstdc++ --coverage -fprofile-arcs -ftest-coverage")
+      SET(WB_LINKER_OPTIONS "--coverage -fprofile-arcs -ftest-coverage")
      endif()
-   else()
-     SET(WB_LINKER_OPTIONS -lstdc++)
    endif()
 
    SET(WB_VISU_LINKER_OPTIONS "-pthread")
 elseif(APPLE)
-    SET(WB_COMPILER_OPTIONS_PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-std=c++14 -Wpointer-arith -Wwrite-strings -Wsynth -Wsign-compare -Woverloaded-virtual -Wno-literal-range -Wno-parentheses -Wno-unused-local-typedefs -Wcast-qual -fstrict-aliasing -stdlib=libc++ -Wuninitialized -Werror=uninitialized -Wdangling-else>)
-    SET(WB_LINKER_OPTIONS -lc++)
+    SET(WB_COMPILER_OPTIONS_PRIVATE -fno-fast-math -ffp-contract=off -frounding-math -ffp-contract=off $<$<COMPILE_LANGUAGE:CXX>:-Wpointer-arith -Wwrite-strings -Wsynth -Wsign-compare -Woverloaded-virtual -Wno-literal-range -Wno-parentheses -Wno-unused-local-typedefs -Wcast-qual -fstrict-aliasing -Wuninitialized -Werror=uninitialized -Wdangling-else>)
 else()
     #MSVS
-    SET(WB_COMPILER_OPTIONS_PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W3 /EHsc /std:c++14>)
+    SET(WB_COMPILER_OPTIONS_PRIVATE /fp:strict $<$<COMPILE_LANGUAGE:CXX>:/W3 /EHsc /bigobj>)
     SET(WB_LINKER_OPTIONS  /WHOLEARCHIVE:${CMAKE_CURRENT_BINARY_DIR}/lib/WorldBuilder.lib)
 endif()
 
@@ -463,7 +466,7 @@ else()
   endif()
 endif()
 
-if(${CMAKE_VERSION} VERSION_LESS "3.13.0") 
+if(${CMAKE_VERSION} VERSION_LESS "3.13.0")
     SET(CMAKE_EXE_LINKER_FLAGS "${WB_LINKER_OPTIONS} ${WB_VISU_LINKER_OPTIONS} ${WB_COMPILER_OPTIONS_PRIVATE_COVERAGE_OLD}")
 else()
     target_link_options(${WB_TARGET} INTERFACE ${WB_LINKER_OPTIONS})
@@ -497,7 +500,7 @@ else()
 endif()
 
 if(${USE_MPI})
-  target_link_libraries (${WB_TARGET} PUBLIC MPI::MPI_CXX)
+  target_link_libraries (${WB_TARGET} PUBLIC MPI::MPI_CXX MPI::MPI_C)
 endif()
 
 if(WB_ENABLE_APPS)
@@ -507,7 +510,7 @@ if(WB_ENABLE_APPS)
     set(_libs ${_libs} ${ZLIB_LIBRARIES})
   endif()
   if (USE_MPI)
-    set(_mpi_dep "PUBLIC MPI::MPI_CXX")
+    set(_mpi_dep "PUBLIC MPI::MPI_CXX MPI::MPI_C")
   else()
     set(_mpi_dep "")
   endif()
@@ -546,7 +549,7 @@ if(MAKE_PYTHON_WRAPPER)
       swig_link_libraries(gwb ${GWB_LIBRARY_WHOLE} ${Python_LIBRARIES})
     endif()
   endif()
-  
+
   set_target_properties(${TARGET} PROPERTIES PREFIX "_" OUTPUT_NAME "gwb")
 
 
@@ -562,7 +565,7 @@ install(CODE "message(Installing...)")
 install(TARGETS ${WB_TARGET} EXPORT WorldBuilder DESTINATION bin)
 install(EXPORT WorldBuilder  DESTINATION bin)
 
-if(CMAKE_Fortran_COMPILER)
+if(WB_MAKE_FORTRAN_WRAPPER)
   install(FILES ${CMAKE_CURRENT_BINARY_DIR}/mod/worldbuilder.mod DESTINATION include)
 endif()
 

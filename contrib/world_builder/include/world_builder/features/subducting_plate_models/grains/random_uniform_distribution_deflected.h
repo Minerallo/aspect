@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018-2024 by the authors of the World Builder code.
+  Copyright (C) 2018-2026 by the authors of the World Builder code.
 
   This file is part of the World Builder.
 
@@ -103,6 +103,7 @@ namespace WorldBuilder
             std::vector<double> grain_sizes;
             std::vector<bool> normalize_grain_sizes;
             std::vector<double> deflections;
+            std::vector<std::array<std::array<double, 3>, 3>> basis_rotation_matrices;
 
         };
       } // namespace Grains

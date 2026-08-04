@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2014 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2014 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -32,8 +32,6 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    using namespace dealii;
-
     /**
      * A material model that applies a depth-dependent viscosity to a ''base model''
      * chosen from any of the other available material models. This depth-dependent
@@ -101,11 +99,14 @@ namespace aspect
         /**
          * The viscosity that will be used as a reference for computing the depth-dependent
          * prefactor.
+         *
+         * This variable is read from the parameter file through a parameter called 'Reference viscosity'.
          */
         double reference_viscosity;
 
         /**
          * Currently chosen source for the viscosity.
+         * This variable is read from the parameter file through a parameter called 'Depth dependence method'.
          */
         ViscositySource viscosity_source;
 
@@ -124,8 +125,13 @@ namespace aspect
 
         /**
          * Values of depth specified by the user if using the depth dependence method 'list'
+         *
+         * This variable is read from the parameter file through a parameter called 'Depth list'.
          */
         std::vector<double> depth_values;
+        /**
+         *  This variable is read from the parameter file through a parameter called 'Viscosity list'.
+         */
         std::vector<double> viscosity_values;
 
         /**

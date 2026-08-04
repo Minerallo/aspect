@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2017 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2017 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -127,7 +127,7 @@ namespace aspect
     {
       base_model->evaluate(in,out);
 
-      const unsigned int density_field_index = this->introspection().find_composition_type(Parameters<dim>::CompositionalFieldDescription::density);
+      const unsigned int density_field_index = this->introspection().find_composition_type(CompositionalFieldDescription::density);
 
       for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
         {
@@ -155,7 +155,7 @@ namespace aspect
           if (this->get_parameters().formulation_mass_conservation ==
               Parameters<dim>::Formulation::MassConservation::isentropic_compression)
             {
-              out.compressibilities[i] = reference_compressibility - std::pow(thermal_expansivity, 2) * in.temperature[i]
+              out.compressibilities[i] = reference_compressibility - Utilities::fixed_power<2>(thermal_expansivity) * in.temperature[i]
                                          / (out.densities[i] * out.specific_heat[i]);
             }
         }
@@ -163,7 +163,8 @@ namespace aspect
       // prescribe the density field to the current value of the density. The actual projection
       // only happens inside Simulator<dim>::interpolate_material_output_into_compositional_field,
       // this just sets the correct term the field will be set to.
-      if (PrescribedFieldOutputs<dim> *prescribed_field_out = out.template get_additional_output<PrescribedFieldOutputs<dim>>())
+      if (const std::shared_ptr<PrescribedFieldOutputs<dim>> prescribed_field_out
+          = out.template get_additional_output_object<PrescribedFieldOutputs<dim>>())
         for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
           prescribed_field_out->prescribed_field_outputs[i][density_field_index] = out.densities[i];
     }
@@ -174,7 +175,7 @@ namespace aspect
     void
     CompressibilityFormulations<dim>::create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const
     {
-      if (out.template get_additional_output<PrescribedFieldOutputs<dim>>() == NULL)
+      if (out.template has_additional_output_object<PrescribedFieldOutputs<dim>>() == false)
         {
           const unsigned int n_points = out.n_evaluation_points();
           out.additional_outputs.push_back(

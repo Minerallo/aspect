@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018-2024 by the authors of the World Builder code.
+  Copyright (C) 2018-2026 by the authors of the World Builder code.
 
   This file is part of the World Builder.
 
@@ -18,8 +18,6 @@
 */
 
 #include "world_builder/features/subducting_plate_models/grains/random_uniform_distribution_deflected.h"
-
-#include <algorithm>
 
 #include "world_builder/nan.h"
 #include "world_builder/types/array.h"
@@ -88,6 +86,12 @@ namespace WorldBuilder
                             Types::Array(Types::Double(1),0),
                             "A list of the deflections of all of the grains in each composition between 0 and 1.");
 
+          prm.declare_entry("basis rotation matrices", Types::Array(Types::Array(Types::Array(Types::Double(0),3,3),3,3),0),
+                            "A list with the rotation matrices of the grains which are present there for each compositions.");
+
+          prm.declare_entry("basis Euler angles z-x-z", Types::Array(Types::Array(Types::Double(0),3,3),0),
+                            "A list with the z-x-z Euler angles of the grains which are present there for each compositions.");
+
 
 
         }
@@ -98,6 +102,31 @@ namespace WorldBuilder
           min_depth = prm.get<double>("min distance slab top");
           max_depth = prm.get<double>("max distance slab top");
           compositions = prm.get_vector<unsigned int>("compositions");
+
+          const bool set_euler_angles = prm.check_entry("basis Euler angles z-x-z");
+          const bool set_rotation_matrices = prm.check_entry("basis rotation matrices");
+
+          WBAssertThrow(!(set_euler_angles == true && set_rotation_matrices == true),
+                        "Only Euler angles or Rotation matrices may be set, but both are set for " << prm.get_full_json_path());
+
+
+          WBAssertThrow(!(set_euler_angles == false && set_rotation_matrices == false),
+                        "Euler angles or Rotation matrices have to be set, but neither are set for " << prm.get_full_json_path());
+
+          if (set_euler_angles)
+            {
+              std::vector<std::array<double,3> > basis_euler_angles_vector = prm.get_vector<std::array<double,3> >("basis Euler angles z-x-z");
+              basis_rotation_matrices.resize(basis_euler_angles_vector.size());
+              for (size_t i = 0; i<basis_euler_angles_vector.size(); ++i)
+                {
+                  basis_rotation_matrices[i] = Utilities::euler_angles_to_rotation_matrix(basis_euler_angles_vector[i][0],basis_euler_angles_vector[i][1],basis_euler_angles_vector[i][2]);
+                }
+
+            }
+          else
+            {
+              basis_rotation_matrices = prm.get_vector<std::array<std::array<double,3>,3> >("basis rotation matrices");
+            }
 
           operation = prm.get<std::string>("orientation operation");
           grain_sizes = prm.get_vector<double>("grain sizes");
@@ -113,8 +142,10 @@ namespace WorldBuilder
           WBAssertThrow(compositions.size() == deflections.size(),
                         "There are not the same amount of compositions (" << compositions.size()
                         << ") and deflections (" << deflections.size() << ").");
+          WBAssertThrow(compositions.size() == basis_rotation_matrices.size(),
+                        "There are not the same amount of compositions (" << compositions.size()
+                        << ") and rotation_matrices (" << basis_rotation_matrices.size() << ").");
         }
-
 
         WorldBuilder::grains
         RandomUniformDistributionDeflected::get_grains(const Point<3> & /*position_in_cartesian_coordinates*/,
@@ -139,7 +170,7 @@ namespace WorldBuilder
                           // set a uniform random a_cosine_matrix per grain
                           // This function is based on an article in Graphic Gems III, written by James Arvo, Cornell University (p 116-120).
                           // The original code can be found on  http://www.realtimerendering.com/resources/GraphicsGems/gemsiii/rand_rotation.c
-                          // and is licenend accourding to this website with the following licence:
+                          // and is licenend according to this website with the following licence:
                           //
                           // "The Graphics Gems code is copyright-protected. In other words, you cannot claim the text of the code as your own and
                           // resell it. Using the code is permitted in any program, product, or library, non-commercial or commercial. Giving credit
@@ -182,17 +213,33 @@ namespace WorldBuilder
                           // Construct the rotation matrix  ( V Transpose(V) - I ) R, which
                           // is equivalent to V S - R.
 
-                          it_rotation_matrices[0][0] = Vx * Sx - ct;
-                          it_rotation_matrices[0][1] = Vx * Sy - st;
-                          it_rotation_matrices[0][2] = Vx * Vz;
+                          std::array<std::array<double,3>,3> rotation_matrices;
+                          rotation_matrices[0][0] = (Vx * Sx - ct);
+                          rotation_matrices[0][1] = (Vx * Sy - st);
+                          rotation_matrices[0][2] = Vx * Vz;
 
-                          it_rotation_matrices[1][0] = Vy * Sx + st;
-                          it_rotation_matrices[1][1] = Vy * Sy - ct;
-                          it_rotation_matrices[1][2] = Vy * Vz;
+                          rotation_matrices[1][0] = (Vy * Sx + st);
+                          rotation_matrices[1][1] = (Vy * Sy - ct);
+                          rotation_matrices[1][2] = Vy * Vz;
 
-                          it_rotation_matrices[2][0] = Vz * Sx;
-                          it_rotation_matrices[2][1] = Vz * Sy;
-                          it_rotation_matrices[2][2] = 1.0 - z;   // This equals Vz * Vz - 1.0
+                          rotation_matrices[2][0] = Vz * Sx;
+                          rotation_matrices[2][1] = Vz * Sy;
+                          rotation_matrices[2][2] = 1.0 - z;   // This equals Vz * Vz - 1.0
+
+                          // Rotate the basis rotation matrix with the random uniform distribution rotation matrix
+                          // First get the transpose of the rotation matrix
+                          std::array<std::array<double, 3>, 3> rot_T= rotation_matrices;
+                          rot_T[0][1] = rotation_matrices[1][0];
+                          rot_T[1][0] = rotation_matrices[0][1];
+                          rot_T[1][2] = rotation_matrices[2][1];
+                          rot_T[2][1] = rotation_matrices[1][2];
+                          rot_T[0][2] = rotation_matrices[2][0];
+                          rot_T[2][0] = rotation_matrices[0][2];
+
+                          // Then U' = R * U * R^T
+                          std::array<std::array<double,3>,3> result1 = multiply_3x3_matrices(rotation_matrices, basis_rotation_matrices[i]);
+
+                          it_rotation_matrices = result1;
                         }
 
                       double total_size = 0;
@@ -205,8 +252,15 @@ namespace WorldBuilder
                       if (normalize_grain_sizes[i])
                         {
                           const double one_over_total_size = 1/total_size;
-                          std::transform(grains_local.sizes.begin(), grains_local.sizes.end(), grains_local.sizes.begin(),
-                                         [one_over_total_size](double sizes) -> double { return sizes *one_over_total_size; });
+                          // std::transform is a c++17 feature, while current GWB is c++14
+                          // update this after switching to c+=17
+                          // std::transform(grains_local.sizes.begin(), grains_local.sizes.end(), grains_local.sizes.begin(),
+                          //                [one_over_total_size](double sizes) -> double { return sizes *one_over_total_size; });
+                          // Apply the transformation using a loop
+                          for (auto &&size : grains_local.sizes)
+                            {
+                              size = size*one_over_total_size;
+                            }
                         }
 
                       return grains_local;

@@ -32,8 +32,6 @@ namespace aspect
 {
   namespace BoundaryVelocity
   {
-    using namespace dealii;
-
     /**
      * A class that implements prescribed velocity boundary conditions
      * determined from a AsciiData input file.
@@ -76,10 +74,6 @@ namespace aspect
         boundary_velocity (const types::boundary_id boundary_indicator,
                            const Point<dim> &position) const override;
 
-        // avoid -Woverloaded-virtual warning until the deprecated function
-        // is removed from the interface:
-        using Interface<dim>::boundary_velocity;
-
         /**
          * Declare the parameters this class takes through input files.
          */
@@ -100,6 +94,8 @@ namespace aspect
         /**
          * Whether to specify velocity in x, y, z components, or
          * r, phi, theta components.
+         *
+         * This variable is read from the parameter file through a parameter called 'Use spherical unit vectors'.
          */
         bool use_spherical_unit_vectors;
     };

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -20,8 +20,7 @@
 
 
 #include <aspect/postprocess/visualization/stress.h>
-
-
+#include <aspect/material_model/rheology/elasticity.h>
 
 namespace aspect
 {
@@ -58,13 +57,15 @@ namespace aspect
         MaterialModel::MaterialModelOutputs<dim> out(n_quadrature_points,
                                                      this->n_compositional_fields());
 
-        // We do not need to compute anything but the viscosity
-        in.requested_properties = MaterialModel::MaterialProperties::viscosity;
+        // We do not need to compute anything but the viscosity and the additional outputs
+        in.requested_properties = MaterialModel::MaterialProperties::viscosity | MaterialModel::MaterialProperties::additional_outputs;
 
-        // Compute the viscosity...
+        this->get_material_model().create_additional_named_outputs(out);
+
+        // Compute the viscosity and additional outputs
         this->get_material_model().evaluate(in, out);
 
-        // ...and use it to compute the stresses
+        // ...and use them to compute the stresses
         for (unsigned int q=0; q<n_quadrature_points; ++q)
           {
             // Compressive stress is negative by the sign convention
@@ -74,33 +75,29 @@ namespace aspect
             // sign convention used by the geoscience community.
             SymmetricTensor<2,dim> stress = in.pressure[q] * unit_symmetric_tensor<dim>();
 
-            // If elasticity is enabled, the deviatoric stress is stored
-            // in compositional fields, otherwise the deviatoric stress
-            // can be obtained from the viscosity and strain rate.
+            const double eta = out.viscosities[q];
+
+            const SymmetricTensor<2, dim> strain_rate = in.strain_rate[q];
+            const SymmetricTensor<2, dim> deviatoric_strain_rate = (this->get_material_model().is_compressible()
+                                                                    ? strain_rate - 1. / 3 * trace(strain_rate) * unit_symmetric_tensor<dim>()
+                                                                    : strain_rate);
+
+            // If elasticity is enabled, the visco-elastic stress is stored
+            // in compositional fields and we can retrieve the deviatoric stress
+            // from the material model, otherwise the deviatoric stress
+            // can be computed from the viscosity and strain rate.
             if (this->get_parameters().enable_elasticity)
               {
-                stress[0][0] -= in.composition[q][this->introspection().compositional_index_for_name("ve_stress_xx")];
-                stress[1][1] -= in.composition[q][this->introspection().compositional_index_for_name("ve_stress_yy")];
-                stress[0][1] -= in.composition[q][this->introspection().compositional_index_for_name("ve_stress_xy")];
+                // Get the total deviatoric stress from the material model.
+                const std::shared_ptr<const MaterialModel::ElasticAdditionalOutputs<dim>> elastic_additional_out
+                  = out.template get_additional_output_object<MaterialModel::ElasticAdditionalOutputs<dim>>();
 
-                if (dim == 3)
-                  {
-                    stress[2][2] -= in.composition[q][this->introspection().compositional_index_for_name("ve_stress_zz")];
-                    stress[0][2] -= in.composition[q][this->introspection().compositional_index_for_name("ve_stress_xz")];
-                    stress[1][2] -= in.composition[q][this->introspection().compositional_index_for_name("ve_stress_yz")];
-                  }
+                Assert(elastic_additional_out != nullptr, ExcMessage("Elastic Additional Outputs are needed for the 'principal stress' postprocessor, but they have not been created."));
+
+                stress -= elastic_additional_out->deviatoric_stress[q];
               }
             else
               {
-                const SymmetricTensor<2,dim> strain_rate = in.strain_rate[q];
-                const SymmetricTensor<2,dim> deviatoric_strain_rate
-                  = (this->get_material_model().is_compressible()
-                     ?
-                     strain_rate - 1./3 * trace(strain_rate) * unit_symmetric_tensor<dim>()
-                     :
-                     strain_rate);
-
-                const double eta = out.viscosities[q];
                 stress -= 2. * eta * deviatoric_strain_rate;
               }
 
@@ -111,7 +108,7 @@ namespace aspect
           }
 
         // average the values if requested
-        const auto &viz = this->get_postprocess_manager().template get_matching_postprocessor<Postprocess::Visualization<dim>>();
+        const auto &viz = this->get_postprocess_manager().template get_matching_active_plugin<Postprocess::Visualization<dim>>();
         if (!viz.output_pointwise_stress_and_strain())
           average_quantities(computed_quantities);
       }
@@ -141,7 +138,20 @@ namespace aspect
                                                   "Note that the convention of positive "
                                                   "compressive stress is followed."
                                                   "\n\n"
-                                                  "Physical units: \\si{\\pascal}.")
+                                                  "This postprocessor outputs the quantity computed herein as "
+                                                  "a tensor, i.e., programs such as VisIt or Pararview can "
+                                                  "visualize it as tensors represented by ellipses, not just "
+                                                  "as individual fields. That said, you can also visualize "
+                                                  "individual tensor components, by noting that the "
+                                                  "components that are written to the output file correspond to "
+                                                  "the tensor components $t_{xx}, t_{xy}, t_{yx}, t_{yy}$ (in 2d) "
+                                                  "or  $t_{xx}, t_{xy}, t_{xz}, t_{yx}, t_{yy}, t_{yz}, t_{zx}, t_{zy}, "
+                                                  "t_{zz}$ (in 3d) of a tensor $t$ in a Cartesian coordinate system. "
+                                                  "Even though the tensor we output is symmetric, the output contains "
+                                                  "all components of the tensor because that is what the file format "
+                                                  "requires."
+                                                  "\n\n"
+                                                  "Physical units: $\\text{Pa}$.")
     }
   }
 }

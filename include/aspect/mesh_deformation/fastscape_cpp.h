@@ -98,6 +98,8 @@ private:
     SymmetricTensor<2,dim> ice_load_moment_of_inertia() const;
     SymmetricTensor<2,dim> apply_degree_two_self_gravity(
       const SymmetricTensor<2,dim> &rigid_ice_load);
+    std::vector<double> update_regional_ice_load_response(
+      const double time_step_years) const;
     void write_true_polar_wander_state() const;
 
     mutable SurfaceMesh surface_mesh;
@@ -167,6 +169,16 @@ private:
     double rigid_ice_load_norm = 0.0;
     double effective_ice_load_norm = 0.0;
     mutable double last_polar_wander_output_time = -1.0;
+
+    bool regional_ice_load_response_enabled = false;
+    bool initialize_regional_ice_load_in_equilibrium = true;
+    double regional_compensation_density = 3300.0;
+    double regional_immediate_response_fraction = 0.0;
+    double regional_ice_load_relaxation_time = 1e4;
+    mutable std::vector<double> regional_delayed_ice_load_displacement;
+    mutable std::vector<double> regional_total_ice_load_displacement;
+    mutable std::vector<double> regional_ice_load_velocity;
+    mutable bool regional_ice_load_state_is_initialized = false;
 };
 }
 }

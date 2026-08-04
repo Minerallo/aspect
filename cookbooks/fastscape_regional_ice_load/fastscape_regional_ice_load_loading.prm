@@ -1,0 +1,11 @@
+include regional_ice_load_base.prm
+
+subsection Mesh deformation
+  subsection FastScape surface evolution
+    set Enable regional ice load response             = true
+    set Initialize regional ice load in equilibrium   = false
+    set Regional compensation density                 = 3300
+    set Regional immediate response fraction          = 0
+    set Regional ice load relaxation time             = 5000
+  end
+end

@@ -1,0 +1,38 @@
+include ../../contrib/coupling/climberx_fastscape/experiments/local_uplift_no_glacial.prm
+
+set End time          = 5000
+set Maximum time step = 1000
+set Output directory  = output-fastscape-regional-ice-load
+
+subsection Geometry model
+  subsection Initial topography model
+    subsection Function
+      set Function constants       = H=0
+      set Function expression      = 0
+      set Maximum topography value = 0
+    end
+  end
+end
+
+subsection Mesh deformation
+  subsection FastScape surface evolution
+    set Surface refinement level           = 2
+    set River incision coefficient         = 0
+    set Glacial erosion coefficient        = 0
+    set Hillslope diffusion coefficient    = 0
+    set Spatial ice thickness file         = ice_load.txt
+    set Spatial basal ice velocity file    = zero_ice_velocity.txt
+    set Result interval                    = 1
+    set Write visualization results        = true
+  end
+end
+
+subsection Boundary velocity model
+  subsection Function
+    set Function expression = 0; 0; 0
+  end
+end
+
+subsection Termination criteria
+  set Checkpoint on termination = true
+end

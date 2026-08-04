@@ -1152,6 +1152,8 @@ public:
           const xt::xarray<double> &surface_runoff,
           const xt::xarray<double> &ice_thickness,
           const xt::xarray<double> &basal_ice_velocity,
+          const std::vector<double> &regional_ice_load_displacement,
+          const std::vector<double> &regional_ice_load_velocity,
           const double sea_level,
           const double eroded_volume,
           const double fluvial_eroded_volume,
@@ -1186,6 +1188,8 @@ public:
             landscape.get_sediment_thickness_by_lithology();
         const auto deposited_thickness_by_lithology =
             landscape.take_deposited_thickness_by_lithology();
+        AssertDimension(regional_ice_load_displacement.size(), elevation.size());
+        AssertDimension(regional_ice_load_velocity.size(), elevation.size());
 
         const std::string budget_file =
             directory + "sediment_budget.csv";
@@ -1221,7 +1225,8 @@ public:
             directory + "surface-" +
             Utilities::int_to_string(timestep_number, 5) + ".csv";
         std::ofstream surface(surface_file);
-        surface << "longitude_deg,latitude_deg,elevation_m,erosion_m,"
+        surface << "longitude_deg,latitude_deg,surface_x_m,surface_y_m,"
+                << "elevation_m,erosion_m,"
                 << "fluvial_erosion_m,glacial_erosion_m,"
                 << "drainage_area_m2,sediment_flux_m3_per_year,"
                 << "marine_sediment_flux_m3_per_year,"
@@ -1229,6 +1234,8 @@ public:
                 << "is_connected_ocean,bedrock_lithology,"
                 << "erosion_strength,surface_runoff_factor,"
                 << "ice_thickness_m,basal_ice_velocity_m_per_year,"
+                << "regional_ice_load_displacement_m,"
+                << "regional_ice_load_velocity_m_per_year,"
                 << "elevation_change_m";
         for (const std::string &name : lithology_names)
             surface << ",sediment_flux_" << name << "_m3_per_year"
@@ -1244,7 +1251,8 @@ public:
             if constexpr (dim == 3)
                 latitude =
                     std::asin(point[2] / point.norm()) * 180.0 / numbers::PI;
-            surface << longitude << ',' << latitude << ',' << elevation[i] << ','
+            surface << longitude << ',' << latitude << ','
+                    << point[0] << ',' << point[1] << ',' << elevation[i] << ','
                     << erosion[i] << ',' << fluvial_erosion[i] << ','
                     << glacial_erosion[i] << ',' << drainage_area[i] << ','
                     << sediment_flux[i] << ',' << marine_sediment_flux[i] << ','
@@ -1255,6 +1263,8 @@ public:
                     << surface_runoff[i] << ','
                     << ice_thickness[i] << ','
                     << basal_ice_velocity[i] << ','
+                    << regional_ice_load_displacement[i] << ','
+                    << regional_ice_load_velocity[i] << ','
                     << elevation[i] - reference_elevation[i];
             for (unsigned int rock = 0; rock < lithology_names.size(); ++rock)
                 surface << ',' << sediment_flux_by_lithology[rock][i]
@@ -1313,6 +1323,8 @@ public:
         Vector<double> ocean_mask_output(ocean_mask.size());
         Vector<double> ice_thickness_output(ice_thickness.size());
         Vector<double> basal_ice_velocity_output(basal_ice_velocity.size());
+        Vector<double> regional_displacement_output(elevation.size());
+        Vector<double> regional_velocity_output(elevation.size());
         Vector<double> bedrock_lithology_output(elevation.size());
         for (unsigned int i = 0; i < elevation.size(); ++i)
         {
@@ -1328,6 +1340,9 @@ public:
             ocean_mask_output[i] = ocean_mask[i];
             ice_thickness_output[i] = ice_thickness[i];
             basal_ice_velocity_output[i] = basal_ice_velocity[i];
+            regional_displacement_output[i] =
+                regional_ice_load_displacement[i];
+            regional_velocity_output[i] = regional_ice_load_velocity[i];
             bedrock_lithology_output[i] = bedrock_lithology[i];
         }
 
@@ -1357,6 +1372,12 @@ public:
                                  DataOut<dim-1,dim>::type_cell_data);
         data_out.add_data_vector(basal_ice_velocity_output,
                                  "basal_ice_velocity",
+                                 DataOut<dim-1,dim>::type_cell_data);
+        data_out.add_data_vector(regional_displacement_output,
+                                 "regional_ice_load_displacement",
+                                 DataOut<dim-1,dim>::type_cell_data);
+        data_out.add_data_vector(regional_velocity_output,
+                                 "regional_ice_load_velocity",
                                  DataOut<dim-1,dim>::type_cell_data);
         data_out.add_data_vector(bedrock_lithology_output,
                                  "bedrock_lithology",
@@ -1569,6 +1590,84 @@ FastscapeCpp<dim>::apply_degree_two_self_gravity(
         + delayed_self_gravity_ice_load;
     effective_ice_load_norm = effective_ice_load.norm();
     return effective_ice_load;
+}
+
+
+template <int dim>
+std::vector<double>
+FastscapeCpp<dim>::update_regional_ice_load_response(
+    const double time_step_years) const
+{
+    const xt::xarray<double> &ice_thickness =
+        spatial_ice_thickness->get_values();
+    std::vector<double> velocity(ice_thickness.size(), 0.0);
+    if (!regional_ice_load_response_enabled)
+    {
+        regional_ice_load_velocity = velocity;
+        return velocity;
+    }
+    if (time_step_years <= 0.0)
+        return velocity;
+
+    AssertThrow(!spherical_geometry,
+                ExcMessage("The regional ice-load response is intended for "
+                           "box geometries. Use the degree-two self-gravity "
+                           "option for a global spherical model."));
+    AssertThrow(regional_compensation_density > 0.0,
+                ExcMessage("Regional compensation density must be positive."));
+
+    if (!regional_ice_load_state_is_initialized)
+    {
+        regional_delayed_ice_load_displacement.assign(ice_thickness.size(), 0.0);
+        regional_total_ice_load_displacement.assign(ice_thickness.size(), 0.0);
+        regional_ice_load_velocity.assign(ice_thickness.size(), 0.0);
+        if (initialize_regional_ice_load_in_equilibrium)
+            for (unsigned int i = 0; i < ice_thickness.size(); ++i)
+            {
+                const double equilibrium_displacement =
+                    -ice_density * ice_thickness[i] /
+                    regional_compensation_density;
+                regional_delayed_ice_load_displacement[i] =
+                    (1.0 - regional_immediate_response_fraction) *
+                    equilibrium_displacement;
+                regional_total_ice_load_displacement[i] =
+                    equilibrium_displacement;
+            }
+        regional_ice_load_state_is_initialized = true;
+    }
+
+    AssertDimension(regional_delayed_ice_load_displacement.size(),
+                    ice_thickness.size());
+    AssertDimension(regional_total_ice_load_displacement.size(),
+                    ice_thickness.size());
+    const double relaxed_fraction =
+        regional_ice_load_relaxation_time == 0.0
+        ? 1.0
+        : 1.0 - std::exp(-time_step_years /
+                         regional_ice_load_relaxation_time);
+    for (unsigned int i = 0; i < ice_thickness.size(); ++i)
+    {
+        const double equilibrium_displacement =
+            -ice_density * ice_thickness[i] /
+            regional_compensation_density;
+        const double delayed_equilibrium =
+            (1.0 - regional_immediate_response_fraction) *
+            equilibrium_displacement;
+        regional_delayed_ice_load_displacement[i] +=
+            relaxed_fraction *
+            (delayed_equilibrium -
+             regional_delayed_ice_load_displacement[i]);
+        const double new_total_displacement =
+            regional_immediate_response_fraction * equilibrium_displacement +
+            regional_delayed_ice_load_displacement[i];
+        velocity[i] =
+            (new_total_displacement -
+             regional_total_ice_load_displacement[i]) /
+            time_step_years;
+        regional_total_ice_load_displacement[i] = new_total_displacement;
+    }
+    regional_ice_load_velocity = velocity;
+    return velocity;
 }
 
 
@@ -1893,6 +1992,10 @@ FastscapeCpp<dim>::build_surface_mesh()
     spatial_basal_ice_velocity->initialize(spatial_basal_ice_velocity_file,
                                            surface_coordinates);
     surface_results->initialize(initial_elevation);
+    regional_delayed_ice_load_displacement.assign(initial_elevation.size(), 0.0);
+    regional_total_ice_load_displacement.assign(initial_elevation.size(), 0.0);
+    regional_ice_load_velocity.assign(initial_elevation.size(), 0.0);
+    regional_ice_load_state_is_initialized = false;
 
     // ASPECT applies the initial topography directly to the triangulation,
     // while the transfer framework deliberately uses the undeformed MappingQ
@@ -1990,6 +2093,12 @@ std::vector<Tensor<1,dim>>
              normal_material_velocity * surface_normal) * year_in_seconds;
     }
 
+    const std::vector<double> regional_load_velocity =
+        update_regional_ice_load_response(aspect_dt_years);
+    AssertDimension(regional_load_velocity.size(), uplift_rate.size());
+    for (unsigned int i = 0; i < uplift_rate.size(); ++i)
+        uplift_rate[i] += regional_load_velocity[i];
+
     const typename FastscapeLandscape<dim>::StepResult landscape_step =
         landscape->advance(
             uplift_rate,
@@ -2033,6 +2142,8 @@ std::vector<Tensor<1,dim>>
             spatial_surface_runoff->get_values(),
             spatial_ice_thickness->get_values(),
             spatial_basal_ice_velocity->get_values(),
+            regional_total_ice_load_displacement,
+            regional_ice_load_velocity,
             current_sea_level,
             landscape_step.eroded_volume,
             landscape_step.fluvial_eroded_volume,
@@ -2118,6 +2229,17 @@ FastscapeCpp<dim>::save(
     }
     status_strings["FastscapeTruePolarWanderDegreeTwoSelfGravity"] =
         polar_wander_stream.str();
+
+    std::ostringstream regional_load_stream;
+    {
+        aspect::oarchive archive(regional_load_stream);
+        archive << regional_delayed_ice_load_displacement;
+        archive << regional_total_ice_load_displacement;
+        archive << regional_ice_load_velocity;
+        archive << regional_ice_load_state_is_initialized;
+    }
+    status_strings["FastscapeRegionalIceLoadResponse"] =
+        regional_load_stream.str();
 }
 
 
@@ -2218,6 +2340,24 @@ FastscapeCpp<dim>::load(
             archive >> reference_moment_of_inertia_is_initialized;
             archive >> last_polar_wander_output_time;
         }
+    }
+
+    const auto regional_load_state =
+        status_strings.find("FastscapeRegionalIceLoadResponse");
+    if (regional_load_state != status_strings.end())
+    {
+        std::istringstream regional_load_stream(regional_load_state->second);
+        aspect::iarchive archive(regional_load_stream);
+        archive >> regional_delayed_ice_load_displacement;
+        archive >> regional_total_ice_load_displacement;
+        archive >> regional_ice_load_velocity;
+        archive >> regional_ice_load_state_is_initialized;
+        AssertDimension(regional_delayed_ice_load_displacement.size(),
+                        landscape->get_elevation().size());
+        AssertDimension(regional_total_ice_load_displacement.size(),
+                        landscape->get_elevation().size());
+        AssertDimension(regional_ice_load_velocity.size(),
+                        landscape->get_elevation().size());
     }
 }
 
@@ -2377,6 +2517,32 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
                           "Optional ASPECT structured text-data file containing "
                           "basal ice velocity in meters per year. An empty "
                           "filename represents no basal sliding.");
+        prm.declare_entry("Enable regional ice load response", "false",
+                          Patterns::Bool(),
+                          "Add local bedrock subsidence and rebound caused by "
+                          "the prescribed ice thickness to the uplift passed "
+                          "through FastScape. This reduced response is intended "
+                          "for regional box models and is disabled by default.");
+        prm.declare_entry("Regional compensation density", "3300",
+                          Patterns::Double(0),
+                          "Density in kilograms per cubic meter that converts "
+                          "ice mass per unit area into the local equilibrium "
+                          "bedrock displacement.");
+        prm.declare_entry("Regional immediate response fraction", "0",
+                          Patterns::Double(0, 1),
+                          "Fraction of the local equilibrium displacement "
+                          "applied immediately. The remaining fraction follows "
+                          "the regional ice-load relaxation time.");
+        prm.declare_entry("Regional ice load relaxation time", "10000",
+                          Patterns::Double(0),
+                          "Time in years over which delayed regional subsidence "
+                          "or rebound approaches local isostatic equilibrium. "
+                          "Zero applies the delayed response immediately.");
+        prm.declare_entry("Initialize regional ice load in equilibrium", "true",
+                          Patterns::Bool(),
+                          "Treat the initial prescribed ice as an already "
+                          "compensated reference state. Disable this when the "
+                          "initial ice load is emplaced at model start.");
         prm.declare_entry("Enable true polar wander", "false",
                           Patterns::Bool(),
                           "Let changes in ASPECT's directly integrated moment "
@@ -2542,12 +2708,30 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
             prm.get("Spatial ice thickness file");
         spatial_basal_ice_velocity_file =
             prm.get("Spatial basal ice velocity file");
+        regional_ice_load_response_enabled =
+            prm.get_bool("Enable regional ice load response");
+        regional_compensation_density =
+            prm.get_double("Regional compensation density");
+        AssertThrow(regional_compensation_density > 0.0,
+                    ExcMessage("Regional compensation density must be positive."));
+        regional_immediate_response_fraction =
+            prm.get_double("Regional immediate response fraction");
+        regional_ice_load_relaxation_time =
+            prm.get_double("Regional ice load relaxation time");
+        initialize_regional_ice_load_in_equilibrium =
+            prm.get_bool("Initialize regional ice load in equilibrium");
         true_polar_wander_enabled =
             prm.get_bool("Enable true polar wander");
         include_ice_load_in_true_polar_wander =
             prm.get_bool("Include ice load in true polar wander");
         degree_two_self_gravity_enabled =
             prm.get_bool("Enable degree two self gravity");
+        AssertThrow(!(regional_ice_load_response_enabled &&
+                      degree_two_self_gravity_enabled),
+                    ExcMessage("The regional ice-load response and the global "
+                               "degree-two self-gravity correction cannot be "
+                               "enabled together because this would count the "
+                               "solid-Earth load response twice."));
         elastic_degree_two_load_love_number =
             prm.get_double("Elastic degree two load Love number");
         fluid_degree_two_load_love_number =

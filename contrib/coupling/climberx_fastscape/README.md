@@ -26,6 +26,17 @@ exceeds the configured threshold. Both river and glacial erosion enter the
 same sediment-routing and deposition calculation, while separate result
 fields preserve their individual contributions.
 
+Regional box models can additionally enable `Enable regional ice load
+response`. Imported ice then drives local subsidence and unloading drives
+rebound. This velocity is added to ASPECT's tectonic surface velocity before
+Fastscape advances, so the landscape and sediment-routing calculations use
+the displaced bedrock. The delayed displacement is preserved in checkpoints.
+See the
+[`fastscape_regional_ice_load`](../../../cookbooks/fastscape_regional_ice_load/README.md)
+cookbook for a loading, unloading, and disabled-control comparison. This
+reduced regional response cannot be enabled with the global degree-two
+self-gravity correction.
+
 Compare the ice fields from two native exchanges with:
 
 ```bash

@@ -1,0 +1,112 @@
+# A synthetic western-Norway-like fjord experiment. It is deliberately a
+# process test, not a reconstruction of one named Norwegian catchment.
+set Dimension                     = 3
+set Use years instead of seconds = true
+set End time                      = 100000
+set Maximum time step             = 5000
+set Nonlinear solver scheme       = no Advection, single Stokes
+set Output directory              = output-fastscape-norway-glacial
+set Pressure normalization        = no
+set Surface pressure              = 0
+
+subsection Geometry model
+  set Model name = box
+  subsection Box
+    set X extent      = 160e3
+    set Y extent      = 100e3
+    set Z extent      = 40e3
+    set X repetitions = 8
+    set Y repetitions = 5
+  end
+  subsection Initial topography model
+    set Model name = function
+    subsection Function
+      set Function constants       = L=160e3, W=100e3, ridge=1600, valley=1200, valley_width=11e3
+      set Function expression      = ridge*sin(pi*x/L)*sin(pi*y/W)-valley*exp(-((y-W/2)/valley_width)^2)*(0.35+0.65*x/L)
+      set Maximum topography value = 1600
+    end
+  end
+end
+
+subsection Mesh deformation
+  set Mesh deformation boundary indicators = top: fastscape surface evolution
+  set Additional tangential mesh velocity boundary indicators = left, right, front, back
+  subsection FastScape surface evolution
+    # Roughly 1.7 kilometre landscape cells over a much coarser ASPECT mesh.
+    set Box repetitions                     = 24
+    set Surface refinement level            = 2
+    set Surface transfer scheme             = conservative
+    set Surface transfer neighbors          = 8
+    set Landscape steps per geodynamic step = 5
+    set Maximum landscape step              = 100
+    set River incision coefficient          = 2e-6
+    set Drainage area exponent              = 0.4
+    set Slope exponent                      = 1
+    set Hillslope diffusion coefficient     = 1e-2
+    set Glacial erosion coefficient         = 3e-5
+    set Glacial velocity exponent           = 1
+    set Minimum ice thickness               = 100
+    set Spatial ice thickness file          = norway_ice_thickness.txt
+    set Spatial basal ice velocity file     = norway_basal_ice_velocity.txt
+    set Sea level                           = 0
+    set Marine sediment transport coefficient = 10000
+    set Marine sediment porosity            = 0.4
+    set Marine transport depth scale        = 0
+    set Enable regional ice load response           = true
+    set Initialize regional ice load in equilibrium = false
+    set Regional compensation density               = 3300
+    set Regional immediate response fraction        = 0
+    set Regional ice load relaxation time           = 5000
+    set Result interval                    = 1
+    set Write visualization results        = true
+  end
+end
+
+subsection Boundary velocity model
+  set Tangential velocity boundary indicators = bottom, front, back, left, right
+end
+
+subsection Gravity model
+  set Model name = vertical
+  subsection Vertical
+    set Magnitude = 10
+  end
+end
+
+subsection Initial temperature model
+  set Model name = function
+  subsection Function
+    set Function expression = 273
+  end
+end
+
+subsection Boundary temperature model
+  set Fixed temperature boundary indicators = bottom, top
+  set List of model names = initial temperature
+end
+
+subsection Material model
+  set Model name = simple
+  subsection Simple model
+    set Reference density             = 3300
+    set Reference specific heat       = 1250
+    set Reference temperature         = 273
+    set Thermal conductivity          = 3
+    set Thermal expansion coefficient = 0
+    set Viscosity                     = 1e21
+  end
+end
+
+subsection Formulation
+  set Formulation = Boussinesq approximation
+end
+
+subsection Mesh refinement
+  set Initial global refinement          = 1
+  set Initial adaptive refinement        = 0
+  set Time steps between mesh refinement = 0
+end
+
+subsection Postprocess
+  set List of postprocessors = topography
+end

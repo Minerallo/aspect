@@ -1,0 +1,5 @@
+include norway_fjord_base.prm
+
+subsection Termination criteria
+  set Checkpoint on termination = true
+end

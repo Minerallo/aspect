@@ -276,7 +276,7 @@ endif()
 
 # FastScape library and link it to ASPECT if requested
 set(ASPECT_WITH_FASTSCAPE OFF CACHE BOOL
-    "Whether to compile ASPECT with the landscape evolution code FastScape (the 
+    "Whether to compile ASPECT with the landscape evolution code FastScape (the
      older, Fortran-based version), or not.")
 message(STATUS "Using ASPECT_WITH_FASTSCAPE = '${ASPECT_WITH_FASTSCAPE}'")
 
@@ -317,7 +317,7 @@ if(ASPECT_WITH_FASTSCAPE)
     list(GET _fastscape_version_parts 0 FASTSCAPE_VERSION_MAJOR)
     list(GET _fastscape_version_parts 1 FASTSCAPE_VERSION_MINOR)
     list(GET _fastscape_version_parts 2 FASTSCAPE_VERSION_SUBMINOR)
-    
+
     # Throw an error if the version is too old.
     if(${FASTSCAPE_VERSION} VERSION_LESS 2.8)
       message(FATAL_ERROR "The linked FastScape version is ${FASTSCAPE_VERSION}, however at least 2.8.0 is required.")
@@ -349,6 +349,28 @@ if(ASPECT_WITH_FASTSCAPE)
   else()
      message(FATAL_ERROR "Trying to link with FastScape but neither libfastscapelib_fortran.so nor libfastscapelib_fortran.a was found in ${FASTSCAPE_DIR} or its subdirectories.")
   endif()
+endif()
+
+
+# Fastscapelib (C++)
+set(ASPECT_WITH_FASTSCAPELIB OFF CACHE BOOL "Whether the user wants to compile ASPECT with the landscape evolution C++ code Fastscape(lib), or not.")
+if(ASPECT_WITH_FASTSCAPELIB)
+  find_package(fastscapelib CONFIG)
+  if(${fastscapelib_FOUND})
+    set(FS_WITH_HEALPIX OFF CACHE BOOL "Turn off Fastscapelib support of Healpix grid" FORCE)
+    message(STATUS "Using ASPECT_WITH_FASTSCAPELIB = '${ASPECT_WITH_FASTSCAPELIB}'")
+    message(STATUS "  fastscapelib_INCLUDE_DIR: ${fastscapelib_INCLUDE_DIRS}")
+    message(STATUS "  fastscapelib_VERSION: ${fastscapelib_VERSION}")
+    # fastscapelib dependencies
+    find_package(xtensor REQUIRED)
+    message(STATUS "  xtensor_INCLUDE_DIR: ${xtensor_INCLUDE_DIRS}")
+    message(STATUS "  xtensor_VERSION: ${xtensor_VERSION}")
+  else()
+    message(STATUS "Fastscapelib not found. Disabling ASPECT_WITH_FASTSCAPELIB. You can specify a hint to your installation directory with fastscapelib_DIR.")
+    set(ASPECT_WITH_FASTSCAPELIB OFF CACHE BOOL "" FORCE)
+  endif()
+else()
+  message(STATUS "Using ASPECT_WITH_FASTSCAPELIB = 'OFF'")
 endif()
 
 
@@ -482,6 +504,7 @@ if(ASPECT_WITH_WORLD_BUILDER)
 endif()
 message(STATUS "")
 
+#include "datatypes.h"
 
 #
 # Other stuff about external tools and how we interact with the system:
@@ -853,6 +876,16 @@ if (FASTSCAPE_LIB_NAME)
       target_link_libraries(${_T} gfortran)
     endforeach()
   endif()
+endif()
+
+# Fastscapelib
+if (${fastscapelib_FOUND})
+  message(STATUS "Linking ASPECT against Fastscapelib (header-only)")
+  foreach(_T ${TARGET_EXECUTABLES})
+    target_include_directories(${_T} PRIVATE ${fastscapelib_INCLUDE_DIRS})
+    target_include_directories(${_T} PRIVATE ${xtensor_INCLUDE_DIRS})
+    target_include_directories(${_T} PRIVATE ${xtl_INCLUDE_DIRS})
+  endforeach()
 endif()
 
 # NetCDF

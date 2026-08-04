@@ -1,0 +1,22 @@
+# Demonstrate lithology-dependent erosion and conservative sediment provenance.
+# Granite and limestone are both upper-crustal rocks, but limestone is assigned
+# twice the river-incision efficiency. Their probabilities make one fixed,
+# reproducible source-rock map; they are not redrawn as the model evolves.
+include fastscape_cpp_eroding_box.prm
+
+set End time         = 1e5
+set Maximum time step = 25000
+set Output directory = output-fastscape-cpp-lithology-provenance
+
+subsection Mesh deformation
+  subsection FastScape surface evolution
+    set Box repetitions                       = 10
+    set Surface refinement level              = 2
+    set Marine sediment transport coefficient = 2e3
+    set Marine sediment porosity               = 0.4
+    set Lithology names                        = granite, limestone
+    set Lithology probabilities                = 0.7, 0.3
+    set Lithology erodibility factors          = 1.0, 2.0
+    set Lithology random seed                  = 42
+  end
+end

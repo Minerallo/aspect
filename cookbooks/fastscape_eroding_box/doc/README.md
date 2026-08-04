@@ -78,3 +78,41 @@ threshold.
 
 Fine-grid elevation, drainage area, and glacial erosion after 250,000 years.
 ```
+
+## Lithology, provenance, and depositional layers
+
+`fastscape_cpp_lithology_provenance.prm` assigns 70 percent of the landscape
+cells to granite and 30 percent to limestone using a reproducible random seed.
+The limestone river-incision factor is two, while granite is the reference
+rock with factor one. This represents distinct rocks within the same upper
+crust; it does not require separate ASPECT compositional fields.
+
+Eroded sediment carries its source-rock class through river routing, coastal
+delivery, marine transport, deposition, and later re-erosion. The surface CSV
+files and visualization files contain the flux and deposited fraction of every
+class. Each `stratigraphy-*.csv` file is one dated depositional increment, so
+the sequence can be stacked to inspect source changes through a sedimentary
+basin. The files record net sediment thickness preserved since the preceding
+output, so material deposited and re-eroded within that interval is not kept
+as a layer. Compaction, chemical transformation, and erosion surfaces are not
+yet represented as separate layer objects.
+
+The probabilities are used only when the initial bedrock map is made. A rock
+class is therefore stable between time steps. For a mapped geological model,
+the next extension should replace this initializer with a structured bedrock
+class file while keeping the same transport and output representation.
+
+Run and plot the demonstration with:
+
+```sh
+OMP_NUM_THREADS=1 /path/to/aspect fastscape_cpp_lithology_provenance.prm
+python3 plot_lithology_provenance.py \
+  output-fastscape-cpp-lithology-provenance/fastscape_surface_evolution/fastscape-00004.vtu \
+  fastscape-cpp-lithology-provenance.png
+```
+
+```{figure} ../fastscape-cpp-lithology-provenance.png
+:width: 100%
+
+The reproducible source-rock map and the resulting deposited sediment mixture.
+```

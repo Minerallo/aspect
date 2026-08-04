@@ -37,6 +37,7 @@ field on the climate grid:
 ```bash
 python3 surface_exchange.py surface-to-climate \
   --surface surface-00002.csv --climate climate.cxe \
+  --polar-wander-history true_polar_wander.csv \
   --output topography.cxe
 ```
 
@@ -44,6 +45,18 @@ Set `CLIMBERX_TOPOGRAPHY_EXCHANGE_FILE=topography.cxe` for the next CLIMBER-X
 window. CLIMBER-X interpolates the increment onto its high-resolution
 geography before geography initialization. This preserves the existing
 reference geography while allowing coastlines and orography to respond.
+
+When a polar-wander history is supplied, the adapter interprets CLIMBER-X's
+longitude and latitude around the latest spin axis and samples the body-fixed
+Fastscape surface at those locations. The next climate window therefore sees
+the returned Fastscape topography increment in the new spin frame. Omitting
+the option uses the geographic north pole and exactly recovers the original
+remapping. CLIMBER-X's high-resolution reference geography remains fixed;
+rotating that complete reference geography is a separate step required for a
+fully self-consistent large polar displacement.
+Four nearby Fastscape cells are combined with spherical-distance weights so
+small pole movements produce continuous changes instead of nearest-cell
+jumps. Set `--interpolation-neighbors 1` to reproduce the original mapping.
 
 ## Verified local cycle
 

@@ -9,7 +9,9 @@ import numpy as np
 
 from surface_exchange import (
     SurfaceExchange,
+    climate_vectors_in_body_frame,
     climate_controls,
+    interpolate_spherical_surface,
     read_exchange,
     write_aspect_structured,
     write_exchange,
@@ -79,6 +81,34 @@ class SurfaceExchangeTests(unittest.TestCase):
         self.assertLessEqual(coordinates[:, 0].max(), 2.0 * np.pi)
         self.assertGreaterEqual(coordinates[:, 1].min(), 0.0)
         self.assertLessEqual(coordinates[:, 1].max(), np.pi)
+
+    def test_climate_coordinates_follow_spin_axis(self):
+        longitude = np.array([0.0, 90.0, 0.0])
+        latitude = np.array([0.0, 0.0, 90.0])
+        geographic = climate_vectors_in_body_frame(
+            longitude, latitude, np.array([0.0, 0.0, 1.0])
+        )
+        np.testing.assert_allclose(
+            geographic,
+            np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]),
+            atol=1.0e-14,
+        )
+
+        pole_on_body_x = climate_vectors_in_body_frame(
+            longitude, latitude, np.array([1.0, 0.0, 0.0])
+        )
+        np.testing.assert_allclose(
+            pole_on_body_x[-1], [1.0, 0.0, 0.0], atol=1.0e-14
+        )
+        np.testing.assert_allclose(
+            pole_on_body_x[0], [0.0, 1.0, 0.0], atol=1.0e-14
+        )
+
+    def test_weighted_spherical_interpolation_is_exact_at_source_points(self):
+        source = np.eye(3)
+        values = np.array([2.0, 4.0, 8.0])
+        interpolated = interpolate_spherical_surface(source, values, source, 3)
+        np.testing.assert_allclose(interpolated, values, atol=1.0e-14)
 
 
 if __name__ == "__main__":

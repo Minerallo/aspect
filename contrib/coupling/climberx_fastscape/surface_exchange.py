@@ -163,7 +163,84 @@ def write_aspect_structured(path: Path, exchange: SurfaceExchange, values: np.nd
                 )
 
 
-def surface_to_climate_exchange(surface_csv: Path, climate_file: Path, output: Path) -> None:
+def spin_axis_from_history(path: Path) -> np.ndarray:
+    with path.open(newline="", encoding="utf-8") as stream:
+        rows = list(csv.DictReader(stream))
+    if not rows:
+        raise ValueError(f"{path}: polar-wander history is empty")
+    longitude = np.deg2rad(float(rows[-1]["pole_longitude_degrees"]))
+    latitude = np.deg2rad(float(rows[-1]["pole_latitude_degrees"]))
+    return np.array(
+        [
+            np.cos(latitude) * np.cos(longitude),
+            np.cos(latitude) * np.sin(longitude),
+            np.sin(latitude),
+        ]
+    )
+
+
+def climate_vectors_in_body_frame(
+    longitude_degrees: np.ndarray,
+    latitude_degrees: np.ndarray,
+    spin_axis: np.ndarray,
+) -> np.ndarray:
+    climate_north = np.asarray(spin_axis, dtype=float)
+    climate_north /= np.linalg.norm(climate_north)
+    climate_zero_longitude = np.array([1.0, 0.0, 0.0])
+    climate_zero_longitude -= (
+        climate_zero_longitude @ climate_north
+    ) * climate_north
+    if np.linalg.norm(climate_zero_longitude) < 1.0e-12:
+        climate_zero_longitude = np.array([0.0, 1.0, 0.0])
+        climate_zero_longitude -= (
+            climate_zero_longitude @ climate_north
+        ) * climate_north
+    climate_zero_longitude /= np.linalg.norm(climate_zero_longitude)
+    climate_east = np.cross(climate_north, climate_zero_longitude)
+
+    longitude = np.deg2rad(longitude_degrees)
+    latitude = np.deg2rad(latitude_degrees)
+    return (
+        (np.cos(latitude) * np.cos(longitude))[:, None] * climate_zero_longitude
+        + (np.cos(latitude) * np.sin(longitude))[:, None] * climate_east
+        + np.sin(latitude)[:, None] * climate_north
+    )
+
+
+def interpolate_spherical_surface(
+    source_vectors: np.ndarray,
+    source_values: np.ndarray,
+    target_vectors: np.ndarray,
+    number_of_neighbors: int,
+) -> np.ndarray:
+    if number_of_neighbors < 1:
+        raise ValueError("the number of interpolation neighbors must be positive")
+    number_of_neighbors = min(number_of_neighbors, source_vectors.shape[0])
+    result = np.empty(target_vectors.shape[0])
+    for start in range(0, target_vectors.shape[0], 256):
+        stop = min(start + 256, target_vectors.shape[0])
+        cosine = np.clip(target_vectors[start:stop] @ source_vectors.T, -1.0, 1.0)
+        neighbors = np.argpartition(
+            -cosine, number_of_neighbors-1, axis=1
+        )[:, :number_of_neighbors]
+        neighbor_cosine = np.take_along_axis(cosine, neighbors, axis=1)
+        chord_distance = np.sqrt(np.maximum(2.0-2.0*neighbor_cosine, 0.0))
+        exact = chord_distance < 1.0e-12
+        weights = 1.0 / np.maximum(chord_distance, 1.0e-12)
+        if np.any(exact):
+            weights[exact.any(axis=1)] = exact[exact.any(axis=1)]
+        weights /= weights.sum(axis=1, keepdims=True)
+        result[start:stop] = np.sum(source_values[neighbors] * weights, axis=1)
+    return result
+
+
+def surface_to_climate_exchange(
+    surface_csv: Path,
+    climate_file: Path,
+    output: Path,
+    spin_axis: np.ndarray | None = None,
+    number_of_neighbors: int = 4,
+) -> None:
     climate = read_exchange(climate_file)
     with surface_csv.open(newline="", encoding="utf-8") as stream:
         rows = list(csv.DictReader(stream))
@@ -178,19 +255,19 @@ def surface_to_climate_exchange(surface_csv: Path, climate_file: Path, output: P
             np.sin(surface_latitude),
         )
     )
-    climate_longitude = np.deg2rad(climate.longitude)
-    climate_latitude = np.deg2rad(climate.latitude)
-    climate_vectors = np.column_stack(
-        (
-            np.cos(climate_latitude) * np.cos(climate_longitude),
-            np.cos(climate_latitude) * np.sin(climate_longitude),
-            np.sin(climate_latitude),
-        )
+    if spin_axis is None:
+        spin_axis = np.array([0.0, 0.0, 1.0])
+    climate_vectors = climate_vectors_in_body_frame(
+        climate.longitude,
+        climate.latitude,
+        spin_axis,
     )
-    nearest = np.empty(climate.longitude.size, dtype=np.int64)
-    for start in range(0, climate.longitude.size, 256):
-        stop = min(start + 256, climate.longitude.size)
-        nearest[start:stop] = np.argmax(climate_vectors[start:stop] @ surface_vectors.T, axis=1)
+    remapped_surface_change = interpolate_spherical_surface(
+        surface_vectors,
+        surface_change,
+        climate_vectors,
+        number_of_neighbors,
+    )
 
     write_exchange(
         output,
@@ -198,7 +275,7 @@ def surface_to_climate_exchange(surface_csv: Path, climate_file: Path, output: P
             climate.model_time_years,
             climate.longitude,
             climate.latitude,
-            {"elevation_change": surface_change[nearest]},
+            {"elevation_change": remapped_surface_change},
             {"elevation_change": "m"},
             climate.byte_order,
         ),
@@ -228,6 +305,23 @@ def main() -> None:
     return_parser.add_argument("--surface", type=Path, required=True)
     return_parser.add_argument("--climate", type=Path, required=True)
     return_parser.add_argument("--output", type=Path, required=True)
+    return_parser.add_argument(
+        "--polar-wander-history",
+        type=Path,
+        help=(
+            "map body-fixed topography into the spin frame defined by the "
+            "last pole in this true_polar_wander.csv file"
+        ),
+    )
+    return_parser.add_argument(
+        "--interpolation-neighbors",
+        type=int,
+        default=4,
+        help=(
+            "number of nearby Fastscape cells used for continuous spherical "
+            "weighting; one recovers the original nearest-cell mapping"
+        ),
+    )
     arguments = parser.parse_args()
 
     if arguments.command == "inspect":
@@ -260,7 +354,18 @@ def main() -> None:
                 basal_ice_velocity,
             )
     else:
-        surface_to_climate_exchange(arguments.surface, arguments.climate, arguments.output)
+        spin_axis = (
+            spin_axis_from_history(arguments.polar_wander_history)
+            if arguments.polar_wander_history is not None
+            else None
+        )
+        surface_to_climate_exchange(
+            arguments.surface,
+            arguments.climate,
+            arguments.output,
+            spin_axis,
+            arguments.interpolation_neighbors,
+        )
 
 
 if __name__ == "__main__":

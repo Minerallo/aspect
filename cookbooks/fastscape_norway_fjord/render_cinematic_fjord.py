@@ -97,7 +97,11 @@ def render(output: Path, poster: Path, stride: int, frames_per_second: int) -> N
     erosion_max = max(float(np.max(frame["glacial_erosion_m"])) for frame in surfaces)
 
     figure = plt.figure(figsize=(16, 9), facecolor="#08131e")
-    axis = figure.add_axes((0.035, 0.07, 0.79, 0.88), projection="3d")
+    axis = figure.add_axes(
+        (0.035, 0.07, 0.79, 0.88),
+        projection="3d",
+        computed_zorder=False,
+    )
     axis.set_facecolor("#08131e")
     status_axis = figure.add_axes((0.82, 0.08, 0.16, 0.84), facecolor="#0d2030")
     status_axis.set_axis_off()
@@ -120,22 +124,43 @@ def render(output: Path, poster: Path, stride: int, frames_per_second: int) -> N
         terrain_colors = plt.colormaps["gist_earth"](
             elevation_norm(frame["elevation_m"])
         )
+        terrain_colors[..., :3] *= 0.62
         terrain_colors[..., 3] = 1.0
         axis.plot_surface(x, y, terrain_z, facecolors=terrain_colors,
-                          linewidth=0, antialiased=False, shade=True)
+                          linewidth=0, antialiased=False, shade=True,
+                          zorder=2)
 
         if np.any(has_ice):
             ice_plot = np.where(has_ice, ice_z, np.nan)
             speed = frame["basal_ice_velocity_m_per_year"]
-            speed_norm = colors.Normalize(0.0, max(float(np.max(speed)), 1.0))
-            ice_colors = plt.colormaps["Blues_r"](0.18 + 0.65 * speed_norm(speed))
-            ice_colors[..., :3] = 0.55 * ice_colors[..., :3] + 0.45 * np.array(
-                [0.75, 0.9, 1.0]
+            axis.plot_surface(x, y, ice_plot, color="#c8f1ff", alpha=0.94,
+                              linewidth=0.18, edgecolor="#e9fbff",
+                              antialiased=True, shade=True, zorder=6)
+
+            # Close the two long ice margins down to the bed. A top surface
+            # alone is easy to confuse with pale terrain; these walls make ice
+            # thickness and the bed/ice separation visually explicit.
+            valid_columns = np.flatnonzero(np.any(has_ice, axis=0))
+            lower_rows = np.argmax(has_ice[:, valid_columns], axis=0)
+            upper_rows = (
+                has_ice.shape[0] - 1
+                - np.argmax(has_ice[::-1, valid_columns], axis=0)
             )
-            ice_colors[..., 3] = np.where(has_ice, 0.9, 0.0)
-            axis.plot_surface(x, y, ice_plot, facecolors=ice_colors,
-                              linewidth=0.12, edgecolor="#d9f4ff",
-                              antialiased=True, shade=True)
+            for rows in (lower_rows, upper_rows):
+                margin_x = x[rows, valid_columns]
+                margin_y = y[rows, valid_columns]
+                bed = terrain_z[rows, valid_columns]
+                top = ice_z[rows, valid_columns]
+                axis.plot_surface(
+                    np.vstack((margin_x, margin_x)),
+                    np.vstack((margin_y, margin_y)),
+                    np.vstack((bed, top)),
+                    color="#68c9ee", alpha=0.82, linewidth=0.15,
+                    edgecolor="#c9f3ff", antialiased=True, shade=True,
+                    zorder=5,
+                )
+                axis.plot(margin_x, margin_y, top, color="#f2fcff",
+                          linewidth=1.2, alpha=0.95, zorder=7)
 
             arrow_stride = max(2, 8 // stride)
             selection = has_ice[::arrow_stride, ::arrow_stride]
@@ -148,7 +173,7 @@ def render(output: Path, poster: Path, stride: int, frames_per_second: int) -> N
                         np.zeros_like(arrow_z),
                         length=5.0, normalize=True, color="#d8f4ff",
                         alpha=np.clip(speed_sample / 60.0, 0.15, 0.75),
-                        linewidth=0.65, arrow_length_ratio=0.3)
+                        linewidth=0.65, arrow_length_ratio=0.3, zorder=8)
 
         # Highlight active glacial erosion without hiding the terrain.
         erosion = frame["glacial_erosion_m"]
@@ -156,13 +181,15 @@ def render(output: Path, poster: Path, stride: int, frames_per_second: int) -> N
         if np.any(active):
             axis.scatter(x[active], y[active], terrain_z[active] + 0.04,
                          c=erosion[active], cmap="inferno", vmin=0,
-                         vmax=erosion_max, s=5, alpha=0.65, depthshade=False)
+                         vmax=erosion_max, s=5, alpha=0.65, depthshade=False,
+                         zorder=9)
 
         water_x, water_y = np.meshgrid([x.min(), x.max()], [y.min(), y.max()])
         axis.plot_surface(water_x, water_y, np.zeros_like(water_x),
-                          color="#1b6d91", alpha=0.28, shade=False)
+                          color="#1b6d91", alpha=0.28, shade=False,
+                          zorder=1)
 
-        axis.view_init(elev=31, azim=-62)
+        axis.view_init(elev=27, azim=-48)
         axis.set_xlim(float(x.min()), float(x.max()))
         axis.set_ylim(float(y.min()), float(y.max()))
         axis.set_zlim(-6.0, 21.0)

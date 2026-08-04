@@ -15,6 +15,7 @@ live fields into ASPECT structured inputs:
 
 ```bash
 python3 surface_exchange.py climate-to-aspect climate.cxe \
+  --surface-topography surface-topography.txt \
   --erosion-strength erosion-strength.txt \
   --surface-runoff surface-runoff.txt \
   --ice-thickness ice-thickness.txt \
@@ -98,6 +99,11 @@ per year to the coast in the two steps. The deliberately short feedback test
 returned a maximum 0.068 m topographic change and produced a maximum 0.012 K
 temperature difference. These values validate the plumbing; they are not a
 scientific calibration.
+
+The
+[`fastscape_climberx_physical_loop`](../../../cookbooks/fastscape_climberx_physical_loop/README.md)
+cookbook repeats this path with dynamic Yelmo ice, ASPECT's inertia-axis
+feedback, the degree-two surface-load response, and a second climate window.
 
 The reader accepts either byte order. This matters on systems where
 `GFORTRAN_CONVERT_UNIT` overrides the byte order requested on a Fortran stream;

@@ -289,6 +289,11 @@ def main() -> None:
     inspect_parser.add_argument("exchange", type=Path)
     climate_parser = subparsers.add_parser("climate-to-aspect")
     climate_parser.add_argument("exchange", type=Path)
+    climate_parser.add_argument(
+        "--surface-topography",
+        type=Path,
+        help="write CLIMBER-X surface elevation as ASPECT spherical input",
+    )
     climate_parser.add_argument("--erosion-strength", type=Path, required=True)
     climate_parser.add_argument("--surface-runoff", type=Path, required=True)
     climate_parser.add_argument("--ice-thickness", type=Path)
@@ -332,6 +337,12 @@ def main() -> None:
     elif arguments.command == "climate-to-aspect":
         exchange = read_exchange(arguments.exchange)
         erosion_strength, runoff = climate_controls(exchange)
+        if arguments.surface_topography is not None:
+            write_aspect_structured(
+                arguments.surface_topography,
+                exchange,
+                exchange.fields["surface_elevation"],
+            )
         write_aspect_structured(arguments.erosion_strength, exchange, erosion_strength)
         write_aspect_structured(arguments.surface_runoff, exchange, runoff)
         if arguments.ice_thickness is not None:

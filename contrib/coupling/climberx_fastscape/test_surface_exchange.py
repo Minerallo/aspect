@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import io
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -109,6 +111,50 @@ class SurfaceExchangeTests(unittest.TestCase):
         values = np.array([2.0, 4.0, 8.0])
         interpolated = interpolate_spherical_surface(source, values, source, 3)
         np.testing.assert_allclose(interpolated, values, atol=1.0e-14)
+
+    def test_command_writes_climate_topography(self):
+        longitude, latitude = np.meshgrid(
+            np.array([-135.0, -45.0, 45.0, 135.0]),
+            np.array([-45.0, 45.0]),
+        )
+        exchange = SurfaceExchange(
+            1.0,
+            longitude.reshape(-1),
+            latitude.reshape(-1),
+            {
+                "precipitation_rate": np.full(longitude.size, 1.0e-6),
+                "surface_temperature": np.full(longitude.size, 288.15),
+                "surface_elevation": np.arange(longitude.size, dtype=float),
+                "ice_thickness": np.zeros(longitude.size),
+                "basal_ice_velocity": np.zeros(longitude.size),
+            },
+            {},
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            exchange_path = directory / "climate.cxe"
+            topography_path = directory / "topography.txt"
+            erosion_path = directory / "erosion.txt"
+            runoff_path = directory / "runoff.txt"
+            write_exchange(exchange_path, exchange)
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).with_name("surface_exchange.py")),
+                    "climate-to-aspect",
+                    str(exchange_path),
+                    "--surface-topography",
+                    str(topography_path),
+                    "--erosion-strength",
+                    str(erosion_path),
+                    "--surface-runoff",
+                    str(runoff_path),
+                ],
+                check=True,
+            )
+            values = np.loadtxt(topography_path, skiprows=2)[:, 2]
+        self.assertEqual(values.size, 24)
+        self.assertGreater(values.max(), values.min())
 
 
 if __name__ == "__main__":

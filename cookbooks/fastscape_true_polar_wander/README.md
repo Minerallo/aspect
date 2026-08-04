@@ -26,6 +26,21 @@ the rotational bulge and relaxation time must be calibrated against a model
 that includes self-gravity before absolute true-polar-wander rates are used
 scientifically.
 
+The optional degree-two self-gravity treatment improves the surface-load part
+of this approximation. If `L` is the rigid ice-load inertia tensor, the model
+uses
+
+```text
+effective load = (1 + elastic load Love number) L + delayed response
+```
+
+The delayed response approaches the difference between the fluid and elastic
+load Love numbers times `L` over the chosen relaxation time. Thus a constant
+load eventually becomes `(1 + fluid load Love number) L`. The supplied value
+of `-0.9` represents strong long-term compensation, while `-0.3` gives the
+immediate elastic response. Multiple relaxation modes and the self-gravity
+body force in the mantle are still outside this reduced model.
+
 From `aspect_fatscapecc/tests`, run the local coupled case and recreate the
 figure with:
 
@@ -37,3 +52,5 @@ python3 ../aspect/cookbooks/fastscape_true_polar_wander/plot_results.py \
 ```
 
 ![Pole path, ice distribution, and runoff change](true_polar_wander_feedback.png)
+
+![Rigid-load and self-gravitating load-response comparison](self_gravity_comparison.png)

@@ -1,0 +1,13 @@
+include fastscape_true_polar_wander.prm
+
+set Output directory = output-fastscape-true-polar-wander-self-gravity
+
+subsection Mesh deformation
+  subsection FastScape surface evolution
+    set Enable degree two self gravity         = true
+    set Elastic degree two load Love number    = -0.3
+    set Fluid degree two load Love number      = -0.9
+    set Self gravity relaxation time           = 10000
+    set Initialize self gravity in equilibrium = true
+  end
+end

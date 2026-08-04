@@ -38,3 +38,29 @@ degree-two load parameters, and component restart strategy require calibration
 before the magnitudes can be interpreted as an Earth reconstruction. A longer
 experiment should continue component restarts between windows instead of
 starting the feedback and control climate years from the same initial state.
+
+## Continued sequence and runtime comparison
+
+`run_coupling_sequence.py` continues every climate and ice component from its
+previous restart, continues ASPECT and Fastscape from their checkpoint, and
+returns only the new surface increment at each boundary. It also runs the same
+ASPECT temperature and mantle-flow problem without surface coupling for a
+measured timing comparison:
+
+```bash
+python3 run_coupling_sequence.py --windows 3
+```
+
+The output includes `timing-summary.json` and `runtime-comparison.png`.
+
+On the local three-window test, 60 ASPECT/Fastscape years and four consecutive
+climate years completed without a model instability. Measured wall times were
+501.1 seconds for the full sequence, 16.1 seconds for its three coupled ASPECT
+windows, 10.1 seconds for ASPECT without surface coupling but with the same
+three restart boundaries, and 4.0 seconds for one continuous uncoupled ASPECT
+run. Thus Fastscape and mesh deformation made the matched, windowed ASPECT
+part 1.6 times slower. The complete loop was 124.5 times slower than continuous
+ASPECT because CLIMBER-X and Yelmo used 483.4 seconds while this deliberately
+coarse ASPECT problem used only seconds. That full ratio is not transferable
+to a refined production model; it depends mainly on ASPECT resolution and how
+often the climate model is called.

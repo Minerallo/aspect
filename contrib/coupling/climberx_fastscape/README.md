@@ -63,8 +63,9 @@ python3 surface_exchange.py surface-to-climate \
 
 Set `CLIMBERX_TOPOGRAPHY_EXCHANGE_FILE=topography.cxe` for the next CLIMBER-X
 window. CLIMBER-X interpolates the increment onto its high-resolution
-geography before geography initialization. This preserves the existing
-reference geography while allowing coastlines and orography to respond.
+geography after loading any geography restart. This preserves both the
+continued state and the new surface increment while allowing coastlines and
+orography to respond.
 
 When a polar-wander history is supplied, the adapter interprets CLIMBER-X's
 longitude and latitude around the latest spin axis and samples the body-fixed

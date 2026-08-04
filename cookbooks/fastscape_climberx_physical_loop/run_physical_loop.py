@@ -38,6 +38,7 @@ def free_memory_percent() -> int | None:
 def run_monitored(
     command, working_directory, log_path, environment, minimum_free_percent
 ):
+    start_time = time.perf_counter()
     available = free_memory_percent()
     if available is not None and available < minimum_free_percent:
         raise RuntimeError(f"not starting because only {available}% of memory is free")
@@ -51,9 +52,11 @@ def run_monitored(
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+        checks = 0
         while process.poll() is None:
-            time.sleep(5)
-            available = free_memory_percent()
+            time.sleep(1)
+            checks += 1
+            available = free_memory_percent() if checks % 5 == 0 else None
             if available is not None and available < minimum_free_percent:
                 os.killpg(process.pid, signal.SIGTERM)
                 try:
@@ -66,6 +69,7 @@ def run_monitored(
                 )
         if process.returncode:
             raise subprocess.CalledProcessError(process.returncode, command)
+    return time.perf_counter() - start_time
 
 
 def prepare_climate_case(template: Path, destination: Path, executable: Path) -> None:
@@ -97,7 +101,7 @@ def run_climate(
         environment["CLIMBERX_TOPOGRAPHY_EXCHANGE_FILE"] = str(
             topography_exchange.resolve()
         )
-    run_monitored(
+    elapsed = run_monitored(
         ["./climber.x"], case, case / "climber.log", environment, minimum_free_percent
     )
     log_text = (case / "climber.log").read_text(encoding="utf-8", errors="replace")
@@ -108,9 +112,16 @@ def run_climate(
         raise RuntimeError(
             f"CLIMBER-X did not complete a stable exchange; see {case / 'climber.log'}"
         )
+    return elapsed
 
 
-def write_aspect_parameters(path: Path, output_directory: Path, fields: Path) -> None:
+def write_aspect_parameters(
+    path: Path,
+    output_directory: Path,
+    fields: Path,
+    end_time: float = 20,
+    resume: str = "false",
+) -> None:
     base = (
         INSTALLATION
         / "aspect_fatscapecc/tests/fastscape_cpp_global_climate_geodynamics.prm"
@@ -121,8 +132,8 @@ def write_aspect_parameters(path: Path, output_directory: Path, fields: Path) ->
 include {base}
 
 set Output directory   = {output_directory.resolve()}
-set Resume computation = false
-set End time           = 20
+set Resume computation = {resume}
+set End time           = {end_time:g}
 set Maximum time step  = 10
 
 subsection Geometry model

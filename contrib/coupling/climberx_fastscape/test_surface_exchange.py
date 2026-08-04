@@ -15,6 +15,7 @@ from surface_exchange import (
     climate_controls,
     interpolate_spherical_surface,
     read_exchange,
+    surface_to_climate_exchange,
     write_aspect_structured,
     write_exchange,
 )
@@ -155,6 +156,41 @@ class SurfaceExchangeTests(unittest.TestCase):
             values = np.loadtxt(topography_path, skiprows=2)[:, 2]
         self.assertEqual(values.size, 24)
         self.assertGreater(values.max(), values.min())
+
+    def test_surface_return_can_extract_one_window_increment(self):
+        longitude_axis = np.array([-135.0, -45.0, 45.0, 135.0])
+        latitude_axis = np.array([-45.0, 45.0])
+        longitude, latitude = np.meshgrid(longitude_axis, latitude_axis)
+        exchange = SurfaceExchange(
+            1.0,
+            longitude.reshape(-1),
+            latitude.reshape(-1),
+            {"surface_elevation": np.zeros(longitude.size)},
+            {},
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            climate_path = directory / "climate.cxe"
+            reference_path = directory / "reference.csv"
+            current_path = directory / "current.csv"
+            output_path = directory / "increment.cxe"
+            write_exchange(climate_path, exchange)
+            header = "longitude_deg,latitude_deg,elevation_change_m\n"
+            reference_lines = [header]
+            current_lines = [header]
+            for lon, lat in zip(exchange.longitude, exchange.latitude):
+                reference_lines.append(f"{lon},{lat},2\n")
+                current_lines.append(f"{lon},{lat},5\n")
+            reference_path.write_text("".join(reference_lines), encoding="utf-8")
+            current_path.write_text("".join(current_lines), encoding="utf-8")
+            surface_to_climate_exchange(
+                current_path,
+                climate_path,
+                output_path,
+                reference_surface_csv=reference_path,
+            )
+            returned = read_exchange(output_path)
+        np.testing.assert_allclose(returned.fields["elevation_change"], 3.0)
 
 
 if __name__ == "__main__":

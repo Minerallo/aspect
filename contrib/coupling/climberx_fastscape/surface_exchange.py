@@ -240,6 +240,7 @@ def surface_to_climate_exchange(
     output: Path,
     spin_axis: np.ndarray | None = None,
     number_of_neighbors: int = 4,
+    reference_surface_csv: Path | None = None,
 ) -> None:
     climate = read_exchange(climate_file)
     with surface_csv.open(newline="", encoding="utf-8") as stream:
@@ -247,6 +248,25 @@ def surface_to_climate_exchange(
     surface_longitude = np.deg2rad(np.array([float(row["longitude_deg"]) for row in rows]))
     surface_latitude = np.deg2rad(np.array([float(row["latitude_deg"]) for row in rows]))
     surface_change = np.array([float(row["elevation_change_m"]) for row in rows])
+    if reference_surface_csv is not None:
+        with reference_surface_csv.open(newline="", encoding="utf-8") as stream:
+            reference_rows = list(csv.DictReader(stream))
+        if len(reference_rows) != len(rows):
+            raise ValueError("current and reference surfaces contain different cell counts")
+        reference_longitude = np.array(
+            [float(row["longitude_deg"]) for row in reference_rows]
+        )
+        reference_latitude = np.array(
+            [float(row["latitude_deg"]) for row in reference_rows]
+        )
+        if not (
+            np.allclose(np.rad2deg(surface_longitude), reference_longitude)
+            and np.allclose(np.rad2deg(surface_latitude), reference_latitude)
+        ):
+            raise ValueError("current and reference surface cells do not match")
+        surface_change -= np.array(
+            [float(row["elevation_change_m"]) for row in reference_rows]
+        )
 
     surface_vectors = np.column_stack(
         (
@@ -310,6 +330,14 @@ def main() -> None:
     return_parser.add_argument("--surface", type=Path, required=True)
     return_parser.add_argument("--climate", type=Path, required=True)
     return_parser.add_argument("--output", type=Path, required=True)
+    return_parser.add_argument(
+        "--reference-surface",
+        type=Path,
+        help=(
+            "subtract the cumulative elevation change in an earlier surface "
+            "table, returning only the current coupling-window increment"
+        ),
+    )
     return_parser.add_argument(
         "--polar-wander-history",
         type=Path,
@@ -376,6 +404,7 @@ def main() -> None:
             arguments.output,
             spin_axis,
             arguments.interpolation_neighbors,
+            arguments.reference_surface,
         )
 
 

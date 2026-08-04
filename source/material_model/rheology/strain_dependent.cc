@@ -769,7 +769,6 @@ namespace aspect
               //17.07.: limit plastic strain to be non-zero (follow-up:)
                 const auto d = calculate_strain_healing(in,i, edot_ii);
                 delta_e_ii_plastic -= d.healed_strain;
-                delta_e_ii_plastic = std::max(delta_e_ii_plastic,0.);
                 delta_e_ii_viscous -= d.healed_strain;
                 delta_e_ii_viscous = std::max(delta_e_ii_viscous,0.);
                 delta_e_ii -= d.healed_strain;
@@ -790,6 +789,15 @@ namespace aspect
                                             old_solution_values.begin(),
                                             old_solution_values.end());
 
+            small_vector<double> old_old_solution_values;
+            if (this->get_timestep_number() > 1)
+              {
+                old_old_solution_values.resize(this->get_fe().dofs_per_cell);
+                in.current_cell->get_dof_values(this->get_old_old_solution(),
+                                                old_old_solution_values.begin(),
+                                                old_old_solution_values.end());
+              }
+
             // If we have not been here before, create one evaluator for each compositional field
             if (composition_evaluators.size() == 0)
               composition_evaluators.resize(this->n_compositional_fields());
@@ -799,6 +807,28 @@ namespace aspect
                    ExcMessage("The number of composition evaluators should be equal to the number of compositional fields."));
 
             const auto &component_indices = this->introspection().component_indices.compositional_fields;
+
+            const auto minimum_plastic_strain_reaction = [&](const unsigned int strain_index)
+            {
+              double strain_without_reaction = composition_evaluators[strain_index]->get_value(0);
+              if (this->get_timestep_number() > 1)
+                {
+                  composition_evaluators[strain_index]->evaluate({old_old_solution_values.data(),old_old_solution_values.size()},
+                                                                 EvaluationFlags::values);
+                  const double old_old_strain = composition_evaluators[strain_index]->get_value(0);
+                  const double time_step = this->get_timestep();
+                  const double old_time_step = this->get_old_timestep();
+
+                  Assert(old_time_step > 0.0, ExcInternalError());
+                  strain_without_reaction = strain_without_reaction * (1.0 + time_step / old_time_step)
+                                            - old_old_strain * time_step * time_step
+                                              / (old_time_step * (time_step + old_time_step));
+                }
+
+              const double roundoff_guard = 32.0 * std::numeric_limits<double>::epsilon()
+                                             * std::max(1.0, std::abs(strain_without_reaction));
+              return -strain_without_reaction + roundoff_guard;
+            };
 
             // Assign incremental strain values to reaction terms
             if (weakening_mechanism == plastic_weakening_with_plastic_strain_only)
@@ -816,7 +846,7 @@ namespace aspect
                 composition_evaluators[strain_index]->evaluate({old_solution_values.data(),old_solution_values.size()},
                                                                EvaluationFlags::values);
                 out.reaction_terms[i][strain_index] = std::max(delta_e_ii_plastic,
-                                                               -composition_evaluators[strain_index]->get_value(0));
+                                                               minimum_plastic_strain_reaction(strain_index));
               }
             if (weakening_mechanism == viscous_weakening_with_viscous_strain_only)
               {
@@ -865,7 +895,7 @@ namespace aspect
                 composition_evaluators[plastic_strain_index]->evaluate({old_solution_values.data(),old_solution_values.size()},
                                                                        EvaluationFlags::values);
                 out.reaction_terms[i][plastic_strain_index] = std::max(delta_e_ii_plastic,
-                                                                       -composition_evaluators[plastic_strain_index]->get_value(0));
+                                                                       minimum_plastic_strain_reaction(plastic_strain_index));
 
                 const unsigned viscous_strain_index = this->introspection().compositional_index_for_name("viscous_strain");
                 // Only create the evaluator the first time we get here
@@ -896,7 +926,7 @@ namespace aspect
                 composition_evaluators[strain_index]->evaluate({old_solution_values.data(),old_solution_values.size()},
                                                                EvaluationFlags::values);
                 out.reaction_terms[i][strain_index] = std::max(delta_e_ii_plastic,
-                                                               -composition_evaluators[strain_index]->get_value(0));
+                                                               minimum_plastic_strain_reaction(strain_index));
               }
           }
       }

@@ -8,10 +8,10 @@ and recovery format.
 CLIMBER-X writes `precipitation_rate`, `surface_temperature`,
 `surface_elevation`, `ice_thickness`, `basal_ice_velocity`, and
 `grounded_ice_fraction` when `CLIMBERX_CLIMATE_EXCHANGE_FILE` names an output
-file. Dynamic-ice runs obtain basal velocity directly from Yelmo. Prescribed
-ice runs export ice thickness but use zero basal velocity, so they do not
-silently invent ice motion. The adapter converts the live fields into ASPECT
-structured inputs:
+file. Dynamic-ice runs obtain basal velocity directly from either Yelmo or
+SICOPOLIS. Prescribed-ice runs export ice thickness but use zero basal
+velocity, so they do not silently invent ice motion. The adapter converts the
+live fields into ASPECT structured inputs:
 
 ```bash
 python3 surface_exchange.py climate-to-aspect climate.cxe \
@@ -25,6 +25,14 @@ FastScape uses the standard sliding law `E = K u^m` only where ice thickness
 exceeds the configured threshold. Both river and glacial erosion enter the
 same sediment-routing and deposition calculation, while separate result
 fields preserve their individual contributions.
+
+Compare the ice fields from two native exchanges with:
+
+```bash
+python3 plot_ice_exchange.py yelmo.cxe sicopolis.cxe \
+  --first-label Yelmo --second-label SICOPOLIS \
+  --output dynamic-ice-comparison.png
+```
 
 For prescribed-ice climate runs, the exported basal velocity is zero. A
 deliberate sensitivity test can assign a constant velocity only in grounded

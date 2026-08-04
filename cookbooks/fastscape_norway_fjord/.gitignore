@@ -1,4 +1,5 @@
 /.venv/
 /__pycache__/
+/.render-cache/
 /output-fastscape-norway-glacial/
 /output-fastscape-norway-control/

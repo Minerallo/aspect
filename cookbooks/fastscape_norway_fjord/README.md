@@ -30,6 +30,7 @@ python3 generate_ice_fields.py
 ../../../builts/fastscape-release/aspect fastscape_norway_no_glacial_erosion.prm
 python3 check_norway_fjord.py
 python3 plot_norway_fjord_pyvista.py
+python3 render_cinematic_fjord.py
 ```
 
 The loading run evolves the glacier-covered landscape for 100,000 years and
@@ -42,6 +43,13 @@ writes `norway_fjord_results.vtm` for interactive inspection, and produces the
 four-panel `norway_fjord_pyvista.png`. In a headless terminal it renders the
 PyVista triangles with Matplotlib; pass `--native-pyvista` on a machine with a
 graphical or OSMesa VTK backend to use PyVista's native renderer.
+
+`render_cinematic_fjord.py` reads all 22 surface time steps, constructs each
+terrain with PyVista, and produces a fixed-camera MP4 plus a poster image. It
+shows a translucent ice surface at bed elevation plus ice thickness, basal
+motion arrows, active glacial erosion, sea level, sediment flux, and unloading
+rebound. The default rendering uses every second landscape point and streams
+frames to ffmpeg to keep memory use bounded.
 
 Scientific context:
 

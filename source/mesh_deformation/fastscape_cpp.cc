@@ -1235,6 +1235,49 @@ FastscapeCpp<dim>::ice_load_moment_of_inertia() const
 
 
 template <int dim>
+SymmetricTensor<2,dim>
+FastscapeCpp<dim>::apply_degree_two_self_gravity(
+    const SymmetricTensor<2,dim> &rigid_ice_load)
+{
+    rigid_ice_load_norm = rigid_ice_load.norm();
+    if (!degree_two_self_gravity_enabled)
+    {
+        effective_ice_load_norm = rigid_ice_load_norm;
+        return rigid_ice_load;
+    }
+
+    const SymmetricTensor<2,dim> delayed_equilibrium =
+        (fluid_degree_two_load_love_number
+         - elastic_degree_two_load_love_number) * rigid_ice_load;
+    if (!self_gravity_state_is_initialized)
+    {
+        delayed_self_gravity_ice_load =
+            initialize_self_gravity_in_equilibrium
+            ? delayed_equilibrium
+            : SymmetricTensor<2,dim>();
+        self_gravity_state_is_initialized = true;
+    }
+    else if (self_gravity_relaxation_time == 0.0)
+        delayed_self_gravity_ice_load = delayed_equilibrium;
+    else if (this->get_timestep() > 0.0)
+    {
+        const double time_step_years = this->get_timestep() / year_in_seconds;
+        const double relaxed_fraction =
+            1.0 - std::exp(-time_step_years / self_gravity_relaxation_time);
+        delayed_self_gravity_ice_load +=
+            relaxed_fraction
+            * (delayed_equilibrium - delayed_self_gravity_ice_load);
+    }
+
+    const SymmetricTensor<2,dim> effective_ice_load =
+        (1.0 + elastic_degree_two_load_love_number) * rigid_ice_load
+        + delayed_self_gravity_ice_load;
+    effective_ice_load_norm = effective_ice_load.norm();
+    return effective_ice_load;
+}
+
+
+template <int dim>
 void
 FastscapeCpp<dim>::write_true_polar_wander_state() const
 {
@@ -1248,7 +1291,8 @@ FastscapeCpp<dim>::write_true_polar_wander_state() const
             std::ofstream output(filename, std::ios::app);
             if (write_header)
                 output << "time_years,pole_longitude_degrees,pole_latitude_degrees,"
-                       << "equilibrium_longitude_degrees,equilibrium_latitude_degrees\n";
+                       << "equilibrium_longitude_degrees,equilibrium_latitude_degrees,"
+                       << "rigid_ice_load_kg_m2,effective_ice_load_kg_m2\n";
 
             const auto longitude = [](const Tensor<1,3> &axis)
             {
@@ -1266,7 +1310,8 @@ FastscapeCpp<dim>::write_true_polar_wander_state() const
                    << this->get_time() / year_in_seconds << ','
                    << longitude(spin_axis) << ',' << latitude(spin_axis) << ','
                    << longitude(equilibrium_spin_axis) << ','
-                   << latitude(equilibrium_spin_axis) << '\n';
+                   << latitude(equilibrium_spin_axis) << ','
+                   << rigid_ice_load_norm << ',' << effective_ice_load_norm << '\n';
             last_polar_wander_output_time = this->get_time();
         }
 }
@@ -1285,7 +1330,7 @@ FastscapeCpp<dim>::update_true_polar_wander()
 
     if constexpr (dim == 3)
     {
-        std::vector<double> saved_state(15, 0.0);
+        std::vector<double> saved_state(23, 0.0);
         if (Utilities::MPI::this_mpi_process(this->get_mpi_communicator()) == 0)
         {
             for (unsigned int d = 0; d < 3; ++d)
@@ -1299,6 +1344,13 @@ FastscapeCpp<dim>::update_true_polar_wander()
                     saved_state[entry++] = reference_moment_of_inertia[i][j];
             saved_state[12] = reference_moment_of_inertia_is_initialized ? 1.0 : 0.0;
             saved_state[13] = last_polar_wander_output_time;
+            entry = 14;
+            for (unsigned int i = 0; i < 3; ++i)
+                for (unsigned int j = i; j < 3; ++j)
+                    saved_state[entry++] = delayed_self_gravity_ice_load[i][j];
+            saved_state[20] = self_gravity_state_is_initialized ? 1.0 : 0.0;
+            saved_state[21] = rigid_ice_load_norm;
+            saved_state[22] = effective_ice_load_norm;
         }
         saved_state = Utilities::MPI::broadcast(this->get_mpi_communicator(),
                                                 saved_state,
@@ -1316,6 +1368,13 @@ FastscapeCpp<dim>::update_true_polar_wander()
                     reference_moment_of_inertia[i][j] = saved_state[entry++];
             reference_moment_of_inertia_is_initialized = saved_state[12] > 0.5;
             last_polar_wander_output_time = saved_state[13];
+            entry = 14;
+            for (unsigned int i = 0; i < 3; ++i)
+                for (unsigned int j = i; j < 3; ++j)
+                    delayed_self_gravity_ice_load[i][j] = saved_state[entry++];
+            self_gravity_state_is_initialized = saved_state[20] > 0.5;
+            rigid_ice_load_norm = saved_state[21];
+            effective_ice_load_norm = saved_state[22];
         }
 
         // Climate fields are inexpensive to reconstruct from their source
@@ -1336,7 +1395,8 @@ FastscapeCpp<dim>::update_true_polar_wander()
 
         SymmetricTensor<2,dim> reorientation_moment =
             rotation.tensor_moment_of_inertia - reference_moment_of_inertia;
-        reorientation_moment += ice_load_moment_of_inertia();
+        reorientation_moment +=
+            apply_degree_two_self_gravity(ice_load_moment_of_inertia());
         reorientation_moment += rotational_bulge_inertia_difference *
             symmetrize(outer_product(spin_axis, spin_axis));
 
@@ -1737,10 +1797,15 @@ FastscapeCpp<dim>::save(
         archive << spin_axis;
         archive << equilibrium_spin_axis;
         archive << reference_moment_of_inertia;
+        archive << delayed_self_gravity_ice_load;
         archive << reference_moment_of_inertia_is_initialized;
+        archive << self_gravity_state_is_initialized;
+        archive << rigid_ice_load_norm;
+        archive << effective_ice_load_norm;
         archive << last_polar_wander_output_time;
     }
-    status_strings["FastscapeTruePolarWander"] = polar_wander_stream.str();
+    status_strings["FastscapeTruePolarWanderDegreeTwoSelfGravity"] =
+        polar_wander_stream.str();
 }
 
 
@@ -1789,8 +1854,8 @@ FastscapeCpp<dim>::load(
                                               output_history);
     }
 
-    const auto polar_wander_state =
-        status_strings.find("FastscapeTruePolarWander");
+    const auto polar_wander_state = status_strings.find(
+        "FastscapeTruePolarWanderDegreeTwoSelfGravity");
     if (polar_wander_state != status_strings.end())
     {
         std::istringstream polar_wander_stream(polar_wander_state->second);
@@ -1798,8 +1863,30 @@ FastscapeCpp<dim>::load(
         archive >> spin_axis;
         archive >> equilibrium_spin_axis;
         archive >> reference_moment_of_inertia;
+        archive >> delayed_self_gravity_ice_load;
         archive >> reference_moment_of_inertia_is_initialized;
+        archive >> self_gravity_state_is_initialized;
+        archive >> rigid_ice_load_norm;
+        archive >> effective_ice_load_norm;
         archive >> last_polar_wander_output_time;
+    }
+    else
+    {
+        // Checkpoints written before the degree-two load response was added
+        // contain only the pole and reference inertia state.
+        const auto legacy_polar_wander_state =
+            status_strings.find("FastscapeTruePolarWander");
+        if (legacy_polar_wander_state != status_strings.end())
+        {
+            std::istringstream polar_wander_stream(
+                legacy_polar_wander_state->second);
+            aspect::iarchive archive(polar_wander_stream);
+            archive >> spin_axis;
+            archive >> equilibrium_spin_axis;
+            archive >> reference_moment_of_inertia;
+            archive >> reference_moment_of_inertia_is_initialized;
+            archive >> last_polar_wander_output_time;
+        }
     }
 }
 
@@ -1954,6 +2041,34 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
                           "thickness. Topography evolved by FastScape already "
                           "changes ASPECT's volume integral and is not added a "
                           "second time as a separate surface load.");
+        prm.declare_entry("Enable degree two self gravity", "false",
+                          Patterns::Bool(),
+                          "Correct the rigid ice-load inertia tensor for the "
+                          "self-gravitating deformation of the solid Earth. "
+                          "The correction uses an immediate elastic degree-two "
+                          "load Love number and one delayed viscous mode. This "
+                          "is a reduced load-response model, not a self-gravity "
+                          "body force in the ASPECT Stokes equations.");
+        prm.declare_entry("Elastic degree two load Love number", "-0.3",
+                          Patterns::Double(-1.0, 0.0),
+                          "Immediate elastic degree-two gravity-potential "
+                          "response to a surface load. The effective initial "
+                          "load tensor is multiplied by one plus this value.");
+        prm.declare_entry("Fluid degree two load Love number", "-0.9",
+                          Patterns::Double(-1.0, 0.0),
+                          "Long-time degree-two response after viscous "
+                          "relaxation. A value approaching minus one represents "
+                          "nearly complete compensation of the surface load.");
+        prm.declare_entry("Self gravity relaxation time", "10000",
+                          Patterns::Double(0),
+                          "Relaxation time in years of the single delayed "
+                          "degree-two load-response mode. Zero applies the "
+                          "fluid response immediately.");
+        prm.declare_entry("Initialize self gravity in equilibrium", "true",
+                          Patterns::Bool(),
+                          "Assume the initial ice load has already reached its "
+                          "long-time compensated state. Disable this for an "
+                          "ice load emplaced at the beginning of the model.");
         prm.declare_entry("Ice density", "917",
                           Patterns::Double(0),
                           "Density in kilograms per cubic meter used to convert "
@@ -2054,6 +2169,20 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
             prm.get_bool("Enable true polar wander");
         include_ice_load_in_true_polar_wander =
             prm.get_bool("Include ice load in true polar wander");
+        degree_two_self_gravity_enabled =
+            prm.get_bool("Enable degree two self gravity");
+        elastic_degree_two_load_love_number =
+            prm.get_double("Elastic degree two load Love number");
+        fluid_degree_two_load_love_number =
+            prm.get_double("Fluid degree two load Love number");
+        AssertThrow(fluid_degree_two_load_love_number <=
+                    elastic_degree_two_load_love_number,
+                    ExcMessage("The fluid degree-two load Love number must be "
+                               "less than or equal to the elastic value."));
+        self_gravity_relaxation_time =
+            prm.get_double("Self gravity relaxation time");
+        initialize_self_gravity_in_equilibrium =
+            prm.get_bool("Initialize self gravity in equilibrium");
         ice_density = prm.get_double("Ice density");
         rotational_bulge_inertia_difference =
             prm.get_double("Rotational bulge inertia difference");

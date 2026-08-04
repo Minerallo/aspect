@@ -96,6 +96,8 @@ private:
     void update_true_polar_wander();
     void resample_climate_fields();
     SymmetricTensor<2,dim> ice_load_moment_of_inertia() const;
+    SymmetricTensor<2,dim> apply_degree_two_self_gravity(
+      const SymmetricTensor<2,dim> &rigid_ice_load);
     void write_true_polar_wander_state() const;
 
     mutable SurfaceMesh surface_mesh;
@@ -143,14 +145,23 @@ private:
 
     bool true_polar_wander_enabled = false;
     bool include_ice_load_in_true_polar_wander = true;
+    bool degree_two_self_gravity_enabled = false;
+    bool initialize_self_gravity_in_equilibrium = true;
     double ice_density = 917.0;
+    double elastic_degree_two_load_love_number = -0.3;
+    double fluid_degree_two_load_love_number = -0.9;
+    double self_gravity_relaxation_time = 1e4;
     double rotational_bulge_inertia_difference = 2.6e35;
     double polar_wander_relaxation_time = 1e6;
     double maximum_polar_wander_rate = 10.0;
     Tensor<1,dim> spin_axis;
     Tensor<1,dim> equilibrium_spin_axis;
     SymmetricTensor<2,dim> reference_moment_of_inertia;
+    SymmetricTensor<2,dim> delayed_self_gravity_ice_load;
     bool reference_moment_of_inertia_is_initialized = false;
+    bool self_gravity_state_is_initialized = false;
+    double rigid_ice_load_norm = 0.0;
+    double effective_ice_load_norm = 0.0;
     mutable double last_polar_wander_output_time = -1.0;
 };
 }

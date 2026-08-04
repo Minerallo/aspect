@@ -31,6 +31,7 @@
 #include <deal.II/fe/fe_values.h>
 #include <deal.II/numerics/fe_field_function.h>
 #include <deal.II/base/quadrature_lib.h>
+#include <limits>
 
 namespace aspect
 {
@@ -214,7 +215,15 @@ namespace aspect
                            "to the temperature-dependent Frank Kamenetskii formulation, computes "
                            "strain healing as removing strain as a function of temperature, time, "
                            "and a user-defined healing rate and prefactor "
-                           "as done in Fuchs and Becker, 2019, for mantle convection");
+			   "as done in Fuchs and Becker, 2019, for mantle convection"
+                           "\n\n"
+                           "\\item ``strain dependent'': makes the recovery_rate strain rate dependent "
+			   "with 3 revocery ranges for slow (log-lin), intermediate (log-log) and fast (log-lin) strain rates: "
+			   "via Slow/ Fast healing recovery rate, Slow/ Fast strain rate healing "  
+			   "Consist of temperature dependent exp-term via: strain_healing_temperature_factor "
+			   "This approach is closer to the actual rate-and-state theory "
+			   "It is based/ tuned on slide-hold-slide lab experiments of ESL Utrecht."
+			   "State: 10.02.2026 ");
 
         prm.declare_entry ("Strain healing temperature dependent recovery rate", "1.e-15", Patterns::Double(0),
                            "Recovery rate prefactor for temperature dependent "
@@ -520,62 +529,164 @@ namespace aspect
         return weakening_factors;
 
       }
-	// TN_v1: modifications to have a 3 regime strain_rate dependent strain_healing_temperature_dependent_prefactor
+
       template <int dim>
       StrainHealingDiagnostics
       StrainDependent<dim>::
       calculate_strain_healing(const MaterialModel::MaterialModelInputs<dim> &in,
-                               const unsigned int j,
-                               const double edot_ii) const
+                              const unsigned int j,
+                              const double edot_ii) const
       {
-        const double reference_temperature = this->get_adiabatic_surface_temperature();
-
         StrainHealingDiagnostics d;
 
-        if (healing_mechanism != no_healing)
-            d.temperature_factor = std::exp(-strain_healing_temperature_dependent_prefactor * 0.5 * (1.0 - in.temperature[j]/reference_temperature));
+        // Safe defaults
+        d.temperature_factor = 1.0;
+        d.recovery_rate = 0.0;
+        d.healed_strain = 0.0;
 
-        double healed_strain = 0.0;
-	// define additional input values: TN_v1
         switch (healing_mechanism)
           {
             case no_healing:
             {
               break;
             }
+
             case temperature_dependent:
             {
-            d.recovery_rate= strain_healing_temperature_dependent_recovery_rate;
-                break;
+              const double reference_temperature = this->get_adiabatic_surface_temperature();
+
+              AssertThrow(reference_temperature > 0.0,
+                          ExcMessage("Temperature-dependent healing requires a positive adiabatic surface temperature."));
+
+              const double exponent =
+                -strain_healing_temperature_dependent_prefactor
+                * 0.5
+                * (1.0 - in.temperature[j] / reference_temperature);
+
+              d.temperature_factor = std::exp(exponent);
+              d.recovery_rate = strain_healing_temperature_dependent_recovery_rate;
+              break;
             }
+
             case strain_rate_dependent:
-	// extended healing_rate implementation: TN_v1
-            { 
-              const double eps_dot = edot_ii;
-              const double log_eps_dot = std::log(eps_dot);
-              const double log_eps_dot_slow  = std::log(strain_healing_strain_rate_dependent_slow_strain_rate);
-              const double log_eps_dot_fast  = std::log(strain_healing_strain_rate_dependent_fast_strain_rate);
+            {
+              // No temperature dependence in this mode
+              d.temperature_factor = 1.0;
+
+              const double eps_dot = std::max(edot_ii, std::numeric_limits<double>::min());
+
+              AssertThrow(strain_healing_strain_rate_dependent_slow_strain_rate > 0.0,
+                          ExcMessage("Slow strain rate healing threshold must be > 0."));
+              AssertThrow(strain_healing_strain_rate_dependent_fast_strain_rate > 0.0,
+                          ExcMessage("Fast strain rate healing threshold must be > 0."));
+              AssertThrow(strain_healing_strain_rate_dependent_slow_strain_rate
+                          < strain_healing_strain_rate_dependent_fast_strain_rate,
+                          ExcMessage("Slow strain rate healing threshold must be smaller than fast strain rate healing threshold."));
+
+              const double log_eps_dot      = std::log(eps_dot);
+              const double log_eps_dot_slow = std::log(strain_healing_strain_rate_dependent_slow_strain_rate);
+              const double log_eps_dot_fast = std::log(strain_healing_strain_rate_dependent_fast_strain_rate);
 
               if (log_eps_dot <= log_eps_dot_slow)
-              {
+                {
                   d.recovery_rate = strain_healing_strain_rate_dependent_slow_recovery_rate;
-              }
+                }
               else if (log_eps_dot >= log_eps_dot_fast)
-              {
+                {
                   d.recovery_rate = strain_healing_strain_rate_dependent_fast_recovery_rate;
-              }
+                }
               else
-              {
-                  double slope = (log_eps_dot_fast - log_eps_dot) / (log_eps_dot_fast - log_eps_dot_slow);
-                  d.recovery_rate = strain_healing_strain_rate_dependent_fast_recovery_rate + (strain_healing_strain_rate_dependent_slow_recovery_rate - strain_healing_strain_rate_dependent_fast_recovery_rate) * slope;
-              }
-                    break;
+                {
+                  const double fraction =
+                    (log_eps_dot - log_eps_dot_slow) / (log_eps_dot_fast - log_eps_dot_slow);
+
+                  d.recovery_rate =
+                    strain_healing_strain_rate_dependent_slow_recovery_rate
+                    + fraction *
+                    (strain_healing_strain_rate_dependent_fast_recovery_rate
+                    - strain_healing_strain_rate_dependent_slow_recovery_rate);
+                }
+
+              break;
+            }
+
+            default:
+            {
+              AssertThrow(false, ExcNotImplemented());
             }
           }
 
         d.healed_strain = d.recovery_rate * d.temperature_factor * this->get_timestep();
+
+        AssertThrow(std::isfinite(d.temperature_factor),
+                    ExcMessage("strain_healing_temperature_factor is not finite."));
+        AssertThrow(std::isfinite(d.recovery_rate),
+                    ExcMessage("strain_healing_recovery_rate is not finite."));
+        AssertThrow(std::isfinite(d.healed_strain),
+                    ExcMessage("healed_strain is not finite."));
+
         return d;
       }
+
+	// TN_v1: modifications to have a 3 regime strain_rate dependent strain_healing_temperature_dependent_prefactor
+  //     template <int dim>
+  //     StrainHealingDiagnostics
+  //     StrainDependent<dim>::
+  //     calculate_strain_healing(const MaterialModel::MaterialModelInputs<dim> &in,
+  //                              const unsigned int j,
+  //                              const double edot_ii) const
+  //     {
+  //       const double reference_temperature = this->get_adiabatic_surface_temperature();
+
+  //       StrainHealingDiagnostics d;
+
+  //       if (healing_mechanism != no_healing)
+  //           d.temperature_factor = std::exp(-strain_healing_temperature_dependent_prefactor * 0.5 * (1.0 - in.temperature[j]/reference_temperature));
+
+  //       double healed_strain = 0.0;
+	// // define additional input values: TN_v1
+  //       switch (healing_mechanism)
+  //         {
+  //           case no_healing:
+  //           {
+  //             break;
+  //           }
+  //           case temperature_dependent:
+  //           {
+  //             d.temperature_factor = std::exp(-strain_healing_temperature_dependent_prefactor * 0.5 * (1.0 - in.temperature[j]/reference_temperature));
+  //             d.recovery_rate= strain_healing_temperature_dependent_recovery_rate;
+  //               break;
+  //           }
+  //           case strain_rate_dependent:
+	// // extended healing_rate implementation: TN_v1
+  //           { 
+  //             d.temperature_factor = std::exp(-strain_healing_temperature_dependent_prefactor * 0.5 * (1.0 - in.temperature[j]/reference_temperature));
+
+  //             const double eps_dot = edot_ii;
+  //             const double log_eps_dot = std::log(eps_dot);
+  //             const double log_eps_dot_slow  = std::log(strain_healing_strain_rate_dependent_slow_strain_rate);
+  //             const double log_eps_dot_fast  = std::log(strain_healing_strain_rate_dependent_fast_strain_rate);
+
+  //             if (log_eps_dot <= log_eps_dot_slow)
+  //             {
+  //                 d.recovery_rate = strain_healing_strain_rate_dependent_slow_recovery_rate;
+  //             }
+  //             else if (log_eps_dot >= log_eps_dot_fast)
+  //             {
+  //                 d.recovery_rate = strain_healing_strain_rate_dependent_fast_recovery_rate;
+  //             }
+  //             else
+  //             {
+  //                 double slope = (log_eps_dot_fast - log_eps_dot) / (log_eps_dot_fast - log_eps_dot_slow);
+  //                 d.recovery_rate = strain_healing_strain_rate_dependent_fast_recovery_rate + (strain_healing_strain_rate_dependent_slow_recovery_rate - strain_healing_strain_rate_dependent_fast_recovery_rate) * slope;
+  //             }
+  //                   break;
+  //           }
+  //         }
+
+  //       d.healed_strain = d.recovery_rate * d.temperature_factor * this->get_timestep();
+  //       return d;
+  //     }
 
       template <int dim>
       std::pair<double, double>
@@ -653,13 +764,16 @@ namespace aspect
             // Now account for strain healing
             if (healing_mechanism != no_healing)
               {
-                // Temperature-dependent healing occurs independent of deformation state
-		// TN_v1: modify input for 4 input parameters
+              // Temperature-dependent healing occurs independent of deformation state
+		          // TN_v1: modify input for 4 input parameters
+              //17.07.: limit plastic strain to be non-zero (follow-up:)
                 const auto d = calculate_strain_healing(in,i, edot_ii);
-
                 delta_e_ii_plastic -= d.healed_strain;
+                delta_e_ii_plastic = std::max(delta_e_ii_plastic,0.);
                 delta_e_ii_viscous -= d.healed_strain;
+                delta_e_ii_viscous = std::max(delta_e_ii_viscous,0.);
                 delta_e_ii -= d.healed_strain;
+                delta_e_ii = std::max(delta_e_ii,0.);
               }
 
             // We need to obtain the strain values from compositional fields at the previous time step,

@@ -41,7 +41,7 @@ namespace aspect
       {
         double healed_strain = 0.0;
         double recovery_rate = 0.0;
-        double temperature_factor = 1.0;
+        double temperature_factor = 0.0;
       };
 
       

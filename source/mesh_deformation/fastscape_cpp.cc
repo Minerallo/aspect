@@ -17,6 +17,7 @@
 #include <aspect/geometry_model/spherical_shell.h>
 #include <aspect/geometry_model/initial_topography_model/interface.h>
 #include <aspect/gravity_model/interface.h>
+#include <aspect/simulator.h>
 #include <aspect/structured_data.h>
 
 #include <fastscapelib/flow/flow_router.hpp>
@@ -64,11 +65,21 @@ public:
         if (filename.empty())
             return;
 
-        Utilities::StructuredDataLookup<dim-1> lookup(1, 1.0);
-        lookup.load_file(filename, MPI_COMM_SELF);
+        lookup = std::make_unique<Utilities::StructuredDataLookup<dim-1>>(1, 1.0);
+        lookup->load_file(filename, MPI_COMM_SELF);
+        sample(surface_coordinates);
+    }
+
+    void
+    sample(const std::vector<Point<dim-1>> &surface_coordinates)
+    {
+        if (!lookup)
+            return;
+
+        values.resize({surface_coordinates.size()});
         for (unsigned int i = 0; i < surface_coordinates.size(); ++i)
             values[i] = std::max(0.0,
-                                 lookup.get_data(surface_coordinates[i], 0));
+                                 lookup->get_data(surface_coordinates[i], 0));
     }
 
     const xt::xarray<double> &
@@ -79,6 +90,7 @@ public:
 
 private:
     xt::xarray<double> values;
+    std::unique_ptr<Utilities::StructuredDataLookup<dim-1>> lookup;
 };
 
 /**
@@ -99,11 +111,21 @@ public:
         if (filename.empty())
             return;
 
-        Utilities::StructuredDataLookup<dim-1> lookup(1, 1.0);
-        lookup.load_file(filename, MPI_COMM_SELF);
+        lookup = std::make_unique<Utilities::StructuredDataLookup<dim-1>>(1, 1.0);
+        lookup->load_file(filename, MPI_COMM_SELF);
+        sample(surface_coordinates);
+    }
+
+    void
+    sample(const std::vector<Point<dim-1>> &surface_coordinates)
+    {
+        if (!lookup)
+            return;
+
+        values.resize({surface_coordinates.size()});
         for (unsigned int i = 0; i < surface_coordinates.size(); ++i)
             values[i] = std::max(0.0,
-                                 lookup.get_data(surface_coordinates[i], 0));
+                                 lookup->get_data(surface_coordinates[i], 0));
     }
 
     const xt::xarray<double> &
@@ -114,6 +136,7 @@ public:
 
 private:
     xt::xarray<double> values;
+    std::unique_ptr<Utilities::StructuredDataLookup<dim-1>> lookup;
 };
 
 
@@ -133,11 +156,21 @@ public:
         if (filename.empty())
             return;
 
-        Utilities::StructuredDataLookup<dim-1> lookup(1, 1.0);
-        lookup.load_file(filename, MPI_COMM_SELF);
+        lookup = std::make_unique<Utilities::StructuredDataLookup<dim-1>>(1, 1.0);
+        lookup->load_file(filename, MPI_COMM_SELF);
+        sample(surface_coordinates);
+    }
+
+    void
+    sample(const std::vector<Point<dim-1>> &surface_coordinates)
+    {
+        if (!lookup)
+            return;
+
+        values.resize({surface_coordinates.size()});
         for (unsigned int i = 0; i < surface_coordinates.size(); ++i)
             values[i] = std::max(0.0,
-                                 lookup.get_data(surface_coordinates[i], 0));
+                                 lookup->get_data(surface_coordinates[i], 0));
     }
 
     const xt::xarray<double> &
@@ -148,6 +181,7 @@ public:
 
 private:
     xt::xarray<double> values;
+    std::unique_ptr<Utilities::StructuredDataLookup<dim-1>> lookup;
 };
 
 
@@ -167,11 +201,21 @@ public:
         if (filename.empty())
             return;
 
-        Utilities::StructuredDataLookup<dim-1> lookup(1, 1.0);
-        lookup.load_file(filename, MPI_COMM_SELF);
+        lookup = std::make_unique<Utilities::StructuredDataLookup<dim-1>>(1, 1.0);
+        lookup->load_file(filename, MPI_COMM_SELF);
+        sample(surface_coordinates);
+    }
+
+    void
+    sample(const std::vector<Point<dim-1>> &surface_coordinates)
+    {
+        if (!lookup)
+            return;
+
+        values.resize({surface_coordinates.size()});
         for (unsigned int i = 0; i < surface_coordinates.size(); ++i)
             values[i] = std::max(0.0,
-                                 lookup.get_data(surface_coordinates[i], 0));
+                                 lookup->get_data(surface_coordinates[i], 0));
     }
 
     const xt::xarray<double> &
@@ -182,6 +226,7 @@ public:
 
 private:
     xt::xarray<double> values;
+    std::unique_ptr<Utilities::StructuredDataLookup<dim-1>> lookup;
 };
 
 
@@ -1065,7 +1110,10 @@ FastscapeCpp<dim>::FastscapeCpp()
     spatial_basal_ice_velocity(
         std::make_unique<SpatialBasalIceVelocity<dim>>()),
     surface_results(std::make_unique<SurfaceResults<dim>>())
-{}
+{
+    spin_axis[dim-1] = 1.0;
+    equilibrium_spin_axis = spin_axis;
+}
 
 
 template <int dim>
@@ -1098,6 +1146,243 @@ FastscapeCpp<dim>::natural_surface_coordinates(const Point<dim> &point) const
     for (unsigned int d = 0; d < dim-1; ++d)
         surface_point[d] = natural[d+offset];
     return surface_point;
+}
+
+
+template <int dim>
+Point<dim-1>
+FastscapeCpp<dim>::climate_surface_coordinates(const Point<dim> &point) const
+{
+    if constexpr (dim != 3)
+        return natural_surface_coordinates(point);
+    else
+    {
+        const Tensor<1,3> radial_direction = point / point.norm();
+        const Tensor<1,3> climate_north = spin_axis / spin_axis.norm();
+
+        Tensor<1,3> climate_zero_longitude;
+        climate_zero_longitude[0] = 1.0;
+        climate_zero_longitude -=
+            (climate_zero_longitude * climate_north) * climate_north;
+        if (climate_zero_longitude.norm() < 1e-12)
+        {
+            climate_zero_longitude = Tensor<1,3>();
+            climate_zero_longitude[1] = 1.0;
+            climate_zero_longitude -=
+                (climate_zero_longitude * climate_north) * climate_north;
+        }
+        climate_zero_longitude /= climate_zero_longitude.norm();
+        const Tensor<1,3> climate_east =
+            cross_product_3d(climate_north, climate_zero_longitude);
+
+        double longitude = std::atan2(radial_direction * climate_east,
+                                      radial_direction * climate_zero_longitude);
+        if (longitude < 0.0)
+            longitude += 2.0 * numbers::PI;
+        const double colatitude =
+            std::acos(std::clamp(radial_direction * climate_north, -1.0, 1.0));
+        return Point<2>(longitude, colatitude);
+    }
+}
+
+
+template <int dim>
+void
+FastscapeCpp<dim>::resample_climate_fields()
+{
+    if (Utilities::MPI::this_mpi_process(this->get_mpi_communicator()) != 0)
+        return;
+
+    std::vector<Point<dim-1>> climate_coordinates(fastscape_points.size());
+    for (unsigned int i = 0; i < fastscape_points.size(); ++i)
+        climate_coordinates[i] = climate_surface_coordinates(fastscape_points[i]);
+
+    spatial_erosion_strength->sample(climate_coordinates);
+    spatial_surface_runoff->sample(climate_coordinates);
+    spatial_ice_thickness->sample(climate_coordinates);
+    spatial_basal_ice_velocity->sample(climate_coordinates);
+}
+
+
+template <int dim>
+SymmetricTensor<2,dim>
+FastscapeCpp<dim>::ice_load_moment_of_inertia() const
+{
+    SymmetricTensor<2,dim> local_moment;
+    if constexpr (dim == 3)
+        if (Utilities::MPI::this_mpi_process(this->get_mpi_communicator()) == 0 &&
+            include_ice_load_in_true_polar_wander)
+        {
+            const xt::xarray<double> &ice_thickness =
+                spatial_ice_thickness->get_values();
+            AssertDimension(ice_thickness.size(), fastscape_points.size());
+            for (unsigned int i = 0; i < fastscape_points.size(); ++i)
+            {
+                const Tensor<1,dim> radial_direction =
+                    fastscape_points[i] / fastscape_points[i].norm();
+                const double surface_mass =
+                    ice_density * ice_thickness[i] * fastscape_point_areas[i];
+                const double radius_squared = fastscape_points[i].norm_square();
+                local_moment += surface_mass * radius_squared *
+                    (unit_symmetric_tensor<dim>() -
+                     symmetrize(outer_product(radial_direction,
+                                              radial_direction)));
+            }
+        }
+
+    return Utilities::MPI::sum(local_moment, this->get_mpi_communicator());
+}
+
+
+template <int dim>
+void
+FastscapeCpp<dim>::write_true_polar_wander_state() const
+{
+    if constexpr (dim == 3)
+        if (Utilities::MPI::this_mpi_process(this->get_mpi_communicator()) == 0 &&
+            this->get_time() != last_polar_wander_output_time)
+        {
+            const std::string filename =
+                this->get_output_directory() + "true_polar_wander.csv";
+            const bool write_header = !std::filesystem::exists(filename);
+            std::ofstream output(filename, std::ios::app);
+            if (write_header)
+                output << "time_years,pole_longitude_degrees,pole_latitude_degrees,"
+                       << "equilibrium_longitude_degrees,equilibrium_latitude_degrees\n";
+
+            const auto longitude = [](const Tensor<1,3> &axis)
+            {
+                double value = std::atan2(axis[1], axis[0]) * 180.0 / numbers::PI;
+                if (value < 0.0)
+                    value += 360.0;
+                return value;
+            };
+            const auto latitude = [](const Tensor<1,3> &axis)
+            {
+                return std::asin(std::clamp(axis[2] / axis.norm(), -1.0, 1.0))
+                       * 180.0 / numbers::PI;
+            };
+            output << std::setprecision(16)
+                   << this->get_time() / year_in_seconds << ','
+                   << longitude(spin_axis) << ',' << latitude(spin_axis) << ','
+                   << longitude(equilibrium_spin_axis) << ','
+                   << latitude(equilibrium_spin_axis) << '\n';
+            last_polar_wander_output_time = this->get_time();
+        }
+}
+
+
+template <int dim>
+void
+FastscapeCpp<dim>::update_true_polar_wander()
+{
+    if (!true_polar_wander_enabled)
+        return;
+
+    AssertThrow(dim == 3 && spherical_geometry,
+                ExcMessage("True polar wander requires a three-dimensional "
+                           "spherical-shell model."));
+
+    if constexpr (dim == 3)
+    {
+        std::vector<double> saved_state(15, 0.0);
+        if (Utilities::MPI::this_mpi_process(this->get_mpi_communicator()) == 0)
+        {
+            for (unsigned int d = 0; d < 3; ++d)
+            {
+                saved_state[d] = spin_axis[d];
+                saved_state[3+d] = equilibrium_spin_axis[d];
+            }
+            unsigned int entry = 6;
+            for (unsigned int i = 0; i < 3; ++i)
+                for (unsigned int j = i; j < 3; ++j)
+                    saved_state[entry++] = reference_moment_of_inertia[i][j];
+            saved_state[12] = reference_moment_of_inertia_is_initialized ? 1.0 : 0.0;
+            saved_state[13] = last_polar_wander_output_time;
+        }
+        saved_state = Utilities::MPI::broadcast(this->get_mpi_communicator(),
+                                                saved_state,
+                                                0);
+        if (Utilities::MPI::this_mpi_process(this->get_mpi_communicator()) != 0)
+        {
+            for (unsigned int d = 0; d < 3; ++d)
+            {
+                spin_axis[d] = saved_state[d];
+                equilibrium_spin_axis[d] = saved_state[3+d];
+            }
+            unsigned int entry = 6;
+            for (unsigned int i = 0; i < 3; ++i)
+                for (unsigned int j = i; j < 3; ++j)
+                    reference_moment_of_inertia[i][j] = saved_state[entry++];
+            reference_moment_of_inertia_is_initialized = saved_state[12] > 0.5;
+            last_polar_wander_output_time = saved_state[13];
+        }
+
+        // Climate fields are inexpensive to reconstruct from their source
+        // files. Reconstruct them before evaluating the ice load so a restart
+        // uses the restored pole rather than the geographic pole used during
+        // surface-mesh initialization.
+        resample_climate_fields();
+
+        const RotationProperties<dim> rotation =
+            this->compute_net_angular_momentum(false,
+                                               this->get_solution(),
+                                               false);
+        if (!reference_moment_of_inertia_is_initialized)
+        {
+            reference_moment_of_inertia = rotation.tensor_moment_of_inertia;
+            reference_moment_of_inertia_is_initialized = true;
+        }
+
+        SymmetricTensor<2,dim> reorientation_moment =
+            rotation.tensor_moment_of_inertia - reference_moment_of_inertia;
+        reorientation_moment += ice_load_moment_of_inertia();
+        reorientation_moment += rotational_bulge_inertia_difference *
+            symmetrize(outer_product(spin_axis, spin_axis));
+
+        const auto principal_axes =
+            eigenvectors(reorientation_moment,
+                         SymmetricTensorEigenvectorMethod::jacobi);
+        unsigned int maximum_axis = 0;
+        for (unsigned int d = 1; d < dim; ++d)
+            if (principal_axes[d].first > principal_axes[maximum_axis].first)
+                maximum_axis = d;
+        equilibrium_spin_axis = principal_axes[maximum_axis].second;
+        if (equilibrium_spin_axis * spin_axis < 0.0)
+            equilibrium_spin_axis *= -1.0;
+
+        const double cosine =
+            std::clamp(equilibrium_spin_axis * spin_axis, -1.0, 1.0);
+        const double separation = std::acos(cosine);
+        const double time_step_years = this->get_timestep() / year_in_seconds;
+        if (separation > 0.0 && time_step_years > 0.0)
+        {
+            double angular_step = separation;
+            if (polar_wander_relaxation_time > 0.0)
+                angular_step *=
+                    1.0 - std::exp(-time_step_years / polar_wander_relaxation_time);
+            if (maximum_polar_wander_rate > 0.0)
+                angular_step = std::min(
+                    angular_step,
+                    maximum_polar_wander_rate * time_step_years / 1e6
+                    * numbers::PI / 180.0);
+
+            const double fraction = angular_step / separation;
+            if (separation < 1e-10)
+                spin_axis = (1.0-fraction) * spin_axis
+                            + fraction * equilibrium_spin_axis;
+            else
+                spin_axis =
+                    std::sin((1.0-fraction)*separation) / std::sin(separation)
+                    * spin_axis
+                    + std::sin(fraction*separation) / std::sin(separation)
+                    * equilibrium_spin_axis;
+            spin_axis /= spin_axis.norm();
+        }
+
+        resample_climate_fields();
+        write_true_polar_wander_state();
+    }
 }
 
 
@@ -1296,6 +1581,8 @@ FastscapeCpp<dim>::update()
 
     if (use_sea_level_function)
         sea_level_function.set_time(this->get_time() / year_in_seconds);
+
+    update_true_polar_wander();
 }
 
 
@@ -1443,6 +1730,17 @@ FastscapeCpp<dim>::save(
     }
     status_strings["FastscapeSurfaceOutputState"] =
         output_state_stream.str();
+
+    std::ostringstream polar_wander_stream;
+    {
+        aspect::oarchive archive(polar_wander_stream);
+        archive << spin_axis;
+        archive << equilibrium_spin_axis;
+        archive << reference_moment_of_inertia;
+        archive << reference_moment_of_inertia_is_initialized;
+        archive << last_polar_wander_output_time;
+    }
+    status_strings["FastscapeTruePolarWander"] = polar_wander_stream.str();
 }
 
 
@@ -1489,6 +1787,19 @@ FastscapeCpp<dim>::load(
         output_state_archive >> output_history;
         surface_results->restore_output_state(reference_elevation,
                                               output_history);
+    }
+
+    const auto polar_wander_state =
+        status_strings.find("FastscapeTruePolarWander");
+    if (polar_wander_state != status_strings.end())
+    {
+        std::istringstream polar_wander_stream(polar_wander_state->second);
+        aspect::iarchive archive(polar_wander_stream);
+        archive >> spin_axis;
+        archive >> equilibrium_spin_axis;
+        archive >> reference_moment_of_inertia;
+        archive >> reference_moment_of_inertia_is_initialized;
+        archive >> last_polar_wander_output_time;
     }
 }
 
@@ -1629,6 +1940,40 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
                           "Optional ASPECT structured text-data file containing "
                           "basal ice velocity in meters per year. An empty "
                           "filename represents no basal sliding.");
+        prm.declare_entry("Enable true polar wander", "false",
+                          Patterns::Bool(),
+                          "Let changes in ASPECT's directly integrated moment "
+                          "of inertia and the prescribed ice load move the spin "
+                          "axis. Climate fields are then sampled in coordinates "
+                          "defined by that axis, so rain and ice belts move over "
+                          "the body-fixed surface. This option is available only "
+                          "for three-dimensional spherical shells.");
+        prm.declare_entry("Include ice load in true polar wander", "true",
+                          Patterns::Bool(),
+                          "Include the moment of inertia of the prescribed ice "
+                          "thickness. Topography evolved by FastScape already "
+                          "changes ASPECT's volume integral and is not added a "
+                          "second time as a separate surface load.");
+        prm.declare_entry("Ice density", "917",
+                          Patterns::Double(0),
+                          "Density in kilograms per cubic meter used to convert "
+                          "ice thickness into surface mass.");
+        prm.declare_entry("Rotational bulge inertia difference", "2.6e35",
+                          Patterns::Double(0),
+                          "Difference between polar and equatorial moments of "
+                          "inertia in kilograms square meters. This stabilizing "
+                          "term represents the hydrostatic or fossil rotational "
+                          "bulge. It is essential because ASPECT does not solve "
+                          "self-gravitating deformation of that bulge.");
+        prm.declare_entry("Polar wander relaxation time", "1e6",
+                          Patterns::Double(0),
+                          "Time in years over which the spin axis approaches "
+                          "the maximum principal inertia axis. Zero applies the "
+                          "change immediately, subject to the rate limit.");
+        prm.declare_entry("Maximum polar wander rate", "10",
+                          Patterns::Double(0),
+                          "Maximum spin-axis motion in degrees per million "
+                          "years. Zero disables this limit.");
         prm.declare_entry("Result interval", "1", Patterns::Integer(0),
                           "Number of geodynamic steps between landscape result "
                           "files. Zero disables result files.");
@@ -1705,6 +2050,17 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
             prm.get("Spatial ice thickness file");
         spatial_basal_ice_velocity_file =
             prm.get("Spatial basal ice velocity file");
+        true_polar_wander_enabled =
+            prm.get_bool("Enable true polar wander");
+        include_ice_load_in_true_polar_wander =
+            prm.get_bool("Include ice load in true polar wander");
+        ice_density = prm.get_double("Ice density");
+        rotational_bulge_inertia_difference =
+            prm.get_double("Rotational bulge inertia difference");
+        polar_wander_relaxation_time =
+            prm.get_double("Polar wander relaxation time");
+        maximum_polar_wander_rate =
+            prm.get_double("Maximum polar wander rate");
         result_interval = prm.get_integer("Result interval");
         write_visualization_results =
             prm.get_bool("Write visualization results");

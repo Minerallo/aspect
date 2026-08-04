@@ -91,7 +91,12 @@ private:
     void build_surface_mesh();
     Point<dim> reference_surface_point(const Point<dim> &point) const;
     Point<dim-1> natural_surface_coordinates(const Point<dim> &point) const;
+    Point<dim-1> climate_surface_coordinates(const Point<dim> &point) const;
     Tensor<1,dim> outward_direction(const Point<dim> &point) const;
+    void update_true_polar_wander();
+    void resample_climate_fields();
+    SymmetricTensor<2,dim> ice_load_moment_of_inertia() const;
+    void write_true_polar_wander_state() const;
 
     mutable SurfaceMesh surface_mesh;
     std::vector<Point<dim>> fastscape_points;
@@ -135,6 +140,18 @@ private:
     bool use_sea_level_function = false;
     bool restrict_ocean_to_largest_connected_component = true;
     bool spherical_geometry = false;
+
+    bool true_polar_wander_enabled = false;
+    bool include_ice_load_in_true_polar_wander = true;
+    double ice_density = 917.0;
+    double rotational_bulge_inertia_difference = 2.6e35;
+    double polar_wander_relaxation_time = 1e6;
+    double maximum_polar_wander_rate = 10.0;
+    Tensor<1,dim> spin_axis;
+    Tensor<1,dim> equilibrium_spin_axis;
+    SymmetricTensor<2,dim> reference_moment_of_inertia;
+    bool reference_moment_of_inertia_is_initialized = false;
+    mutable double last_polar_wander_output_time = -1.0;
 };
 }
 }

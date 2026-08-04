@@ -37,7 +37,7 @@ PROJECT(${TARGET})
 
 ADD_LIBRARY(${TARGET} SHARED
 lithosphere_rift_IC.cc
-lithosphere_rift_IT_2.cc
+lithosphere_rift_IT.cc
 lithosphere_rift_topo.cc
 rift_box_initial_plastic_strain.cc
 )

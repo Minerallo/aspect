@@ -37,10 +37,13 @@
 #endif
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <numeric>
 #include <sstream>
 
 
@@ -268,7 +271,11 @@ public:
                const double marine_transport_coefficient,
                const double sediment_porosity,
                const double transport_depth_scale,
-               const bool restrict_ocean_connectivity)
+               const bool restrict_ocean_connectivity,
+               const std::vector<std::string> &rock_names,
+               const std::vector<double> &rock_probabilities,
+               const std::vector<double> &rock_erodibility_factors,
+               const unsigned int rock_random_seed)
     {
         spherical_geometry = closed_surface;
         drainage_area_exponent = area_exponent;
@@ -302,6 +309,49 @@ public:
         sediment_thickness = xt::zeros<double>(flow_graph->grid_shape());
         deposition_rate = xt::zeros<double>(flow_graph->grid_shape());
         ocean_mask = xt::zeros<double>(flow_graph->grid_shape());
+
+        lithology_names = rock_names;
+        lithology_erodibility_factors = rock_erodibility_factors;
+        bedrock_lithology.resize(initial_elevation.size());
+        sediment_flux_by_lithology.clear();
+        sediment_thickness_by_lithology.clear();
+        sediment_thickness_at_last_output_by_lithology.clear();
+        for (unsigned int rock = 0; rock < lithology_names.size(); ++rock)
+        {
+            sediment_flux_by_lithology.push_back(
+                xt::zeros<double>(flow_graph->grid_shape()));
+            sediment_thickness_by_lithology.push_back(
+                xt::zeros<double>(flow_graph->grid_shape()));
+            sediment_thickness_at_last_output_by_lithology.push_back(
+                xt::zeros<double>(flow_graph->grid_shape()));
+        }
+
+        std::vector<double> cumulative_probability(rock_probabilities.size());
+        std::partial_sum(rock_probabilities.begin(), rock_probabilities.end(),
+                         cumulative_probability.begin());
+        const double probability_sum = cumulative_probability.back();
+        for (unsigned int i = 0; i < bedrock_lithology.size(); ++i)
+        {
+            // SplitMix64 gives a reproducible cell-wise realization without
+            // depending on a standard-library random-number implementation.
+            std::uint64_t value =
+                static_cast<std::uint64_t>(i) +
+                (static_cast<std::uint64_t>(rock_random_seed) << 32);
+            value += 0x9e3779b97f4a7c15ULL;
+            value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
+            value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
+            value ^= value >> 31;
+            const double sample =
+                probability_sum * static_cast<double>(value >> 11) /
+                static_cast<double>(std::uint64_t(1) << 53);
+            bedrock_lithology[i] = static_cast<unsigned int>(
+                std::lower_bound(cumulative_probability.begin(),
+                                 cumulative_probability.end(), sample) -
+                cumulative_probability.begin());
+            bedrock_lithology[i] =
+                std::min<unsigned int>(bedrock_lithology[i],
+                                       lithology_names.size()-1);
+        }
     }
 
     StepResult
@@ -356,10 +406,26 @@ public:
             // handled separately above so that water supplied upstream is
             // carried through the drainage network.
             xt::xarray<double> effective_drainage_area = drainage_area;
+            xt::xarray<double> exposed_erodibility =
+                xt::ones<double>(flow_graph->grid_shape());
             for (unsigned int i = 0; i < effective_drainage_area.size(); ++i)
+            {
+                exposed_erodibility[i] =
+                    lithology_erodibility_factors[bedrock_lithology[i]];
+                if (sediment_thickness[i] > 0.0)
+                {
+                    exposed_erodibility[i] = 0.0;
+                    for (unsigned int rock = 0;
+                            rock < lithology_names.size(); ++rock)
+                        exposed_erodibility[i] +=
+                            lithology_erodibility_factors[rock] *
+                            sediment_thickness_by_lithology[rock][i] /
+                            sediment_thickness[i];
+                }
                 effective_drainage_area[i] *=
-                    std::pow(erosion_strength[i],
+                    std::pow(erosion_strength[i] * exposed_erodibility[i],
                              1.0 / drainage_area_exponent);
+            }
 
             fluvial_erosion =
                 eroder->erode(uplifted, effective_drainage_area, step_years);
@@ -367,22 +433,50 @@ public:
                 glacial_erosion[i] =
                     ice_thickness[i] >= minimum_ice_thickness
                     ? step_years * glacial_erosion_coefficient *
+                    exposed_erodibility[i] *
                     std::pow(basal_ice_velocity[i],
                              glacial_velocity_exponent)
                     : 0.0;
             erosion = fluvial_erosion + glacial_erosion;
-            sediment_flux = flow_graph->accumulate(erosion / step_years);
 
             const auto areas = grid->nodes_areas();
+            std::vector<xt::xarray<double>> local_source_by_lithology;
+            local_source_by_lithology.reserve(lithology_names.size());
+            for (unsigned int rock = 0; rock < lithology_names.size(); ++rock)
+                local_source_by_lithology.push_back(
+                    xt::zeros<double>(flow_graph->grid_shape()));
+
             for (unsigned int i = 0; i < erosion.size(); ++i)
             {
                 const double sediment_erosion =
                     std::min(sediment_thickness[i], erosion[i]);
+                if (sediment_erosion > 0.0)
+                    for (unsigned int rock = 0;
+                            rock < lithology_names.size(); ++rock)
+                    {
+                        const double removed = sediment_erosion *
+                            sediment_thickness_by_lithology[rock][i] /
+                            sediment_thickness[i];
+                        sediment_thickness_by_lithology[rock][i] -= removed;
+                        local_source_by_lithology[rock][i] += removed;
+                    }
+                const double bedrock_erosion = erosion[i] - sediment_erosion;
+                local_source_by_lithology[bedrock_lithology[i]][i] +=
+                    bedrock_erosion;
                 sediment_thickness[i] -= sediment_erosion;
-                bedrock_elevation[i] -= erosion[i] - sediment_erosion;
+                bedrock_elevation[i] -= bedrock_erosion;
                 result.eroded_volume += erosion[i] * areas[i];
                 result.fluvial_eroded_volume += fluvial_erosion[i] * areas[i];
                 result.glacial_eroded_volume += glacial_erosion[i] * areas[i];
+            }
+
+            sediment_flux.fill(0.0);
+            for (unsigned int rock = 0; rock < lithology_names.size(); ++rock)
+            {
+                sediment_flux_by_lithology[rock] =
+                    flow_graph->accumulate(
+                        local_source_by_lithology[rock] / step_years);
+                sediment_flux += sediment_flux_by_lithology[rock];
             }
 
             elevation = bedrock_elevation + sediment_thickness;
@@ -397,11 +491,18 @@ public:
                 for (const auto index : flow_graph->base_levels())
                     if (elevation[index] <= sea_level)
                     {
-                        const double solid_volume =
-                            sediment_flux[index] * step_years;
-                        sediment_thickness[index] +=
-                            solid_volume /
-                            ((1.0 - marine_sediment_porosity) * areas[index]);
+                        const double solid_volume = sediment_flux[index] * step_years;
+                        for (unsigned int rock = 0;
+                                rock < lithology_names.size(); ++rock)
+                        {
+                            const double deposited_thickness =
+                                sediment_flux_by_lithology[rock][index] *
+                                step_years /
+                                ((1.0 - marine_sediment_porosity) * areas[index]);
+                            sediment_thickness_by_lithology[rock][index] +=
+                                deposited_thickness;
+                            sediment_thickness[index] += deposited_thickness;
+                        }
                         result.coastal_sediment_flux += solid_volume;
                         result.deposited_sediment_volume +=
                             solid_volume / (1.0 - marine_sediment_porosity);
@@ -479,6 +580,44 @@ public:
         return sediment_thickness;
     }
 
+    const std::vector<std::string> &get_lithology_names() const
+    {
+        return lithology_names;
+    }
+
+    const std::vector<unsigned int> &get_bedrock_lithology() const
+    {
+        return bedrock_lithology;
+    }
+
+    const std::vector<xt::xarray<double>> &
+    get_sediment_flux_by_lithology() const
+    {
+        return sediment_flux_by_lithology;
+    }
+
+    const std::vector<xt::xarray<double>> &
+    get_sediment_thickness_by_lithology() const
+    {
+        return sediment_thickness_by_lithology;
+    }
+
+    std::vector<xt::xarray<double>>
+    take_deposited_thickness_by_lithology()
+    {
+        std::vector<xt::xarray<double>> result;
+        result.reserve(lithology_names.size());
+        for (unsigned int rock = 0; rock < lithology_names.size(); ++rock)
+        {
+            result.push_back(xt::maximum(
+                sediment_thickness_by_lithology[rock] -
+                sediment_thickness_at_last_output_by_lithology[rock], 0.0));
+            sediment_thickness_at_last_output_by_lithology[rock] =
+                sediment_thickness_by_lithology[rock];
+        }
+        return result;
+    }
+
     const xt::xarray<double> &get_deposition_rate() const
     {
         return deposition_rate;
@@ -503,6 +642,42 @@ public:
     {
         AssertDimension(values.size(), sediment_thickness.size());
         std::copy(values.begin(), values.end(), sediment_thickness.begin());
+        for (auto &field : sediment_thickness_by_lithology)
+            field.fill(0.0);
+        if (!sediment_thickness_by_lithology.empty())
+        {
+            std::copy(values.begin(), values.end(),
+                      sediment_thickness_by_lithology[0].begin());
+            sediment_thickness_at_last_output_by_lithology[0] =
+                sediment_thickness_by_lithology[0];
+        }
+        for (unsigned int i = 0; i < elevation.size(); ++i)
+            bedrock_elevation[i] = elevation[i] - sediment_thickness[i];
+    }
+
+
+    void
+    set_lithology_state(
+        const std::vector<unsigned int> &stored_bedrock_lithology,
+        const std::vector<std::vector<double>> &stored_sediment_thickness)
+    {
+        AssertDimension(stored_bedrock_lithology.size(),
+                        bedrock_lithology.size());
+        AssertDimension(stored_sediment_thickness.size(),
+                        sediment_thickness_by_lithology.size());
+        bedrock_lithology = stored_bedrock_lithology;
+        sediment_thickness.fill(0.0);
+        for (unsigned int rock = 0; rock < lithology_names.size(); ++rock)
+        {
+            AssertDimension(stored_sediment_thickness[rock].size(),
+                            sediment_thickness.size());
+            std::copy(stored_sediment_thickness[rock].begin(),
+                      stored_sediment_thickness[rock].end(),
+                      sediment_thickness_by_lithology[rock].begin());
+            sediment_thickness += sediment_thickness_by_lithology[rock];
+            sediment_thickness_at_last_output_by_lithology[rock] =
+                sediment_thickness_by_lithology[rock];
+        }
         for (unsigned int i = 0; i < elevation.size(); ++i)
             bedrock_elevation[i] = elevation[i] - sediment_thickness[i];
     }
@@ -572,15 +747,31 @@ private:
 
             for (std::size_t i = 0; i < elevation.size(); ++i)
             {
+                const double previous_sediment_thickness = sediment_thickness[i];
                 const double elevation_change =
                     volume_change[i] / areas[i];
                 if (elevation_change >= 0.0)
+                {
                     sediment_thickness[i] += elevation_change;
+                    // Hillslope diffusion does not retain an explicit donor
+                    // list after face transfers are assembled. Attribute the
+                    // local deposit to the exposed rock as a conservative
+                    // fallback; river and marine routing preserve the full
+                    // transported mixture.
+                    sediment_thickness_by_lithology[bedrock_lithology[i]][i] +=
+                        elevation_change;
+                }
                 else
                 {
                     const double removal = -elevation_change;
                     const double sediment_removal =
                         std::min(sediment_thickness[i], removal);
+                    if (sediment_removal > 0.0)
+                        for (unsigned int rock = 0;
+                                rock < lithology_names.size(); ++rock)
+                            sediment_thickness_by_lithology[rock][i] *=
+                                (previous_sediment_thickness - sediment_removal) /
+                                previous_sediment_thickness;
                     sediment_thickness[i] -= sediment_removal;
                     bedrock_elevation[i] -= removal - sediment_removal;
                 }
@@ -640,10 +831,17 @@ private:
         {
             advect_field(bedrock_elevation, velocity,
                          advection_step_years, areas);
-            advect_field(sediment_thickness, velocity,
-                         advection_step_years, areas);
-            for (double &thickness : sediment_thickness)
-                thickness = std::max(0.0, thickness);
+            sediment_thickness.fill(0.0);
+            for (unsigned int rock = 0;
+                    rock < lithology_names.size(); ++rock)
+            {
+                advect_field(sediment_thickness_by_lithology[rock], velocity,
+                             advection_step_years, areas);
+                for (double &thickness :
+                        sediment_thickness_by_lithology[rock])
+                    thickness = std::max(0.0, thickness);
+                sediment_thickness += sediment_thickness_by_lithology[rock];
+            }
         }
         elevation = bedrock_elevation + sediment_thickness;
     }
@@ -757,12 +955,25 @@ private:
                              requested_outflow[i]);
 
         std::vector<double> volume_change(elevation.size(), 0.0);
+        std::vector<std::vector<double>> lithology_volume_change(
+            lithology_names.size(),
+            std::vector<double>(elevation.size(), 0.0));
         for (const Transfer &transfer : transfers)
         {
             const double volume =
                 transfer.volume * outflow_scale[transfer.donor];
             volume_change[transfer.donor] -= volume;
             volume_change[transfer.receiver] += volume;
+            if (sediment_thickness[transfer.donor] > 0.0)
+                for (unsigned int rock = 0;
+                        rock < lithology_names.size(); ++rock)
+                {
+                    const double rock_volume = volume *
+                        sediment_thickness_by_lithology[rock][transfer.donor] /
+                        sediment_thickness[transfer.donor];
+                    lithology_volume_change[rock][transfer.donor] -= rock_volume;
+                    lithology_volume_change[rock][transfer.receiver] += rock_volume;
+                }
             marine_sediment_flux[transfer.donor] += volume / step_years;
             marine_sediment_flux[transfer.receiver] += volume / step_years;
         }
@@ -772,6 +983,12 @@ private:
             sediment_thickness[i] += volume_change[i] / areas[i];
             sediment_thickness[i] =
                 std::max(0.0, sediment_thickness[i]);
+            for (unsigned int rock = 0;
+                    rock < lithology_names.size(); ++rock)
+                sediment_thickness_by_lithology[rock][i] =
+                    std::max(0.0,
+                             sediment_thickness_by_lithology[rock][i] +
+                             lithology_volume_change[rock][i] / areas[i]);
         }
     }
 
@@ -871,6 +1088,13 @@ private:
     xt::xarray<double> sediment_thickness;
     xt::xarray<double> deposition_rate;
     xt::xarray<double> ocean_mask;
+    std::vector<std::string> lithology_names;
+    std::vector<double> lithology_erodibility_factors;
+    std::vector<unsigned int> bedrock_lithology;
+    std::vector<xt::xarray<double>> sediment_flux_by_lithology;
+    std::vector<xt::xarray<double>> sediment_thickness_by_lithology;
+    std::vector<xt::xarray<double>>
+        sediment_thickness_at_last_output_by_lithology;
 };
 
 
@@ -923,7 +1147,7 @@ public:
           const bool write_visualization,
           const SurfaceMesh &surface_mesh,
           const std::vector<Point<dim>> &surface_points,
-          const FastscapeLandscape<dim> &landscape,
+          FastscapeLandscape<dim> &landscape,
           const xt::xarray<double> &erosion_strength,
           const xt::xarray<double> &surface_runoff,
           const xt::xarray<double> &ice_thickness,
@@ -954,6 +1178,14 @@ public:
         const auto &deposition_rate =
             landscape.get_deposition_rate();
         const auto &ocean_mask = landscape.get_ocean_mask();
+        const auto &lithology_names = landscape.get_lithology_names();
+        const auto &bedrock_lithology = landscape.get_bedrock_lithology();
+        const auto &sediment_flux_by_lithology =
+            landscape.get_sediment_flux_by_lithology();
+        const auto &sediment_thickness_by_lithology =
+            landscape.get_sediment_thickness_by_lithology();
+        const auto deposited_thickness_by_lithology =
+            landscape.take_deposited_thickness_by_lithology();
 
         const std::string budget_file =
             directory + "sediment_budget.csv";
@@ -994,10 +1226,14 @@ public:
                 << "drainage_area_m2,sediment_flux_m3_per_year,"
                 << "marine_sediment_flux_m3_per_year,"
                 << "sediment_thickness_m,deposition_rate_m_per_year,"
-                << "is_connected_ocean,"
+                << "is_connected_ocean,bedrock_lithology,"
                 << "erosion_strength,surface_runoff_factor,"
                 << "ice_thickness_m,basal_ice_velocity_m_per_year,"
-                << "elevation_change_m\n";
+                << "elevation_change_m";
+        for (const std::string &name : lithology_names)
+            surface << ",sediment_flux_" << name << "_m3_per_year"
+                    << ",sediment_thickness_" << name << "_m";
+        surface << '\n';
         surface << std::setprecision(16);
         for (unsigned int i = 0; i < elevation.size(); ++i)
         {
@@ -1014,11 +1250,52 @@ public:
                     << sediment_flux[i] << ',' << marine_sediment_flux[i] << ','
                     << sediment_thickness[i] << ',' << deposition_rate[i] << ','
                     << ocean_mask[i] << ','
+                    << lithology_names[bedrock_lithology[i]] << ','
                     << erosion_strength[i] << ','
                     << surface_runoff[i] << ','
                     << ice_thickness[i] << ','
                     << basal_ice_velocity[i] << ','
-                    << elevation[i] - reference_elevation[i] << '\n';
+                    << elevation[i] - reference_elevation[i];
+            for (unsigned int rock = 0; rock < lithology_names.size(); ++rock)
+                surface << ',' << sediment_flux_by_lithology[rock][i]
+                        << ',' << sediment_thickness_by_lithology[rock][i];
+            surface << '\n';
+        }
+
+        // Each output interval is one dated depositional layer. Rows contain
+        // sediment preserved since the preceding result, split by source-rock
+        // class; together the files form a basin stratigraphy.
+        const std::string stratigraphy_file =
+            directory + "stratigraphy-" +
+            Utilities::int_to_string(timestep_number, 5) + ".csv";
+        std::ofstream stratigraphy(stratigraphy_file);
+        stratigraphy << "longitude_deg,latitude_deg,time_years,"
+                     << "bedrock_lithology,deposited_thickness_m";
+        for (const std::string &name : lithology_names)
+            stratigraphy << ",fraction_" << name;
+        stratigraphy << '\n' << std::setprecision(16);
+        for (unsigned int i = 0; i < elevation.size(); ++i)
+        {
+            double deposited_thickness = 0.0;
+            for (unsigned int rock = 0; rock < lithology_names.size(); ++rock)
+                deposited_thickness += deposited_thickness_by_lithology[rock][i];
+            if (deposited_thickness <= 0.0)
+                continue;
+            const Point<dim> &point = surface_points[i];
+            const double longitude =
+                std::atan2(point[1], point[0]) * 180.0 / numbers::PI;
+            double latitude = 0.0;
+            if constexpr (dim == 3)
+                latitude =
+                    std::asin(point[2] / point.norm()) * 180.0 / numbers::PI;
+            stratigraphy << longitude << ',' << latitude << ',' << time_years
+                         << ',' << lithology_names[bedrock_lithology[i]]
+                         << ',' << deposited_thickness;
+            for (unsigned int rock = 0; rock < lithology_names.size(); ++rock)
+                stratigraphy << ','
+                             << deposited_thickness_by_lithology[rock][i] /
+                                deposited_thickness;
+            stratigraphy << '\n';
         }
 
         if (!write_visualization)
@@ -1036,6 +1313,7 @@ public:
         Vector<double> ocean_mask_output(ocean_mask.size());
         Vector<double> ice_thickness_output(ice_thickness.size());
         Vector<double> basal_ice_velocity_output(basal_ice_velocity.size());
+        Vector<double> bedrock_lithology_output(elevation.size());
         for (unsigned int i = 0; i < elevation.size(); ++i)
         {
             elevation_output[i] = elevation[i];
@@ -1050,6 +1328,7 @@ public:
             ocean_mask_output[i] = ocean_mask[i];
             ice_thickness_output[i] = ice_thickness[i];
             basal_ice_velocity_output[i] = basal_ice_velocity[i];
+            bedrock_lithology_output[i] = bedrock_lithology[i];
         }
 
         DataOut<dim-1,dim> data_out;
@@ -1079,6 +1358,22 @@ public:
         data_out.add_data_vector(basal_ice_velocity_output,
                                  "basal_ice_velocity",
                                  DataOut<dim-1,dim>::type_cell_data);
+        data_out.add_data_vector(bedrock_lithology_output,
+                                 "bedrock_lithology",
+                                 DataOut<dim-1,dim>::type_cell_data);
+        for (unsigned int rock = 0; rock < lithology_names.size(); ++rock)
+        {
+            Vector<double> rock_fraction(elevation.size());
+            for (unsigned int i = 0; i < elevation.size(); ++i)
+                rock_fraction[i] = sediment_thickness[i] > 0.0
+                    ? sediment_thickness_by_lithology[rock][i] /
+                      sediment_thickness[i]
+                    : 0.0;
+            data_out.add_data_vector(rock_fraction,
+                                     "sediment_fraction_" +
+                                     lithology_names[rock],
+                                     DataOut<dim-1,dim>::type_cell_data);
+        }
         data_out.build_patches();
 
         const std::string basename =
@@ -1584,7 +1879,11 @@ FastscapeCpp<dim>::build_surface_mesh()
                           marine_sediment_transport_coefficient,
                           marine_sediment_porosity,
                           marine_transport_depth_scale,
-                          restrict_ocean_to_largest_connected_component);
+                          restrict_ocean_to_largest_connected_component,
+                          lithology_names,
+                          lithology_probabilities,
+                          lithology_erodibility_factors,
+                          lithology_random_seed);
     spatial_erosion_strength->initialize(spatial_erosion_strength_file,
                                          surface_coordinates);
     spatial_surface_runoff->initialize(spatial_surface_runoff_file,
@@ -1782,6 +2081,19 @@ FastscapeCpp<dim>::save(
     }
     status_strings["FastscapeMarineSediment"] = sediment_stream.str();
 
+    std::vector<std::vector<double>> sediment_by_lithology;
+    for (const auto &field : landscape->get_sediment_thickness_by_lithology())
+        sediment_by_lithology.emplace_back(field.begin(), field.end());
+    std::ostringstream lithology_stream;
+    {
+        aspect::oarchive archive(lithology_stream);
+        archive << landscape->get_lithology_names();
+        archive << landscape->get_bedrock_lithology();
+        archive << sediment_by_lithology;
+    }
+    status_strings["FastscapeLithologyProvenance"] =
+        lithology_stream.str();
+
     std::ostringstream output_state_stream;
     {
         aspect::oarchive archive(output_state_stream);
@@ -1838,6 +2150,25 @@ FastscapeCpp<dim>::load(
         aspect::iarchive sediment_archive(sediment_stream);
         sediment_archive >> sediment_thickness_values;
         landscape->set_sediment_thickness(sediment_thickness_values);
+    }
+
+    const auto lithology_state =
+        status_strings.find("FastscapeLithologyProvenance");
+    if (lithology_state != status_strings.end())
+    {
+        std::vector<std::string> stored_names;
+        std::vector<unsigned int> stored_bedrock_lithology;
+        std::vector<std::vector<double>> stored_sediment_thickness;
+        std::istringstream lithology_stream(lithology_state->second);
+        aspect::iarchive lithology_archive(lithology_stream);
+        lithology_archive >> stored_names;
+        lithology_archive >> stored_bedrock_lithology;
+        lithology_archive >> stored_sediment_thickness;
+        AssertThrow(stored_names == landscape->get_lithology_names(),
+                    ExcMessage("The lithology names in the checkpoint differ "
+                               "from the current parameter file."));
+        landscape->set_lithology_state(stored_bedrock_lithology,
+                                       stored_sediment_thickness);
     }
 
     const auto output_state =
@@ -2005,6 +2336,25 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
                           Patterns::Double(0),
                           "Maximum explicit Courant number used for "
                           "unstructured hillslope diffusion.");
+        prm.declare_entry("Lithology names", "upper_crust",
+                          Patterns::List(Patterns::Anything(), 1),
+                          "Comma-separated names of source-rock classes. The "
+                          "names are used in provenance and stratigraphy "
+                          "output, for example 'granite, limestone'.");
+        prm.declare_entry("Lithology probabilities", "1",
+                          Patterns::List(Patterns::Double(0), 1),
+                          "Relative probabilities used once to make a fixed, "
+                          "reproducible bedrock-lithology map. Supply one "
+                          "nonnegative value for every lithology name.");
+        prm.declare_entry("Lithology erodibility factors", "1",
+                          Patterns::List(Patterns::Double(0), 1),
+                          "Relative multiplier of river-incision strength for "
+                          "each lithology. Values are relative, so one can be "
+                          "used as the reference rock.");
+        prm.declare_entry("Lithology random seed", "1",
+                          Patterns::Integer(0),
+                          "Seed for the reproducible initial lithology map. "
+                          "Rock identity is not redrawn during evolution.");
         prm.declare_entry("Spatial erosion strength file", "",
                           Patterns::Anything(),
                           "Optional ASPECT structured text-data file containing "
@@ -2157,6 +2507,33 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
             prm.get_double("Hillslope diffusion coefficient");
         maximum_hillslope_diffusion_courant =
             prm.get_double("Maximum hillslope diffusion Courant number");
+        lithology_names =
+            Utilities::split_string_list(prm.get("Lithology names"));
+        lithology_probabilities = Utilities::string_to_double(
+            Utilities::split_string_list(prm.get("Lithology probabilities")));
+        lithology_erodibility_factors = Utilities::string_to_double(
+            Utilities::split_string_list(
+                prm.get("Lithology erodibility factors")));
+        lithology_random_seed = prm.get_integer("Lithology random seed");
+        AssertThrow(lithology_names.size() == lithology_probabilities.size() &&
+                    lithology_names.size() ==
+                    lithology_erodibility_factors.size(),
+                    ExcMessage("Lithology names, probabilities, and "
+                               "erodibility factors must contain the same "
+                               "number of entries."));
+        AssertThrow(std::accumulate(lithology_probabilities.begin(),
+                                    lithology_probabilities.end(), 0.0) > 0.0,
+                    ExcMessage("At least one lithology probability must be "
+                               "positive."));
+        for (const std::string &name : lithology_names)
+            AssertThrow(!name.empty() &&
+                        std::all_of(name.begin(), name.end(),
+            [](const unsigned char character)
+        {
+            return std::isalnum(character) || character == '_';
+        }),
+        ExcMessage("Lithology names may contain only letters, numbers, and "
+                   "underscores because they are used as output field names."));
         spatial_erosion_strength_file =
             prm.get("Spatial erosion strength file");
         spatial_surface_runoff_file =

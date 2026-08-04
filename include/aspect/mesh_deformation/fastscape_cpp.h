@@ -132,6 +132,10 @@ private:
     double maximum_surface_advection_courant = 0.5;
     double hillslope_diffusion_coefficient = 0.0;
     double maximum_hillslope_diffusion_courant = 0.25;
+    std::vector<std::string> lithology_names = {"upper_crust"};
+    std::vector<double> lithology_probabilities = {1.0};
+    std::vector<double> lithology_erodibility_factors = {1.0};
+    unsigned int lithology_random_seed = 1;
     std::string spatial_erosion_strength_file;
     std::string spatial_surface_runoff_file;
     std::string spatial_ice_thickness_file;

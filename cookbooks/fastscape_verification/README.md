@@ -5,6 +5,10 @@ Fortran FastScape library, the C++ FastScape coupling in ASPECT, spherical
 surface diffusion, tangential surface advection, and the lightweight CLIMBER-X
 climate-to-ice loop.
 
+For a complete explanation written for a reader without modeling experience,
+including equations, figures, pass conditions, limitations, and a glossary, see
+[`VERIFICATION_REPORT.md`](VERIFICATION_REPORT.md).
+
 The tests intentionally separate three questions:
 
 1. Does each numerical operation reproduce an analytical result or conserve

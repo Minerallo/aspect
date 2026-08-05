@@ -42,19 +42,28 @@ def main() -> None:
     parser.add_argument("--feedback", required=True, type=Path)
     parser.add_argument("--topography", required=True, type=Path)
     parser.add_argument("--surface", required=True, type=Path)
+    parser.add_argument(
+        "--ice",
+        type=Path,
+        help="optional diagnostic ice exchange actually supplied to Fastscape",
+    )
     parser.add_argument("--output", required=True, type=Path)
     arguments = parser.parse_args()
     baseline = read_exchange(arguments.baseline)
     feedback = read_exchange(arguments.feedback)
     returned = read_exchange(arguments.topography)
+    ice = read_exchange(arguments.ice) if arguments.ice is not None else baseline
+    surface_longitude, surface_latitude, glacial_erosion = surface_column(
+        arguments.surface, "glacial_erosion_m"
+    )
     panels = (
         (
             baseline.fields["precipitation_rate"] * 31536000.0,
             "Initial precipitation",
             "kg m⁻² yr⁻¹",
         ),
-        (baseline.fields["ice_thickness"], "Dynamic ice thickness", "m"),
-        (baseline.fields["basal_ice_velocity"], "Basal ice speed", "m yr⁻¹"),
+        (ice.fields["ice_thickness"], "Ice supplied to Fastscape", "m"),
+        (ice.fields["basal_ice_velocity"], "Basal ice speed", "m yr⁻¹"),
         (
             returned.fields["elevation_change"],
             "Surface change returned to climate",
@@ -66,11 +75,6 @@ def main() -> None:
             "Climate temperature response",
             "K",
         ),
-        (
-            feedback.fields["ice_thickness"] - baseline.fields["ice_thickness"],
-            "Ice-thickness response",
-            "m",
-        ),
     )
     figure, axes = plt.subplots(3, 2, figsize=(13, 10), constrained_layout=True)
     for axis, (values, title, unit) in zip(axes.flat, panels):
@@ -81,20 +85,19 @@ def main() -> None:
         )
         axis.set(title=title, xlabel="longitude (degrees)", ylabel="latitude (degrees)")
         figure.colorbar(image, ax=axis, label=unit)
-    longitude, latitude, glacial_erosion = surface_column(
-        arguments.surface, "glacial_erosion_m"
+    erosion_plot = axes[2, 1].scatter(
+        surface_longitude,
+        surface_latitude,
+        s=9,
+        c=glacial_erosion * 1000.0,
+        cmap="magma",
     )
-    active = glacial_erosion > 0
-    axes[1, 0].scatter(
-        longitude[active],
-        latitude[active],
-        s=4,
-        c="white",
-        alpha=0.5,
-        label="glacial erosion",
+    axes[2, 1].set(
+        title="Glacial erosion after coupled windows",
+        xlabel="longitude (degrees)",
+        ylabel="latitude (degrees)",
     )
-    if np.any(active):
-        axes[1, 0].legend(loc="lower left")
+    figure.colorbar(erosion_plot, ax=axes[2, 1], label="millimetres")
     figure.suptitle(
         "Closed climate–ice–surface processes–solid Earth feedback cycle", fontsize=15
     )

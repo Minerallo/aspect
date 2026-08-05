@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 import time
@@ -17,24 +16,22 @@ from run_physical_loop import (
     COOKBOOK,
     EXCHANGE_TOOL,
     INSTALLATION,
+    PLOT_TOOL,
     convert_climate,
+    configure_diagnostic_ice,
     newest,
     prepare_climate_case,
+    plotting_python,
+    replace_namelist_value,
     run_climate,
     run_monitored,
     write_aspect_parameters,
 )
 
 
-def replace_namelist_value(text: str, name: str, value: str) -> str:
-    pattern = re.compile(rf"^(\s*{re.escape(name)}\s*=\s*)[^!\n]*(.*)$", re.MULTILINE)
-    replaced, count = pattern.subn(rf"\g<1>{value} \g<2>", text, count=1)
-    if count != 1:
-        raise RuntimeError(f"could not set {name} in control.nml")
-    return replaced
-
-
-def configure_continuation(case: Path, restart_directory: Path, year: int) -> None:
+def configure_continuation(
+    case: Path, restart_directory: Path, year: int, dynamic_ice: bool
+) -> None:
     control = case / "control.nml"
     text = control.read_text(encoding="utf-8")
     text = replace_namelist_value(text, "year_ini", str(year))
@@ -45,11 +42,10 @@ def configure_continuation(case: Path, restart_directory: Path, year: int) -> No
         "ocn_restart",
         "sic_restart",
         "geo_restart",
-        "ice_restart",
-        "smb_restart",
-        "bmb_restart",
     ):
         text = replace_namelist_value(text, name, "true")
+    for name in ("ice_restart", "smb_restart", "bmb_restart"):
+        text = replace_namelist_value(text, name, "true" if dynamic_ice else "false")
     text = replace_namelist_value(
         text, "restart_in_dir", f'"{restart_directory.resolve()}"'
     )
@@ -129,6 +125,12 @@ def main() -> None:
     )
     parser.add_argument("--minimum-free-memory-percent", type=int, default=15)
     parser.add_argument(
+        "--ice-model",
+        choices=("yelmo", "diagnostic"),
+        default="yelmo",
+        help="dynamic Yelmo ice or inexpensive climate-derived equilibrium ice",
+    )
+    parser.add_argument(
         "--windowed-benchmark-only",
         action="store_true",
         help="add the matched checkpointed ASPECT-only benchmark to existing results",
@@ -180,7 +182,7 @@ def main() -> None:
         plot_environment["MPLCONFIGDIR"] = str(output / ".matplotlib")
         subprocess.run(
             [
-                sys.executable,
+                plotting_python(),
                 str(COOKBOOK / "plot_runtime_comparison.py"),
                 str(summary_path),
                 "--output",
@@ -198,6 +200,8 @@ def main() -> None:
 
     climate_case = output / "climate-000"
     prepare_climate_case(climate_template, climate_case, climate_executable)
+    if arguments.ice_model == "diagnostic":
+        configure_diagnostic_ice(climate_case)
     climate_exchange = output / "climate-000.cxe"
     climate_seconds.append(
         run_climate(
@@ -212,10 +216,18 @@ def main() -> None:
     aspect_output = output / "aspect-fastscape"
     previous_surface = None
     polar_history = None
+    diagnostic_ice_exchange = None
     for window in range(1, arguments.windows + 1):
         fields = output / f"aspect-input-{window:03d}"
+        if arguments.ice_model == "diagnostic":
+            diagnostic_ice_exchange = output / f"diagnostic-ice-{window:03d}.cxe"
         conversion_start = time.perf_counter()
-        convert_climate(climate_exchange, fields)
+        convert_climate(
+            climate_exchange,
+            fields,
+            "diagnostic" if arguments.ice_model == "diagnostic" else "exchange",
+            diagnostic_ice_exchange,
+        )
         exchange_seconds.append(time.perf_counter() - conversion_start)
         parameter_file = output / f"aspect-window-{window:03d}.prm"
         write_aspect_parameters(
@@ -249,10 +261,17 @@ def main() -> None:
 
         next_case = output / f"climate-{window:03d}"
         prepare_climate_case(climate_template, next_case, climate_executable)
+        if arguments.ice_model == "diagnostic":
+            configure_diagnostic_ice(next_case)
         restart_directory = climate_case / "restart_out" / f"year_{window}"
         if not restart_directory.is_dir():
             raise RuntimeError(f"missing climate restart: {restart_directory}")
-        configure_continuation(next_case, restart_directory, window)
+        configure_continuation(
+            next_case,
+            restart_directory,
+            window,
+            dynamic_ice=arguments.ice_model == "yelmo",
+        )
         next_exchange = output / f"climate-{window:03d}.cxe"
         climate_seconds.append(
             run_climate(
@@ -261,6 +280,7 @@ def main() -> None:
                 topography_exchange,
                 climate_root / "local/lib",
                 arguments.minimum_free_memory_percent,
+                diagnostic_ice_exchange,
             )
         )
         previous_surface = current_surface
@@ -288,6 +308,7 @@ def main() -> None:
         "coupling_windows": arguments.windows,
         "surface_model_years": 20 * arguments.windows,
         "climate_model_years": arguments.windows + 1,
+        "ice_model": arguments.ice_model,
         "climate_window_seconds": climate_seconds,
         "coupled_aspect_window_seconds": aspect_seconds,
         "exchange_seconds": exchange_seconds,
@@ -307,7 +328,7 @@ def main() -> None:
     plot_environment["MPLCONFIGDIR"] = str(output / ".matplotlib")
     subprocess.run(
         [
-            sys.executable,
+            plotting_python(),
             str(COOKBOOK / "plot_runtime_comparison.py"),
             str(summary_path),
             "--output",
@@ -316,6 +337,23 @@ def main() -> None:
         check=True,
         env=plot_environment,
     )
+    summary_plot_command = [
+        plotting_python(),
+        str(PLOT_TOOL),
+        "--baseline",
+        str(output / "climate-000.cxe"),
+        "--feedback",
+        str(climate_exchange),
+        "--topography",
+        str(topography_exchange),
+        "--surface",
+        str(previous_surface),
+        "--output",
+        str(output / "physical-loop-summary.png"),
+    ]
+    if diagnostic_ice_exchange is not None:
+        summary_plot_command.extend(("--ice", str(diagnostic_ice_exchange)))
+    subprocess.run(summary_plot_command, check=True, env=plot_environment)
     print(json.dumps(summary, indent=2))
 
 

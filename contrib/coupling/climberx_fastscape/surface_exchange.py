@@ -23,6 +23,7 @@ VERSION = 1
 HEADER_LAYOUT = "8sIIIId"
 FIELD_TEXT_LENGTH = 32
 SECONDS_PER_YEAR = 365.0 * 24.0 * 3600.0
+EARTH_RADIUS = 6371000.0
 
 
 @dataclass
@@ -38,7 +39,9 @@ class SurfaceExchange:
 def _fixed_text(value: str) -> bytes:
     encoded = value.encode("ascii")
     if len(encoded) > FIELD_TEXT_LENGTH:
-        raise ValueError(f"exchange metadata is longer than {FIELD_TEXT_LENGTH}: {value}")
+        raise ValueError(
+            f"exchange metadata is longer than {FIELD_TEXT_LENGTH}: {value}"
+        )
     return encoded.ljust(FIELD_TEXT_LENGTH, b" ")
 
 
@@ -46,7 +49,9 @@ def write_exchange(path: Path, exchange: SurfaceExchange) -> None:
     longitude = np.asarray(exchange.longitude, dtype="<f8").reshape(-1)
     latitude = np.asarray(exchange.latitude, dtype="<f8").reshape(-1)
     if longitude.shape != latitude.shape:
-        raise ValueError("longitude and latitude must contain the same number of points")
+        raise ValueError(
+            "longitude and latitude must contain the same number of points"
+        )
     number_of_points = longitude.size
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -69,7 +74,9 @@ def write_exchange(path: Path, exchange: SurfaceExchange) -> None:
         for name, field in exchange.fields.items():
             values = np.asarray(field, dtype="<f8").reshape(-1)
             if values.size != number_of_points:
-                raise ValueError(f"{name} has {values.size} values; expected {number_of_points}")
+                raise ValueError(
+                    f"{name} has {values.size} values; expected {number_of_points}"
+                )
             stream.write(_fixed_text(name))
             stream.write(_fixed_text(exchange.units.get(name, "")))
             stream.write(values.astype(numeric_dtype, copy=False).tobytes())
@@ -86,10 +93,14 @@ def read_exchange(path: Path) -> SurfaceExchange:
         big_values = struct.unpack(">" + HEADER_LAYOUT, raw_header)
         if little_values[0] == MAGIC and little_values[1] == VERSION:
             byte_order = "<"
-            magic, version, number_of_points, number_of_fields, _, model_time = little_values
+            magic, version, number_of_points, number_of_fields, _, model_time = (
+                little_values
+            )
         elif big_values[0] == MAGIC and big_values[1] == VERSION:
             byte_order = ">"
-            magic, version, number_of_points, number_of_fields, _, model_time = big_values
+            magic, version, number_of_points, number_of_fields, _, model_time = (
+                big_values
+            )
         else:
             raise ValueError(f"{path}: unsupported surface-exchange header")
 
@@ -100,7 +111,9 @@ def read_exchange(path: Path) -> SurfaceExchange:
         for _ in range(number_of_fields):
             name = stream.read(FIELD_TEXT_LENGTH).decode("ascii").strip()
             unit = stream.read(FIELD_TEXT_LENGTH).decode("ascii").strip()
-            values = np.fromfile(stream, dtype=byte_order + "f8", count=number_of_points)
+            values = np.fromfile(
+                stream, dtype=byte_order + "f8", count=number_of_points
+            )
             if values.size != number_of_points:
                 raise ValueError(f"{path}: truncated field {name}")
             fields[name] = values
@@ -119,8 +132,79 @@ def climate_controls(exchange: SurfaceExchange) -> tuple[np.ndarray, np.ndarray]
     reference = np.sum(precipitation[wet] * weights[wet]) / np.sum(weights[wet])
     runoff = np.clip(precipitation / reference, 0.0, 5.0)
     temperature_factor = np.clip(2.0 ** ((temperature - 288.15) / 10.0), 0.1, 3.0)
-    erosion_strength = np.clip(np.maximum(runoff, 0.05) ** 0.4 * temperature_factor, 0.02, 5.0)
+    erosion_strength = np.clip(
+        np.maximum(runoff, 0.05) ** 0.4 * temperature_factor, 0.02, 5.0
+    )
     return erosion_strength, runoff
+
+
+def diagnostic_ice_fields(
+    exchange: SurfaceExchange,
+    equilibrium_temperature: float = 273.15,
+    temperature_width: float = 12.0,
+    maximum_thickness: float = 3000.0,
+    maximum_basal_velocity: float = 100.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Estimate equilibrium ice and sliding without solving ice dynamics.
+
+    The parameterization is deliberately inexpensive. Cold, wet cells build
+    thicker ice, while basal sliding increases with thickness and bed slope.
+    It provides climate-responsive forcing for landscape experiments, not a
+    mass-conserving replacement for Yelmo or SICOPOLIS.
+    """
+
+    if temperature_width <= 0.0 or maximum_thickness <= 0.0:
+        raise ValueError("diagnostic ice scales must be positive")
+    if maximum_basal_velocity < 0.0:
+        raise ValueError("maximum diagnostic basal velocity must be nonnegative")
+
+    longitude, latitude = _regular_grid(exchange)
+    shape = (latitude.size, longitude.size)
+    temperature = exchange.fields["surface_temperature"].reshape(shape)
+    precipitation = np.maximum(
+        exchange.fields["precipitation_rate"].reshape(shape), 0.0
+    )
+    elevation = exchange.fields["surface_elevation"].reshape(shape)
+    weights = np.broadcast_to(
+        np.maximum(np.cos(np.deg2rad(latitude)), 0.0)[:, None], shape
+    )
+    wet = precipitation > 0.0
+    if np.any(wet):
+        reference_precipitation = np.average(precipitation[wet], weights=weights[wet])
+    else:
+        reference_precipitation = 1.0
+
+    cold_fraction = np.clip(
+        (equilibrium_temperature - temperature) / temperature_width, 0.0, 1.0
+    )
+    moisture_factor = np.where(
+        wet,
+        np.clip((precipitation / reference_precipitation) ** 0.25, 0.25, 1.5),
+        0.0,
+    )
+    thickness = np.clip(
+        maximum_thickness * cold_fraction**1.5 * moisture_factor,
+        0.0,
+        maximum_thickness,
+    )
+
+    longitude_spacing = np.deg2rad(abs(longitude[1] - longitude[0]))
+    latitude_spacing = np.deg2rad(abs(latitude[1] - latitude[0]))
+    zonal_distance = np.maximum(
+        2.0 * EARTH_RADIUS * longitude_spacing * np.cos(np.deg2rad(latitude)),
+        1.0,
+    )[:, None]
+    zonal_slope = (
+        np.roll(elevation, -1, axis=1) - np.roll(elevation, 1, axis=1)
+    ) / zonal_distance
+    meridional_slope = np.gradient(elevation, axis=0) / (
+        EARTH_RADIUS * latitude_spacing
+    )
+    bed_slope = np.hypot(zonal_slope, meridional_slope)
+    velocity = maximum_basal_velocity * (thickness / maximum_thickness) ** 1.5
+    velocity *= np.clip(bed_slope / 0.02, 0.0, 1.0)
+    grounded_fraction = (thickness > 1.0).astype(float)
+    return thickness.reshape(-1), velocity.reshape(-1), grounded_fraction.reshape(-1)
 
 
 def _regular_grid(exchange: SurfaceExchange) -> tuple[np.ndarray, np.ndarray]:
@@ -128,12 +212,16 @@ def _regular_grid(exchange: SurfaceExchange) -> tuple[np.ndarray, np.ndarray]:
     changes = np.flatnonzero(np.abs(exchange.latitude - first_latitude) > 1.0e-10)
     nx = int(changes[0]) if changes.size else exchange.latitude.size
     if nx < 2 or exchange.longitude.size % nx:
-        raise ValueError("exchange points do not form a regular longitude-latitude grid")
+        raise ValueError(
+            "exchange points do not form a regular longitude-latitude grid"
+        )
     ny = exchange.longitude.size // nx
     return exchange.longitude[:nx], exchange.latitude[::nx][:ny]
 
 
-def write_aspect_structured(path: Path, exchange: SurfaceExchange, values: np.ndarray) -> None:
+def write_aspect_structured(
+    path: Path, exchange: SurfaceExchange, values: np.ndarray
+) -> None:
     longitude, latitude = _regular_grid(exchange)
     source_longitude = np.mod(exchange.longitude, 360.0)
     source_colatitude = 90.0 - exchange.latitude
@@ -187,9 +275,7 @@ def climate_vectors_in_body_frame(
     climate_north = np.asarray(spin_axis, dtype=float)
     climate_north /= np.linalg.norm(climate_north)
     climate_zero_longitude = np.array([1.0, 0.0, 0.0])
-    climate_zero_longitude -= (
-        climate_zero_longitude @ climate_north
-    ) * climate_north
+    climate_zero_longitude -= (climate_zero_longitude @ climate_north) * climate_north
     if np.linalg.norm(climate_zero_longitude) < 1.0e-12:
         climate_zero_longitude = np.array([0.0, 1.0, 0.0])
         climate_zero_longitude -= (
@@ -220,11 +306,11 @@ def interpolate_spherical_surface(
     for start in range(0, target_vectors.shape[0], 256):
         stop = min(start + 256, target_vectors.shape[0])
         cosine = np.clip(target_vectors[start:stop] @ source_vectors.T, -1.0, 1.0)
-        neighbors = np.argpartition(
-            -cosine, number_of_neighbors-1, axis=1
-        )[:, :number_of_neighbors]
+        neighbors = np.argpartition(-cosine, number_of_neighbors - 1, axis=1)[
+            :, :number_of_neighbors
+        ]
         neighbor_cosine = np.take_along_axis(cosine, neighbors, axis=1)
-        chord_distance = np.sqrt(np.maximum(2.0-2.0*neighbor_cosine, 0.0))
+        chord_distance = np.sqrt(np.maximum(2.0 - 2.0 * neighbor_cosine, 0.0))
         exact = chord_distance < 1.0e-12
         weights = 1.0 / np.maximum(chord_distance, 1.0e-12)
         if np.any(exact):
@@ -245,14 +331,20 @@ def surface_to_climate_exchange(
     climate = read_exchange(climate_file)
     with surface_csv.open(newline="", encoding="utf-8") as stream:
         rows = list(csv.DictReader(stream))
-    surface_longitude = np.deg2rad(np.array([float(row["longitude_deg"]) for row in rows]))
-    surface_latitude = np.deg2rad(np.array([float(row["latitude_deg"]) for row in rows]))
+    surface_longitude = np.deg2rad(
+        np.array([float(row["longitude_deg"]) for row in rows])
+    )
+    surface_latitude = np.deg2rad(
+        np.array([float(row["latitude_deg"]) for row in rows])
+    )
     surface_change = np.array([float(row["elevation_change_m"]) for row in rows])
     if reference_surface_csv is not None:
         with reference_surface_csv.open(newline="", encoding="utf-8") as stream:
             reference_rows = list(csv.DictReader(stream))
         if len(reference_rows) != len(rows):
-            raise ValueError("current and reference surfaces contain different cell counts")
+            raise ValueError(
+                "current and reference surfaces contain different cell counts"
+            )
         reference_longitude = np.array(
             [float(row["longitude_deg"]) for row in reference_rows]
         )
@@ -319,6 +411,20 @@ def main() -> None:
     climate_parser.add_argument("--ice-thickness", type=Path)
     climate_parser.add_argument("--basal-ice-velocity", type=Path)
     climate_parser.add_argument(
+        "--ice-forcing-model",
+        choices=("exchange", "diagnostic"),
+        default="exchange",
+        help=(
+            "use ice fields supplied by the climate/ice model, or derive an "
+            "inexpensive equilibrium distribution from climate and topography"
+        ),
+    )
+    climate_parser.add_argument(
+        "--diagnostic-ice-exchange",
+        type=Path,
+        help="write diagnostic ice for the next CLIMBER-X climate window",
+    )
+    climate_parser.add_argument(
         "--prescribed-basal-ice-velocity",
         type=float,
         help=(
@@ -359,12 +465,43 @@ def main() -> None:
 
     if arguments.command == "inspect":
         exchange = read_exchange(arguments.exchange)
-        print(f"points={exchange.longitude.size} time_years={exchange.model_time_years:g}")
+        print(
+            f"points={exchange.longitude.size} time_years={exchange.model_time_years:g}"
+        )
         for name, values in exchange.fields.items():
-            print(f"{name} [{exchange.units[name]}]: min={values.min():.9g} max={values.max():.9g}")
+            print(
+                f"{name} [{exchange.units[name]}]: min={values.min():.9g} max={values.max():.9g}"
+            )
     elif arguments.command == "climate-to-aspect":
         exchange = read_exchange(arguments.exchange)
         erosion_strength, runoff = climate_controls(exchange)
+        if arguments.ice_forcing_model == "diagnostic":
+            ice_thickness, basal_ice_velocity, grounded_ice_fraction = (
+                diagnostic_ice_fields(exchange)
+            )
+            if arguments.diagnostic_ice_exchange is not None:
+                write_exchange(
+                    arguments.diagnostic_ice_exchange,
+                    SurfaceExchange(
+                        exchange.model_time_years,
+                        exchange.longitude,
+                        exchange.latitude,
+                        {
+                            "ice_thickness": ice_thickness,
+                            "basal_ice_velocity": basal_ice_velocity,
+                            "grounded_ice_fraction": grounded_ice_fraction,
+                        },
+                        {
+                            "ice_thickness": "m",
+                            "basal_ice_velocity": "m yr-1",
+                            "grounded_ice_fraction": "1",
+                        },
+                        exchange.byte_order,
+                    ),
+                )
+        else:
+            ice_thickness = exchange.fields["ice_thickness"]
+            basal_ice_velocity = exchange.fields["basal_ice_velocity"]
         if arguments.surface_topography is not None:
             write_aspect_structured(
                 arguments.surface_topography,
@@ -374,12 +511,13 @@ def main() -> None:
         write_aspect_structured(arguments.erosion_strength, exchange, erosion_strength)
         write_aspect_structured(arguments.surface_runoff, exchange, runoff)
         if arguments.ice_thickness is not None:
-            write_aspect_structured(
-                arguments.ice_thickness, exchange, exchange.fields["ice_thickness"]
-            )
+            write_aspect_structured(arguments.ice_thickness, exchange, ice_thickness)
         if arguments.basal_ice_velocity is not None:
-            basal_ice_velocity = exchange.fields["basal_ice_velocity"]
             if arguments.prescribed_basal_ice_velocity is not None:
+                if arguments.ice_forcing_model == "diagnostic":
+                    parser.error(
+                        "prescribed basal velocity cannot replace diagnostic ice flow"
+                    )
                 if arguments.prescribed_basal_ice_velocity < 0.0:
                     parser.error("prescribed basal ice velocity must be nonnegative")
                 basal_ice_velocity = np.where(

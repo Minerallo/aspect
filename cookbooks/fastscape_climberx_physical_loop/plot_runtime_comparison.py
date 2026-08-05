@@ -23,12 +23,18 @@ def main() -> None:
         data["full_coupling_seconds"] - coupled_aspect - climate - exchange, 0
     )
     uncoupled = data["uncoupled_aspect_seconds"]
+    ice_model = data.get("ice_model", "yelmo")
+    climate_label = (
+        "CLIMBER-X and diagnostic ice"
+        if ice_model == "diagnostic"
+        else "CLIMBER-X and Yelmo"
+    )
 
     figure, axis = plt.subplots(figsize=(9, 4.8), constrained_layout=True)
     bottom = 0.0
     for value, label, color in (
         (coupled_aspect, "ASPECT and Fastscape", "#3973ac"),
-        (climate, "CLIMBER-X and Yelmo", "#df8f2d"),
+        (climate, climate_label, "#df8f2d"),
         (exchange, "field interpolation", "#4ca36b"),
         (overhead, "file and process overhead", "#999999"),
     ):

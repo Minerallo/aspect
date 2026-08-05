@@ -13,6 +13,7 @@ from surface_exchange import (
     SurfaceExchange,
     climate_vectors_in_body_frame,
     climate_controls,
+    diagnostic_ice_fields,
     interpolate_spherical_surface,
     read_exchange,
     surface_to_climate_exchange,
@@ -100,12 +101,8 @@ class SurfaceExchangeTests(unittest.TestCase):
         pole_on_body_x = climate_vectors_in_body_frame(
             longitude, latitude, np.array([1.0, 0.0, 0.0])
         )
-        np.testing.assert_allclose(
-            pole_on_body_x[-1], [1.0, 0.0, 0.0], atol=1.0e-14
-        )
-        np.testing.assert_allclose(
-            pole_on_body_x[0], [0.0, 1.0, 0.0], atol=1.0e-14
-        )
+        np.testing.assert_allclose(pole_on_body_x[-1], [1.0, 0.0, 0.0], atol=1.0e-14)
+        np.testing.assert_allclose(pole_on_body_x[0], [0.0, 1.0, 0.0], atol=1.0e-14)
 
     def test_weighted_spherical_interpolation_is_exact_at_source_points(self):
         source = np.eye(3)
@@ -191,6 +188,53 @@ class SurfaceExchangeTests(unittest.TestCase):
             )
             returned = read_exchange(output_path)
         np.testing.assert_allclose(returned.fields["elevation_change"], 3.0)
+
+    def test_diagnostic_ice_responds_to_temperature_and_topography(self):
+        longitude, latitude = np.meshgrid(
+            np.array([-135.0, -45.0, 45.0, 135.0]),
+            np.array([-45.0, 45.0]),
+        )
+        temperature = np.array(
+            [[290.0, 290.0, 290.0, 290.0], [260.0, 260.0, 260.0, 260.0]]
+        )
+        elevation = np.array([[0.0, 0.0, 0.0, 0.0], [0.0, 500.0, 1500.0, 500.0]])
+        exchange = SurfaceExchange(
+            1.0,
+            longitude.reshape(-1),
+            latitude.reshape(-1),
+            {
+                "precipitation_rate": np.full(longitude.size, 1.0e-5),
+                "surface_temperature": temperature.reshape(-1),
+                "surface_elevation": elevation.reshape(-1),
+            },
+            {},
+        )
+        thickness, velocity, grounded = diagnostic_ice_fields(exchange)
+        np.testing.assert_allclose(thickness[:4], 0.0)
+        self.assertGreater(np.min(thickness[4:]), 0.0)
+        self.assertGreater(np.max(velocity), 0.0)
+        np.testing.assert_allclose(grounded[:4], 0.0)
+
+    def test_diagnostic_ice_handles_a_dry_climate(self):
+        longitude, latitude = np.meshgrid(
+            np.array([-90.0, 90.0]), np.array([-45.0, 45.0])
+        )
+        exchange = SurfaceExchange(
+            1.0,
+            longitude.reshape(-1),
+            latitude.reshape(-1),
+            {
+                "precipitation_rate": np.zeros(longitude.size),
+                "surface_temperature": np.full(longitude.size, 260.0),
+                "surface_elevation": np.zeros(longitude.size),
+            },
+            {},
+        )
+        thickness, velocity, grounded = diagnostic_ice_fields(exchange)
+        self.assertTrue(np.all(np.isfinite(thickness)))
+        np.testing.assert_allclose(thickness, 0.0)
+        np.testing.assert_allclose(velocity, 0.0)
+        np.testing.assert_allclose(grounded, 0.0)
 
 
 if __name__ == "__main__":

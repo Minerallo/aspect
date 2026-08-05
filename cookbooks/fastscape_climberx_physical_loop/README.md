@@ -2,8 +2,9 @@
 
 This experiment runs one complete feedback cycle using the local installations:
 
-1. CLIMBER-X evolves atmosphere, ocean, sea ice, land, surface and basal ice
-   mass balance, and the Yelmo ice-sheet model for one year.
+1. CLIMBER-X evolves atmosphere, ocean, sea ice, and land for one year. Ice is
+   supplied either by Yelmo with surface and basal mass balance, or by the
+   inexpensive diagnostic equilibrium option described below.
 2. A compact binary exchange passes precipitation, surface temperature,
    topography, ice thickness, grounded-ice fraction, and basal sliding speed
    directly to ASPECT and Fastscape. Large climate restart files are not used
@@ -38,6 +39,38 @@ degree-two load parameters, and component restart strategy require calibration
 before the magnitudes can be interpreted as an Earth reconstruction. A longer
 experiment should continue component restarts between windows instead of
 starting the feedback and control climate years from the same initial state.
+
+## Fast diagnostic ice option
+
+Yelmo remains the dynamic, mass-conserving ice-sheet option. For faster
+sensitivity tests, select a diagnostic equilibrium ice distribution:
+
+```bash
+python3 run_coupling_sequence.py --windows 2 --ice-model diagnostic \
+  --output output-diagnostic-ice-sequence
+```
+
+This option disables Yelmo and its surface and basal mass-balance components.
+At each coupling boundary it estimates ice thickness from CLIMBER-X surface
+temperature and precipitation, then estimates basal sliding from ice thickness
+and bed slope. CLIMBER-X receives that prescribed ice during the next climate
+window, so ice elevation and land-surface climate feedback remain active.
+Fastscape receives the same thickness and sliding fields and applies glacial
+erosion through its existing sediment-routing and deposition system.
+
+The parameterization is analogous to the elevation-triggered ice used by the
+local Fastscape Fortran example, but replaces a fixed equilibrium-line altitude
+with the global climate fields. It is an equilibrium proxy: it does not conserve
+ice mass, solve transient ice flow, or replace Yelmo for quantitative ice-sheet
+predictions. Its purpose is rapid coupling development, calibration, and broad
+sensitivity tests.
+
+The diagnostic run writes `diagnostic-ice-NNN.cxe`, a compact exchange that can
+be plotted or reused without modifying a climate restart file. The summary map
+shows precipitation, the exact ice and sliding fields supplied to Fastscape,
+the returned topography and temperature response, and glacial erosion. The
+runtime and Yelmo-comparison figures are `runtime-comparison.png` and
+`diagnostic-vs-yelmo.png`.
 
 ## Continued sequence and runtime comparison
 

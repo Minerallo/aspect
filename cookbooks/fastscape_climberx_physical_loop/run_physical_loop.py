@@ -35,6 +35,22 @@ def free_memory_percent() -> int | None:
     return int(match.group(1)) if match else None
 
 
+def plotting_python() -> str:
+    """Return an available Python interpreter containing Matplotlib."""
+
+    candidates = (sys.executable, str(Path.home() / "anaconda3/bin/python"))
+    for candidate in candidates:
+        if (
+            Path(candidate).is_file()
+            and subprocess.run(
+                [candidate, "-c", "import matplotlib"], capture_output=True
+            ).returncode
+            == 0
+        ):
+            return candidate
+    raise RuntimeError("plotting requires a Python environment containing Matplotlib")
+
+
 def run_monitored(
     command, working_directory, log_path, environment, minimum_free_percent
 ):
@@ -87,8 +103,31 @@ def prepare_climate_case(template: Path, destination: Path, executable: Path) ->
     target.symlink_to(executable.resolve())
 
 
+def replace_namelist_value(text: str, name: str, value: str) -> str:
+    pattern = re.compile(rf"^(\s*{re.escape(name)}\s*=\s*)[^!\n]*(.*)$", re.MULTILINE)
+    replaced, count = pattern.subn(rf"\g<1>{value} \g<2>", text, count=1)
+    if count != 1:
+        raise RuntimeError(f"could not set {name} in control.nml")
+    return replaced
+
+
+def configure_diagnostic_ice(case: Path) -> None:
+    """Disable dynamic ice components while retaining prescribed geography ice."""
+
+    control = case / "control.nml"
+    text = control.read_text(encoding="utf-8")
+    for name in ("flag_ice", "flag_smb", "flag_bmb"):
+        text = replace_namelist_value(text, name, "F")
+    control.write_text(text, encoding="utf-8")
+
+
 def run_climate(
-    case, output_exchange, topography_exchange, climber_library, minimum_free_percent
+    case,
+    output_exchange,
+    topography_exchange,
+    climber_library,
+    minimum_free_percent,
+    ice_exchange=None,
 ):
     environment = os.environ.copy()
     paths = [str(climber_library), "/opt/homebrew/Cellar/netcdf/4.9.3/lib"]
@@ -101,6 +140,8 @@ def run_climate(
         environment["CLIMBERX_TOPOGRAPHY_EXCHANGE_FILE"] = str(
             topography_exchange.resolve()
         )
+    if ice_exchange is not None:
+        environment["CLIMBERX_ICE_EXCHANGE_FILE"] = str(ice_exchange.resolve())
     elapsed = run_monitored(
         ["./climber.x"], case, case / "climber.log", environment, minimum_free_percent
     )
@@ -178,7 +219,12 @@ end
     )
 
 
-def convert_climate(exchange: Path, fields: Path) -> None:
+def convert_climate(
+    exchange: Path,
+    fields: Path,
+    ice_forcing_model: str = "exchange",
+    diagnostic_ice_exchange: Path | None = None,
+) -> None:
     fields.mkdir(parents=True, exist_ok=True)
     command = [sys.executable, str(EXCHANGE_TOOL), "climate-to-aspect", str(exchange)]
     for option, name in (
@@ -189,6 +235,9 @@ def convert_climate(exchange: Path, fields: Path) -> None:
         ("--basal-ice-velocity", "basal-ice-velocity.txt"),
     ):
         command.extend((option, str(fields / name)))
+    command.extend(("--ice-forcing-model", ice_forcing_model))
+    if diagnostic_ice_exchange is not None:
+        command.extend(("--diagnostic-ice-exchange", str(diagnostic_ice_exchange)))
     subprocess.run(command, check=True)
 
 
@@ -221,6 +270,12 @@ def main() -> None:
         "--output", type=Path, default=COOKBOOK / "output-physical-loop"
     )
     parser.add_argument("--minimum-free-memory-percent", type=int, default=15)
+    parser.add_argument(
+        "--ice-model",
+        choices=("yelmo", "diagnostic"),
+        default="yelmo",
+        help="dynamic Yelmo ice or inexpensive climate-derived equilibrium ice",
+    )
     arguments = parser.parse_args()
     climate_root = INSTALLATION / "aspect_ClimberX"
     template = climate_root / "tests/yelmo-active-diva"
@@ -243,6 +298,8 @@ def main() -> None:
     aspect_output, fields = output / "aspect-fastscape", output / "aspect-input"
 
     prepare_climate_case(template, baseline_case, climate_executable)
+    if arguments.ice_model == "diagnostic":
+        configure_diagnostic_ice(baseline_case)
     run_climate(
         baseline_case,
         baseline_exchange,
@@ -250,7 +307,15 @@ def main() -> None:
         climate_root / "local/lib",
         arguments.minimum_free_memory_percent,
     )
-    convert_climate(baseline_exchange, fields)
+    diagnostic_ice_exchange = (
+        output / "diagnostic-ice.cxe" if arguments.ice_model == "diagnostic" else None
+    )
+    convert_climate(
+        baseline_exchange,
+        fields,
+        arguments.ice_model if arguments.ice_model == "diagnostic" else "exchange",
+        diagnostic_ice_exchange,
+    )
     parameter_file = output / "physical-loop.prm"
     write_aspect_parameters(parameter_file, aspect_output, fields)
     run_monitored(
@@ -279,33 +344,35 @@ def main() -> None:
     subprocess.run(command, check=True)
 
     prepare_climate_case(template, feedback_case, climate_executable)
+    if arguments.ice_model == "diagnostic":
+        configure_diagnostic_ice(feedback_case)
     run_climate(
         feedback_case,
         feedback_exchange,
         topography_exchange,
         climate_root / "local/lib",
         arguments.minimum_free_memory_percent,
+        diagnostic_ice_exchange,
     )
     plot_environment = os.environ.copy()
     plot_environment["MPLCONFIGDIR"] = str(output / ".matplotlib")
-    subprocess.run(
-        [
-            sys.executable,
-            str(PLOT_TOOL),
-            "--baseline",
-            str(baseline_exchange),
-            "--feedback",
-            str(feedback_exchange),
-            "--topography",
-            str(topography_exchange),
-            "--surface",
-            str(surface),
-            "--output",
-            str(output / "physical-loop-summary.png"),
-        ],
-        check=True,
-        env=plot_environment,
-    )
+    plot_command = [
+        plotting_python(),
+        str(PLOT_TOOL),
+        "--baseline",
+        str(baseline_exchange),
+        "--feedback",
+        str(feedback_exchange),
+        "--topography",
+        str(topography_exchange),
+        "--surface",
+        str(surface),
+        "--output",
+        str(output / "physical-loop-summary.png"),
+    ]
+    if diagnostic_ice_exchange is not None:
+        plot_command.extend(("--ice", str(diagnostic_ice_exchange)))
+    subprocess.run(plot_command, check=True, env=plot_environment)
     summary = surface_statistics(surface)
     baseline = read_exchange(baseline_exchange)
     feedback = read_exchange(feedback_exchange)

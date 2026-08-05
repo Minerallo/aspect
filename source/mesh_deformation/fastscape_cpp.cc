@@ -782,10 +782,11 @@ private:
     }
 
     /**
-     * Conservatively advect bedrock elevation and mobile-sediment thickness
-     * over the fixed landscape grid using a first-order upwind finite-volume
-     * scheme. The velocity is tangential to the ASPECT surface and expressed
-     * in meters per year. Courant substeps keep the mobile thickness positive.
+     * Advect bedrock elevation as a tracer and mobile-sediment thickness as a
+     * conserved volume over the fixed landscape grid using a first-order
+     * upwind finite-volume scheme. The velocity is tangential to the ASPECT
+     * surface and expressed in meters per year. Courant substeps keep the
+     * mobile thickness positive.
      */
     void
     advect_surface_fields(const std::vector<SurfaceVelocity> &velocity,
@@ -830,13 +831,15 @@ private:
         for (unsigned int step = 0; step < advection_steps; ++step)
         {
             advect_field(bedrock_elevation, velocity,
-                         advection_step_years, areas);
+                         advection_step_years, areas,
+                         true);
             sediment_thickness.fill(0.0);
             for (unsigned int rock = 0;
                     rock < lithology_names.size(); ++rock)
             {
                 advect_field(sediment_thickness_by_lithology[rock], velocity,
-                             advection_step_years, areas);
+                             advection_step_years, areas,
+                             false);
                 for (double &thickness :
                         sediment_thickness_by_lithology[rock])
                     thickness = std::max(0.0, thickness);
@@ -850,9 +853,11 @@ private:
     advect_field(xt::xarray<double> &field,
                  const std::vector<SurfaceVelocity> &velocity,
                  const double step_years,
-                 const typename Grid::container_type &areas)
+                 const typename Grid::container_type &areas,
+                 const bool preserve_constant_field)
     {
         std::vector<double> extensive_change(field.size(), 0.0);
+        std::vector<double> net_outward_face_rate(field.size(), 0.0);
         for (std::size_t i = 0; i < field.size(); ++i)
             for (std::size_t n = 0;
                     n < grid->number_of_cell_neighbors(i); ++n)
@@ -865,6 +870,8 @@ private:
                 const double signed_rate =
                     (face_velocity * grid->cell_neighbor_direction(i, n)) *
                     grid->cell_shared_face_measure(i, n);
+                net_outward_face_rate[i] += signed_rate;
+                net_outward_face_rate[j] -= signed_rate;
                 const std::size_t donor = signed_rate >= 0.0 ? i : j;
                 const std::size_t receiver = signed_rate >= 0.0 ? j : i;
                 const double transported =
@@ -874,7 +881,17 @@ private:
             }
 
         for (std::size_t i = 0; i < field.size(); ++i)
+        {
+            // Bedrock elevation is a tracer, not a conserved volume. This
+            // correction changes the conservative flux form into the
+            // advective form and exactly preserves a constant field even when
+            // the face-interpolated velocity has small discrete divergence.
+            // Sediment thickness remains in conservative flux form.
+            if (preserve_constant_field)
+                extensive_change[i] +=
+                    step_years * net_outward_face_rate[i] * field[i];
             field[i] += extensive_change[i] / areas[i];
+        }
     }
 
     /**
@@ -1193,10 +1210,17 @@ public:
 
         const std::string budget_file =
             directory + "sediment_budget.csv";
-        const bool write_header = !std::filesystem::exists(budget_file);
+        // A fresh model may deliberately reuse an existing output directory.
+        // In that case, appending to the previous sediment budget combines two
+        // unrelated runs. A resumed model restores a nonempty output history,
+        // so it continues to append as before.
+        const bool start_new_output_history = output_history.empty();
         {
-            std::ofstream output(budget_file, std::ios::app);
-            if (write_header)
+            std::ofstream output(budget_file,
+                                 start_new_output_history
+                                   ? std::ios::trunc
+                                   : std::ios::app);
+            if (start_new_output_history)
                 output << "timestep,time_years,sea_level_m,eroded_volume_m3,"
                        << "fluvial_eroded_volume_m3,glacial_eroded_volume_m3,"
                        << "sediment_outflux_m3_per_year,"
@@ -2087,7 +2111,9 @@ std::vector<Tensor<1,dim>>
             outward_direction(this->evaluation_points[i]);
         const double normal_material_velocity =
             material_velocity * surface_normal;
-        uplift_rate[i] = normal_material_velocity * year_in_seconds;
+        uplift_rate[i] = apply_normal_material_velocity
+                         ? normal_material_velocity * year_in_seconds
+                         : 0.0;
         tangential_velocity[i] =
             (material_velocity -
              normal_material_velocity * surface_normal) * year_in_seconds;
@@ -2460,9 +2486,15 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
                           "receiving marine sediment.");
         prm.declare_entry("Advect surface state", "false",
                           Patterns::Bool(),
-                          "Conservatively advect bedrock elevation and mobile "
-                          "sediment over the fixed FastScape grid using the "
-                          "tangential ASPECT material velocity.");
+                          "Advect bedrock elevation and mobile sediment over "
+                          "the fixed FastScape grid using the tangential "
+                          "ASPECT material velocity.");
+        prm.declare_entry("Apply normal material velocity", "true",
+                          Patterns::Bool(),
+                          "Apply the normal component of ASPECT's material "
+                          "velocity as uplift or subsidence. Disable this only "
+                          "to isolate tangential transport in an advection "
+                          "benchmark; regional ice-load motion remains active.");
         prm.declare_entry("Maximum surface advection Courant number", "0.5",
                           Patterns::Double(0),
                           "Maximum finite-volume Courant number used while "
@@ -2667,6 +2699,8 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
             prm.get_bool("Restrict ocean to largest connected water body");
         advect_surface_state =
             prm.get_bool("Advect surface state");
+        apply_normal_material_velocity =
+            prm.get_bool("Apply normal material velocity");
         maximum_surface_advection_courant =
             prm.get_double("Maximum surface advection Courant number");
         hillslope_diffusion_coefficient =

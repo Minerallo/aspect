@@ -1,0 +1,100 @@
+# One complete rigid rotation of an asymmetric spherical relief field.
+# Erosion, deposition, and physical diffusion are disabled, so any amplitude
+# loss measures numerical diffusion in the surface-state advection itself.
+set Dimension                     = 3
+set Use years instead of seconds = true
+set End time                      = 62831.85307179586
+set Maximum time step             = 1000
+set Nonlinear solver scheme       = no Advection, single Stokes
+set Output directory              = output/global-rigid-rotation
+
+subsection Geometry model
+  set Model name = spherical shell
+  subsection Spherical shell
+    set Inner radius = 3481e3
+    set Outer radius = 6371e3
+  end
+  subsection Initial topography model
+    set Model name = zero topography
+  end
+end
+
+subsection Mesh deformation
+  set Mesh deformation boundary indicators = top: fastscape surface evolution, bottom: boundary function
+  subsection Boundary function
+    set Function expression = 0; 0; 0
+  end
+  subsection FastScape surface evolution
+    set Surface refinement level                  = 2
+    set Landscape steps per geodynamic step       = 1
+    set Maximum landscape step                    = 1000
+    set River incision coefficient                = 0
+    set Glacial erosion coefficient               = 0
+    set Marine sediment transport coefficient     = 0
+    set Hillslope diffusion coefficient           = 0
+    set Initial relief                            = 1500
+    set Advect surface state                      = true
+    set Apply normal material velocity            = false
+    set Maximum surface advection Courant number  = 0.4
+    set Result interval                           = 1
+    set Write visualization results               = true
+  end
+end
+
+subsection Gravity model
+  set Model name = radial constant
+  subsection Radial constant
+    set Magnitude = 10
+  end
+end
+
+subsection Initial temperature model
+  set Model name = function
+  subsection Function
+    set Function expression = 273
+  end
+end
+
+subsection Boundary temperature model
+  set Fixed temperature boundary indicators = bottom, top
+  set List of model names = initial temperature
+end
+
+subsection Boundary velocity model
+  set Prescribed velocity boundary indicators = bottom: function, top: function
+  subsection Function
+    set Variable names      = x,y,z
+    set Function constants  = omega=1e-4
+    set Function expression = -omega*y; omega*x; 0
+  end
+end
+
+subsection Material model
+  set Model name = simple
+  subsection Simple model
+    set Reference density             = 3300
+    set Reference specific heat       = 1250
+    set Reference temperature         = 273
+    set Thermal conductivity          = 3
+    set Thermal expansion coefficient = 0
+    set Viscosity                     = 1e21
+  end
+end
+
+subsection Formulation
+  set Formulation = Boussinesq approximation
+end
+
+subsection Mesh refinement
+  set Initial global refinement          = 0
+  set Initial adaptive refinement        = 0
+  set Time steps between mesh refinement = 0
+end
+
+subsection Postprocess
+  set List of postprocessors = topography
+end
+
+subsection Termination criteria
+  set Checkpoint on termination = false
+end

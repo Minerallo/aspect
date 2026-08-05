@@ -1,0 +1,11 @@
+include global_rigid_rotation.prm
+
+set End time         = 2000
+set Output directory = output/global-flat-surface-control
+
+subsection Mesh deformation
+  subsection FastScape surface evolution
+    set Initial relief       = 0
+    set Advect surface state = false
+  end
+end

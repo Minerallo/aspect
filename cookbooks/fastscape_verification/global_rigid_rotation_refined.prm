@@ -1,9 +1,0 @@
-include global_rigid_rotation.prm
-
-set Output directory = output/global-rigid-rotation-refined
-
-subsection Mesh deformation
-  subsection FastScape surface evolution
-    set Surface refinement level = 3
-  end
-end

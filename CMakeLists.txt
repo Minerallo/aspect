@@ -739,6 +739,12 @@ endif()
 # friendly names for all executables being built:
 set(TARGET_FRIENDLY_EXECUTABLES "")
 
+if(APPLE)
+  set(ASPECT_INSTALL_LIBRARY_RPATH "@loader_path/../lib")
+else()
+  set(ASPECT_INSTALL_LIBRARY_RPATH "$ORIGIN/../lib")
+endif()
+
 # Set up targets for ASPECT executables:
 if(${ASPECT_BUILD_DEBUG} STREQUAL "ON")
   add_executable(${TARGET_EXE_DEBUG} ${ASPECT_ALL_SOURCE_FILES})
@@ -754,7 +760,7 @@ if(${ASPECT_BUILD_DEBUG} STREQUAL "ON")
     "${DEAL_II_LINKER_FLAGS} ${DEAL_II_LINKER_FLAGS_DEBUG}"
     )
   target_link_libraries(${TARGET_EXE_DEBUG} dealii::dealii_debug)
-  set_target_properties(${TARGET_EXE_DEBUG} PROPERTIES INSTALL_RPATH "$ORIGIN/../lib")
+  set_target_properties(${TARGET_EXE_DEBUG} PROPERTIES INSTALL_RPATH "${ASPECT_INSTALL_LIBRARY_RPATH}")
 endif()
 
 if(${ASPECT_BUILD_RELEASE} STREQUAL "ON")
@@ -771,7 +777,7 @@ if(${ASPECT_BUILD_RELEASE} STREQUAL "ON")
     "${DEAL_II_LINKER_FLAGS} ${DEAL_II_LINKER_FLAGS_RELEASE}"
     )
   target_link_libraries(${TARGET_EXE_RELEASE} dealii::dealii_release)
-  set_target_properties(${TARGET_EXE_RELEASE} PROPERTIES INSTALL_RPATH "$ORIGIN/../lib")
+  set_target_properties(${TARGET_EXE_RELEASE} PROPERTIES INSTALL_RPATH "${ASPECT_INSTALL_LIBRARY_RPATH}")
 endif()
 
 # Make sure we have the rpath to our dependencies set:

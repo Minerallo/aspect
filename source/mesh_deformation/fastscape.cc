@@ -102,6 +102,21 @@ namespace aspect
                                                const double *pp);
 
       /**
+       * Select the original (1) or TVD (2) FastScape advection scheme.
+       */
+      void fastscape_set_advection_scheme_(const unsigned int *scheme);
+
+      /**
+       * Activate and update prescribed-field glacial erosion.
+       */
+      void fastscape_set_glacial_parameters_(double *kkg,
+                                             const double *sliding_exponent,
+                                             const double *thickness_scale,
+                                             const double *minimum_thickness);
+      void fastscape_set_ice_thickness_(double *thickness);
+      void fastscape_set_basal_sliding_velocity_(double *velocity);
+
+      /**
        * Set FastScape marine erosional parameters. This can be set between timesteps.
        */
       void fastscape_set_marine_parameters_(const double *sl,
@@ -139,6 +154,11 @@ namespace aspect
       void fastscape_set_basement_(double *b);
 
       /**
+       * Restore FastScape cumulative erosion, for example from a checkpoint.
+       */
+      void fastscape_set_total_erosion_(double *etot);
+
+      /**
        * Run FastScape for a single FastScape timestep.
        */
       void fastscape_execute_step_();
@@ -164,6 +184,11 @@ namespace aspect
        * Copy the current FastScape basement.
        */
       void fastscape_copy_basement_(double *b);
+
+      /**
+       * Copy the current FastScape cumulative erosion.
+       */
+      void fastscape_copy_total_erosion_(double *etot);
 
       /**
        * Copy the current FastScape silt fraction.
@@ -393,10 +418,11 @@ namespace aspect
 
               // Initialize fastscape, at this point only the first vector is used,
               // with the other two being relevant during restarts.
-              std::vector<double> empty_basement, empty_silt_fraction;
+              std::vector<double> empty_basement, empty_silt_fraction, empty_cumulative_erosion;
               initialize_fastscape(elevation,
                                    empty_basement,
                                    empty_silt_fraction,
+                                   empty_cumulative_erosion,
                                    false);
             }
           else
@@ -489,6 +515,43 @@ namespace aspect
 
           // Set elevation to new values, and set erosional/marine parameters.
           fastscape_set_h_(elevation.data());
+
+          if (use_glacial_erosion)
+            {
+              std::vector<double> glacial_erodibility(fastscape_array_size);
+              std::vector<double> ice_thickness(fastscape_array_size);
+              std::vector<double> basal_sliding_velocity(fastscape_array_size);
+              const double y_origin = (dim == 3 ? grid_extent[1].first : 0.0);
+
+              for (unsigned int i=0; i<fastscape_array_size; ++i)
+                {
+                  const unsigned int ix = i % fastscape_nx;
+                  const unsigned int iy = i / fastscape_nx;
+                  const Point<2> position(grid_extent[0].first
+                                          + (static_cast<int>(ix) - static_cast<int>(use_ghost_nodes)) * fastscape_dx,
+                                          y_origin
+                                          + (static_cast<int>(iy) - static_cast<int>(use_ghost_nodes)) * fastscape_dy);
+
+                  glacial_erodibility[i] = std::max(0.0, glacial_erodibility_function.value(position));
+                  ice_thickness[i] = std::max(0.0, ice_thickness_function.value(position));
+                  basal_sliding_velocity[i] = std::abs(basal_sliding_velocity_function.value(position));
+                }
+
+              fastscape_set_glacial_parameters_(glacial_erodibility.data(),
+                                                 &glacial_sliding_exponent,
+                                                 &glacial_thickness_scale,
+                                                 &glacial_minimum_thickness);
+              fastscape_set_ice_thickness_(ice_thickness.data());
+              fastscape_set_basal_sliding_velocity_(basal_sliding_velocity.data());
+
+              if (current_timestep == 1)
+                this->get_pcout() << "   Glacial erosion fields: max erodibility "
+                                  << *std::max_element(glacial_erodibility.begin(), glacial_erodibility.end())
+                                  << ", max ice thickness "
+                                  << *std::max_element(ice_thickness.begin(), ice_thickness.end()) << " m, max basal sliding velocity "
+                                  << *std::max_element(basal_sliding_velocity.begin(), basal_sliding_velocity.end()) << " m/yr."
+                                  << std::endl;
+            }
 
           fastscape_set_erosional_parameters_(bedrock_river_incision_rate_array.data(),
                                               &sediment_river_incision_rate,
@@ -917,6 +980,7 @@ namespace aspect
     void FastScape<dim>::initialize_fastscape(std::vector<double> &elevation,
                                               std::vector<double> &basement,
                                               std::vector<double> &silt_fraction,
+                                              std::vector<double> &cumulative_erosion,
                                               bool restart) const
     {
       Assert (Utilities::MPI::this_mpi_process(this->get_mpi_communicator()) == 0, ExcInternalError());
@@ -927,6 +991,7 @@ namespace aspect
       fastscape_set_nx_ny_(&fastscape_nx,
                            &fastscape_ny);
       fastscape_setup_();
+      fastscape_set_advection_scheme_(&fastscape_advection_scheme);
       fastscape_set_xl_yl_(&fastscape_x_extent,
                            &fastscape_y_extent);
 
@@ -939,6 +1004,7 @@ namespace aspect
         {
           // These values are only set on a restart
           fastscape_set_basement_(basement.data());
+          fastscape_set_total_erosion_(cumulative_erosion.data());
           if (use_marine_component)
             fastscape_init_f_(silt_fraction.data());
         }
@@ -1613,6 +1679,9 @@ namespace aspect
       // FastScape silt fraction values for restart
       std::vector<double> silt_fraction;
 
+      // FastScape cumulative erosion values for restart
+      std::vector<double> cumulative_erosion;
+
       // If we are on the root processor retrieve from FastScape.
       // This will only store the data for the root, but as FastScape
       // is run solely on that process it shouldn't cause issues.
@@ -1622,6 +1691,7 @@ namespace aspect
           elevation.resize(fastscape_array_size);
           basement.resize(fastscape_array_size);
           silt_fraction.resize(fastscape_array_size);
+          cumulative_erosion.resize(fastscape_array_size);
 
           // Only copy data from FastScape if Fastscape has been set up
           // in the initialize_fastscape function, which happens at the beginning of timestep 1.
@@ -1631,6 +1701,7 @@ namespace aspect
             {
               fastscape_copy_h_(elevation.data());
               fastscape_copy_basement_(basement.data());
+              fastscape_copy_total_erosion_(cumulative_erosion.data());
               if (use_marine_component)
                 fastscape_copy_f_(silt_fraction.data());
             }
@@ -1657,7 +1728,7 @@ namespace aspect
         // FastScape's state in the form of a number of vectors and
         // serialize those by hand:
         if (Utilities::MPI::this_mpi_process(this->get_mpi_communicator()) == 0)
-          oa << elevation << basement << silt_fraction;
+          oa << elevation << basement << silt_fraction << cumulative_erosion;
       }
 
       status_strings["FastScape"] = os.str();
@@ -1678,6 +1749,9 @@ namespace aspect
       // FastScape silt fraction values for restart
       std::vector<double> silt_fraction;
 
+      // FastScape cumulative erosion values for restart
+      std::vector<double> cumulative_erosion;
+
       if (status_strings.find("FastScape") != status_strings.end())
         {
           std::istringstream is (status_strings.find("FastScape")->second);
@@ -1689,7 +1763,25 @@ namespace aspect
           // On root, also read in the state of FastScape which we have
           // explicitly saved separate from the member variables
           if (Utilities::MPI::this_mpi_process(this->get_mpi_communicator()) == 0)
-            ia >> elevation >> basement >> silt_fraction;
+            {
+              ia >> elevation >> basement >> silt_fraction;
+
+              // Checkpoints written before cumulative erosion was included end here.
+              // Preserve compatibility with them, while warning that their historical
+              // cumulative-erosion diagnostic cannot be reconstructed generically.
+              try
+                {
+                  ia >> cumulative_erosion;
+                }
+              catch (const boost::archive::archive_exception &)
+                {
+                  cumulative_erosion.assign(elevation.size(), 0.0);
+                  this->get_pcout()
+                      << "*** Legacy FastScape checkpoint has no cumulative erosion field; "
+                      << "the counter restarts at zero once, then remains restart-safe."
+                      << std::endl;
+                }
+            }
         }
       else
         AssertThrow (false, ExcMessage("Trying to load data for FastScape from a checkpoint, but no data seems to have been written."));
@@ -1699,6 +1791,7 @@ namespace aspect
         initialize_fastscape(elevation,
                              basement,
                              silt_fraction,
+                             cumulative_erosion,
                              true);
     }
 
@@ -1724,6 +1817,13 @@ namespace aspect
       if (use_sea_level_function)
         {
           sea_level_function.set_time(scaled_time);
+        }
+
+      if (use_glacial_erosion)
+        {
+          glacial_erodibility_function.set_time(scaled_time);
+          ice_thickness_function.set_time(scaled_time);
+          basal_sliding_velocity_function.set_time(scaled_time);
         }
     }
 
@@ -1785,6 +1885,10 @@ namespace aspect
           prm.declare_entry ("Uplift and advect with fastscape", "true",
                              Patterns::Bool (),
                              "Flag to use FastScape advection and uplift.");
+          prm.declare_entry ("Advection scheme", "TVD",
+                             Patterns::Selection("original|TVD"),
+                             "Select the original FastScape advection scheme or the "
+                             "total-variation-diminishing scheme introduced by Samantak Kundu.");
           prm.declare_entry("Node tolerance", "0.001",
                             Patterns::Double(),
                             "Node tolerance for how close an ASPECT node must be to a FastScape node for the value to be transferred.");
@@ -1839,6 +1943,38 @@ namespace aspect
                                Patterns::Bool (),
                                "Whether to set the ghost nodes at the FastScape left and right boundary "
                                "to periodic even if 'Left' and 'Right' are set to fixed boundary.");
+          }
+          prm.leave_subsection();
+
+          prm.enter_subsection ("Glacial erosion");
+          {
+            prm.declare_entry ("Enable", "false",
+                               Patterns::Bool (),
+                               "Enable prescribed-field glacial erosion in FastScape.");
+            prm.declare_entry ("Sliding velocity exponent", "1",
+                               Patterns::Double(0),
+                               "Exponent applied to basal sliding speed in the abrasion law.");
+            prm.declare_entry ("Ice thickness scale", "150",
+                               Patterns::Double(0),
+                               "Ice-thickness saturation scale in meters.");
+            prm.declare_entry ("Minimum ice thickness", "5",
+                               Patterns::Double(0),
+                               "Minimum ice thickness in meters required for glacial erosion.");
+            prm.enter_subsection ("Glacial erodibility function");
+            {
+              Functions::ParsedFunction<2>::declare_parameters(prm, 2);
+            }
+            prm.leave_subsection();
+            prm.enter_subsection ("Ice thickness function");
+            {
+              Functions::ParsedFunction<2>::declare_parameters(prm, 2);
+            }
+            prm.leave_subsection();
+            prm.enter_subsection ("Basal sliding velocity function");
+            {
+              Functions::ParsedFunction<2>::declare_parameters(prm, 2);
+            }
+            prm.leave_subsection();
           }
           prm.leave_subsection();
 
@@ -2020,6 +2156,7 @@ namespace aspect
           fastscape_y_extent_2d = prm.get_double("Y extent in 2d");
           use_ghost_nodes = prm.get_bool("Use ghost nodes");
           fastscape_advection_uplift = prm.get_bool("Uplift and advect with fastscape");
+          fastscape_advection_scheme = (prm.get("Advection scheme") == "TVD" ? 2 : 1);
           node_tolerance = prm.get_double("Node tolerance");
           noise_elevation = prm.get_double("Initial noise magnitude");
           sediment_rain_rates = Utilities::string_to_double
@@ -2068,6 +2205,28 @@ namespace aspect
 
             topbottom_ghost_nodes_periodic = prm.get_bool("Back front ghost nodes periodic");
             leftright_ghost_nodes_periodic = prm.get_bool("Left right ghost nodes periodic");
+          }
+          prm.leave_subsection();
+
+          prm.enter_subsection("Glacial erosion");
+          {
+            use_glacial_erosion = prm.get_bool("Enable");
+            glacial_sliding_exponent = prm.get_double("Sliding velocity exponent");
+            glacial_thickness_scale = prm.get_double("Ice thickness scale");
+            glacial_minimum_thickness = prm.get_double("Minimum ice thickness");
+
+            if (use_glacial_erosion)
+              {
+                prm.enter_subsection("Glacial erodibility function");
+                glacial_erodibility_function.parse_parameters(prm);
+                prm.leave_subsection();
+                prm.enter_subsection("Ice thickness function");
+                ice_thickness_function.parse_parameters(prm);
+                prm.leave_subsection();
+                prm.enter_subsection("Basal sliding velocity function");
+                basal_sliding_velocity_function.parse_parameters(prm);
+                prm.leave_subsection();
+              }
           }
           prm.leave_subsection();
 

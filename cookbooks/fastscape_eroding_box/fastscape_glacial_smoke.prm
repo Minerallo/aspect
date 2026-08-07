@@ -1,0 +1,52 @@
+# Small verification model for the ASPECT/FastScape-Fortran glacial branch.
+# Run from this directory so the include below resolves locally.
+include fastscape_eroding_box.prm
+
+set End time         = 1000
+set Maximum time step = 1000
+set Output directory = glacial_smoke
+
+subsection Mesh deformation
+  subsection Fastscape
+    set Maximum surface refinement level = 1
+    set Additional fastscape refinement  = 0
+    set Number of fastscape timesteps per aspect timestep = 1
+    set Maximum timestep length = 1000
+    set Advection scheme = TVD
+
+    subsection Glacial erosion
+      set Enable                    = true
+      set Sliding velocity exponent = 1
+      set Ice thickness scale       = 150
+      set Minimum ice thickness     = 5
+
+      subsection Glacial erodibility function
+        set Variable names      = x,y
+        set Function expression = 1.2e-4
+      end
+
+      subsection Ice thickness function
+        set Variable names      = x,y
+        set Function expression = if(x>20e3 && x<105e3 && y>10e3 && y<90e3, 650*(1-x/125e3), 0)
+      end
+
+      subsection Basal sliding velocity function
+        set Variable names      = x,y
+        set Function expression = if(x>20e3 && x<105e3 && y>10e3 && y<90e3, 15+55*x/125e3, 0)
+      end
+    end
+  end
+end
+
+subsection Mesh refinement
+  set Initial global refinement   = 1
+  set Initial adaptive refinement = 0
+
+  subsection Maximum refinement function
+    set Function expression = 1
+  end
+
+  subsection Minimum refinement function
+    set Function expression = 1
+  end
+end

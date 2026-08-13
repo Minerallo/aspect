@@ -1,0 +1,8 @@
+Fixed: The C++ FastScape mesh-deformation plugin now transports bedrock
+elevation as a tracer while retaining conservative transport for sediment
+thickness. This preserves constant topography during tangential advection.
+Fresh runs that reuse an output directory also replace the previous sediment
+budget instead of appending an unrelated history. A new parameter can disable
+normal material velocity in isolated tangential-advection benchmarks.
+<br>
+(Michael Pons, 2026/08/05)

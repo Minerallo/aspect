@@ -1,0 +1,16 @@
+# Short global feedback example. It uses the CLIMBER-X-derived fields from the
+# local coupling test directory and accelerates the polar response so that the
+# change is visible over two thousand model years.
+include ../../../tests/fastscape_cpp_global_climber_glacial.prm
+
+set Output directory = output-fastscape-true-polar-wander
+
+subsection Mesh deformation
+  subsection FastScape surface evolution
+    set Enable true polar wander              = true
+    set Include ice load in true polar wander = true
+    set Rotational bulge inertia difference   = 1e33
+    set Polar wander relaxation time          = 10000
+    set Maximum polar wander rate             = 0
+  end
+end

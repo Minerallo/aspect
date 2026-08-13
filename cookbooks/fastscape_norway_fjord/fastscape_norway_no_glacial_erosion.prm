@@ -1,0 +1,9 @@
+include norway_fjord_base.prm
+
+set Output directory = output-fastscape-norway-control
+
+subsection Mesh deformation
+  subsection FastScape surface evolution
+    set Glacial erosion coefficient = 0
+  end
+end

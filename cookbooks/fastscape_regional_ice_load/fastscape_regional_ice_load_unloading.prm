@@ -1,0 +1,10 @@
+include fastscape_regional_ice_load_loading.prm
+
+set Resume computation = true
+set End time           = 10000
+
+subsection Mesh deformation
+  subsection FastScape surface evolution
+    set Spatial ice thickness file = zero_ice_thickness.txt
+  end
+end

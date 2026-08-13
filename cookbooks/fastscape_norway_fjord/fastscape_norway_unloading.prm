@@ -1,0 +1,11 @@
+include fastscape_norway_glaciation.prm
+
+set Resume computation = true
+set End time           = 110000
+
+subsection Mesh deformation
+  subsection FastScape surface evolution
+    set Spatial ice thickness file      = zero_ice_thickness.txt
+    set Spatial basal ice velocity file = zero_ice_velocity.txt
+  end
+end

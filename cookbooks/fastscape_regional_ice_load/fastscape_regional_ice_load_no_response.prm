@@ -1,0 +1,8 @@
+include regional_ice_load_base.prm
+
+set End time         = 10000
+set Output directory = output-fastscape-regional-ice-load-no-response
+
+subsection Termination criteria
+  set Checkpoint on termination = false
+end

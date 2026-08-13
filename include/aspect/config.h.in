@@ -28,6 +28,7 @@
 #cmakedefine ASPECT_HAVE_LINK_H
 
 #cmakedefine ASPECT_WITH_FASTSCAPE
+#cmakedefine ASPECT_WITH_FASTSCAPELIB
 #cmakedefine ASPECT_WITH_LIBDAP
 #cmakedefine ASPECT_WITH_NETCDF
 #cmakedefine ASPECT_WITH_PERPLEX

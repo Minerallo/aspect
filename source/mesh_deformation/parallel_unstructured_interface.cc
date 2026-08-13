@@ -25,12 +25,45 @@
 
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/numerics/vector_tools_evaluate.h>
+#include <deal.II/numerics/rtree.h>
+
+#include <boost/geometry/index/predicates.hpp>
 
 
 namespace aspect
 {
   namespace MeshDeformation
   {
+    template <int dim>
+    void
+    ParallelUnstructuredInterface<dim>::
+    set_surface_transfer_options(const std::string &scheme,
+                                 const unsigned int neighbors,
+                                 const bool normalize_coordinates)
+    {
+      if (scheme == "nearest")
+        surface_transfer_scheme = SurfaceTransferScheme::nearest;
+      else if (scheme == "weighted")
+        surface_transfer_scheme = SurfaceTransferScheme::weighted;
+      else if (scheme == "conservative")
+        surface_transfer_scheme = SurfaceTransferScheme::conservative;
+      else
+        AssertThrow(false,
+                    ExcMessage("Unknown surface transfer scheme '" + scheme + "'."));
+
+      surface_transfer_neighbors = std::max(1u, neighbors);
+      normalize_transfer_coordinates = normalize_coordinates;
+    }
+
+
+
+    template <int dim>
+    void
+    ParallelUnstructuredInterface<dim>::
+    set_evaluation_point_areas(const std::vector<double> &areas)
+    {
+      evaluation_point_areas = areas;
+    }
 
     template <int dim>
     void
@@ -107,10 +140,8 @@ namespace aspect
       remote_point_evaluator = std::make_unique<Utilities::MPI::RemotePointEvaluation<dim, dim>>();
       remote_point_evaluator->reinit(this->evaluation_points, this->get_triangulation(), mapping);
 
-#ifdef DEBUG
       if (!remote_point_evaluator->all_points_found())
         {
-
           this->get_pcout() << "WARNING: not all evaluation points were found inside the domain!" << std::endl;
           this->get_pcout() << "Evaluation points not found:" << std::endl;
           for (unsigned int p=0; p<evaluation_points.size(); ++p)
@@ -121,144 +152,157 @@ namespace aspect
                 }
             }
         }
-#endif
 
-      // Create a mapping from evaluation points to support points. Note that one evaluation point can map to
-      // multiple support points.
+      // Create a global mapping from external evaluation points to every
+      // ASPECT surface support point. This must not be limited to points that
+      // happen to lie in the same volume cell: an independent external mesh
+      // may be coarser or have a different topology.
       {
-        // Deciding which evaluation point is closest to a support point requires somewhat complex MPI communication.
-        // For now, we just gather all data on rank 0, do the computation, and then scatter the results back.
-        const unsigned int n_mpi_processes = Utilities::MPI::n_mpi_processes(this->get_mpi_communicator());
         const unsigned int my_rank = Utilities::MPI::this_mpi_process(this->get_mpi_communicator());
-
         const DoFHandler<dim> &mesh_dof_handler = this->get_mesh_deformation_handler().get_mesh_deformation_dof_handler();
-
-        std::vector<double> squared_distances(mesh_dof_handler.locally_owned_dofs().size(), std::numeric_limits<double>::max());
-        const DofToEvalPointData invalid
-        {
-          numbers::invalid_dof_index, numbers::invalid_unsigned_int, numbers::invalid_unsigned_int, numbers::invalid_unsigned_int, -1.0
-        };
-        std::vector<DofToEvalPointData> closest_evaluation_point_and_component(mesh_dof_handler.locally_owned_dofs().size(), invalid);
-
-        // TODO: To support multiple boundaries with mesh deformation, we would need to know which boundary corresponds to a mesh
-        // deformation model. For now, we just assume that there is only one boundary with mesh deformation.
         const auto boundary_ids = this->get_mesh_deformation_boundary_indicators();
-        Assert(boundary_ids.size() == 1,
-               ExcMessage("Currently, we only support a single mesh deformation boundary."));
-
-        const IndexSet boundary_dofs = DoFTools::extract_boundary_dofs(mesh_dof_handler, ComponentMask(dim, true), boundary_ids);
-
         const unsigned int dofs_per_cell = mesh_dof_handler.get_fe().dofs_per_cell;
-        std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
+        const std::vector<Point<dim>> &unit_support_points =
+          mesh_dof_handler.get_fe().get_unit_support_points();
+        std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+        std::vector<SurfaceSupportPointData> local_support_points;
 
-        // The remote_point_evaluator will gives us the velocities in all evaluation points that are within one of our locally
-        // owned cells. The lambda defined below receives a list of points and their velocities for each cell. The coordinates
-        // are given in coordinates of the unit cell.
-        // For each support point of the velocity DoFHandler, we will try to find the closest evaluation point. We
-        // do this by keeping track of the squared distance of the closest evaluation point checked so far.
-
-        // For each evaluation point, we store the index and MPI rank to be able to identify them later:
-        const unsigned int n_components = 2;
-        std::vector<unsigned int> indices (evaluation_points.size() * n_components);
-        for (unsigned int i=0; i<evaluation_points.size(); ++i)
-          {
-            indices[n_components*i] = i;
-            indices[n_components*i+1] = my_rank;
-          }
-
-        // Note: We assume that process_and_evaluate() does not call our lambda concurrently, otherwise we would have write
-        // conflicts when updating closest_evaluation_point_and_component and squared_distances.
-        const auto eval_func = [&](const ArrayView<const unsigned int> &values,
-                                   const typename Utilities::MPI::RemotePointEvaluation<dim>::CellData &cell_data)
-        {
-          std::vector<types::global_dof_index> cell_dof_indices (dofs_per_cell);
-          for (const auto cell_index : cell_data.cell_indices())
+        for (const auto &cell : mesh_dof_handler.active_cell_iterators())
+          if (cell->is_locally_owned())
             {
-              const auto cell_dofs =
-                cell_data.get_active_cell_iterator(cell_index)->as_dof_handler_iterator(
-                  mesh_dof_handler);
-              cell_dofs->get_dof_indices(cell_dof_indices);
+              cell->get_dof_indices(local_dof_indices);
+              for (const unsigned int face : cell->face_indices())
+                if (cell->face(face)->at_boundary() &&
+                    boundary_ids.find(cell->face(face)->boundary_id()) != boundary_ids.end())
+                  {
+                    const unsigned int coordinate = face / 2;
+                    const double side = face % 2;
+                    unsigned int scalar_support_points_on_face = 0;
+                    for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                      if (mesh_dof_handler.get_fe().system_to_component_index(j).first == 0
+                          && std::abs(unit_support_points[j][coordinate] - side) < 1e-12)
+                        ++scalar_support_points_on_face;
 
-              const ArrayView<const Point<dim>> unit_points = cell_data.get_unit_points(cell_index);
-
-
-              // Grab the values for this cell containing index and rank for each evaluation point.
-              // Note: cell_data.get_data_view() does not work correctly with 2 components.
-              const ArrayView<const unsigned int> local_values(
-                values.data() +
-                n_components*cell_data.reference_point_ptrs[cell_index],
-                n_components*(cell_data.reference_point_ptrs[cell_index + 1] -
-                              cell_data.reference_point_ptrs[cell_index]));
-
-              const std::vector< Point< dim >> &support_points = mesh_dof_handler.get_fe().get_unit_support_points();
-              for (unsigned int j=0; j<support_points.size(); ++j)
-                {
-                  // skip all DoFs in the interior
-                  const bool is_boundary_dof = boundary_dofs.is_element(cell_dof_indices[j]);
-                  if (!is_boundary_dof)
-                    continue;
-
-                  for (unsigned int i=0; i<unit_points.size(); ++i)
-                    {
-                      const unsigned int point_index = local_values[n_components*i];
-                      const unsigned int rank = local_values[n_components*i+1];
-
-                      const double distance_sq = unit_points[i].distance_square(support_points[j]);
-                      if (distance_sq < squared_distances[cell_dof_indices[j]])
-                        {
-                          squared_distances[cell_dof_indices[j]] = distance_sq;
-                          const unsigned int component = mesh_dof_handler.get_fe().system_to_component_index(j).first;
-                          closest_evaluation_point_and_component[cell_dof_indices[j]] =
-                            DofToEvalPointData {cell_dof_indices[j], rank, point_index, component, distance_sq};
-                        }
-                    }
-                }
+                    Assert(scalar_support_points_on_face > 0, ExcInternalError());
+                    const double nodal_area =
+                      cell->face(face)->measure() / scalar_support_points_on_face;
+                    for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                      if (std::abs(unit_support_points[j][coordinate] - side) < 1e-12)
+                        local_support_points.push_back(
+                          {local_dof_indices[j],
+                           mesh_dof_handler.get_fe().system_to_component_index(j).first,
+                           mapping.transform_unit_to_real_cell(cell, unit_support_points[j]),
+                           nodal_area});
+                  }
             }
-        };
 
+        const auto gathered_support_points =
+          Utilities::MPI::gather(this->get_mpi_communicator(),
+                                 local_support_points,
+                                 0);
+        gathered_evaluation_points =
+          Utilities::MPI::gather(this->get_mpi_communicator(),
+                                 this->evaluation_points,
+                                 0);
+        gathered_evaluation_point_areas =
+          Utilities::MPI::gather(this->get_mpi_communicator(),
+                                 evaluation_point_areas,
+                                 0);
 
-        this->remote_point_evaluator->template process_and_evaluate<unsigned int, n_components>(indices, eval_func, /*sort_data*/ true);
-
-        // remove DoFs not found (for example not surface DoFs):
-        const auto new_end_it = std::remove_if(closest_evaluation_point_and_component.begin(),
-                                               closest_evaluation_point_and_component.end(),
-                                               [](const DofToEvalPointData &data)
-        {
-          return data.dof_index == numbers::invalid_dof_index;
-        });
-        closest_evaluation_point_and_component.erase(new_end_it, closest_evaluation_point_and_component.end());
-
-        // send to rank 0 and find the closest evaluation point across all ranks, then scatter the results back to all ranks:
-        std::vector<std::vector<DofToEvalPointData>> all_closest_evaluation_point_and_component
-          = Utilities::MPI::gather(this->get_mpi_communicator(), closest_evaluation_point_and_component, /* root = */ 0);
-
+        map_dof_to_eval_point.clear();
         if (my_rank == 0)
           {
-            // Combine data coming from all ranks and determine closest evaluation point for each DoF.
-            // TODO: This might not be optimally scalable, for now we send everything to rank 0 and let
-            // rank 0 find the closest evaluation point for each DoF, which is then scattered back to all
-            // ranks.
-            std::map<types::global_dof_index, DofToEvalPointData> map_from_dof;
-            for (const auto &data : all_closest_evaluation_point_and_component)
-              for (const auto &p : data)
+            struct SourcePoint
+            {
+              Point<dim> point;
+              unsigned int rank;
+              unsigned int index;
+            };
+
+            std::vector<SourcePoint> sources;
+            std::vector<std::pair<Point<dim>,unsigned int>> tree_entries;
+            for (unsigned int rank = 0; rank < gathered_evaluation_points.size(); ++rank)
+              for (unsigned int index = 0;
+                   index < gathered_evaluation_points[rank].size();
+                   ++index)
                 {
-                  const bool not_found = (map_from_dof.find(p.dof_index) == map_from_dof.end());
-                  if (not_found || p.squared_distance < map_from_dof[p.dof_index].squared_distance)
-                    map_from_dof[p.dof_index] = p;
+                  Point<dim> point = gathered_evaluation_points[rank][index];
+                  if (normalize_transfer_coordinates && point.norm() > 0.0)
+                    point /= point.norm();
+                  sources.push_back({point, rank, index});
+                  tree_entries.emplace_back(point, sources.size()-1);
                 }
 
-            // Compile data for each rank and send it:
-            std::vector<std::vector<DofToEvalPointData>> map_from_rank(n_mpi_processes);
-            for (const auto &[dof_index, eval_point_data] : map_from_dof)
-              map_from_rank[eval_point_data.evaluation_point_rank].push_back(eval_point_data);
+            AssertThrow(!sources.empty(),
+                        ExcMessage("No external surface evaluation points were provided."));
+            const auto tree = pack_rtree(tree_entries);
+            // Merge repeated contributions to nodal control areas, including
+            // support points shared by surface faces and MPI subdomains.
+            std::map<types::global_dof_index,SurfaceSupportPointData> targets;
+            for (const auto &rank_points : gathered_support_points)
+              for (const auto &target : rank_points)
+                {
+                  const auto position = targets.find(target.dof_index);
+                  if (position == targets.end())
+                    targets.emplace(target.dof_index, target);
+                  else
+                    position->second.area += target.area;
+                }
 
-            map_dof_to_eval_point = Utilities::MPI::scatter (this->get_mpi_communicator(), map_from_rank, 0);
-          }
-        else
-          {
-            // Receive my data from rank 0:
-            std::vector<std::vector<DofToEvalPointData>> dummy;
-            map_dof_to_eval_point = Utilities::MPI::scatter (this->get_mpi_communicator(), dummy, 0);
+            namespace bgi = boost::geometry::index;
+            const unsigned int requested_neighbors =
+              (surface_transfer_scheme == SurfaceTransferScheme::nearest
+               ? 1
+               : surface_transfer_neighbors);
+            const unsigned int n_neighbors =
+              std::min<unsigned int>(requested_neighbors, sources.size());
+
+            for (const auto &[dof_index, target] : targets)
+              {
+                Point<dim> target_point = target.point;
+                if (normalize_transfer_coordinates && target_point.norm() > 0.0)
+                  target_point /= target_point.norm();
+
+                std::vector<std::pair<Point<dim>,unsigned int>> nearest;
+                tree.query(bgi::nearest(target_point, n_neighbors),
+                           std::back_inserter(nearest));
+                std::vector<double> weights(nearest.size(), 0.0);
+                unsigned int exact_neighbor = numbers::invalid_unsigned_int;
+                double weight_sum = 0.0;
+                for (unsigned int i = 0; i < nearest.size(); ++i)
+                  {
+                    const double distance_squared =
+                      target_point.distance_square(nearest[i].first);
+                    if (distance_squared < 1e-28)
+                      exact_neighbor = i;
+                    else
+                      {
+                        weights[i] = 1.0 / distance_squared;
+                        weight_sum += weights[i];
+                      }
+                  }
+                if (exact_neighbor != numbers::invalid_unsigned_int)
+                  {
+                    std::fill(weights.begin(), weights.end(), 0.0);
+                    weights[exact_neighbor] = 1.0;
+                  }
+                else
+                  for (double &weight : weights)
+                    weight /= weight_sum;
+
+                const double normal_component =
+                  target.point.norm() > 0.0
+                  ? target.point[target.component] / target.point.norm()
+                  : 0.0;
+                for (unsigned int i = 0; i < nearest.size(); ++i)
+                  {
+                    const SourcePoint &source = sources[nearest[i].second];
+                    map_dof_to_eval_point.push_back(
+                      {dof_index, source.rank, source.index, target.component,
+                       target_point.distance_square(source.point), weights[i],
+                       normal_component, target.area});
+                  }
+              }
           }
       }
 
@@ -268,6 +312,10 @@ namespace aspect
       .connect([this](typename parallel::distributed::Triangulation<dim> &)
       {
         this->evaluation_points.clear();
+        this->evaluation_point_areas.clear();
+        this->gathered_evaluation_points.clear();
+        this->gathered_evaluation_point_areas.clear();
+        this->map_dof_to_eval_point.clear();
         this->remote_point_evaluator.reset();
       });
     }
@@ -287,10 +335,7 @@ namespace aspect
 
       // All components are evaluated (velocity, pressure, temperature, and N compositional fields).
       const unsigned int n_components = this->introspection().n_components;
-
-      // Initialize the solution to be quiet_NaN() so that we know which points were not found
-      // within the ASPECT domain.
-      std::vector<std::vector<double>> solution_at_points (evaluation_points.size(), std::vector<double>(n_components, std::numeric_limits<double>::quiet_NaN()));
+      std::vector<std::vector<double>> solution_at_points (evaluation_points.size(), std::vector<double>(n_components, 0.0));
 
       // VectorTools::point_values can evaluate N components at a time, but this is a template argument and not a
       // runtime argument. For now, we just evaluate them one component at a time. Of course it would be more
@@ -330,13 +375,209 @@ namespace aspect
       LinearAlgebra::Vector vector_with_surface_velocities(mesh_dof_handler.locally_owned_dofs(),
                                                            this->get_mpi_communicator());
 
-      // For each entry in the mapping, we take the velocity from the evaluation point and insert it into the corresponding
-      // DoF in the output vector.
-      for (const auto &entry : map_dof_to_eval_point)
-        vector_with_surface_velocities[entry.dof_index] = velocities[entry.evaluation_point_index][entry.component];
+      const unsigned int my_rank =
+        Utilities::MPI::this_mpi_process(this->get_mpi_communicator());
+      const auto gathered_velocities =
+        Utilities::MPI::gather(this->get_mpi_communicator(),
+                               velocities,
+                               0);
 
-      // Because locally relevant DoFs are not necessarily locally owned, .compress() is needed to ensure that the correct
-      // processor is assigning the value to the correct DoF.
+      if (my_rank == 0)
+        {
+          std::map<types::global_dof_index,double> transferred_values;
+          if (normalize_transfer_coordinates)
+            {
+              // Interpolate scalar normal speeds, then reconstruct Cartesian
+              // components along each target support point's own radial
+              // direction. Interpolating source Cartesian components directly
+              // introduces artificial tangential motion on a sphere.
+              std::map<types::global_dof_index,double> normal_speeds;
+              for (const auto &entry : map_dof_to_eval_point)
+                {
+                  const Point<dim> &source_point =
+                    gathered_evaluation_points[entry.evaluation_point_rank]
+                                               [entry.evaluation_point_index];
+                  Tensor<1,dim> source_normal;
+                  for (unsigned int d = 0; d < dim; ++d)
+                    source_normal[d] = source_point[d] / source_point.norm();
+                  normal_speeds[entry.dof_index] +=
+                    entry.weight
+                    * (gathered_velocities[entry.evaluation_point_rank]
+                                            [entry.evaluation_point_index]
+                       * source_normal);
+                }
+
+              double positive_scale = 1.0;
+              double negative_scale = 1.0;
+              if (surface_transfer_scheme == SurfaceTransferScheme::conservative)
+                {
+                  double source_area = 0.0;
+                  double source_positive = 0.0;
+                  double source_negative = 0.0;
+                  for (unsigned int rank = 0;
+                       rank < gathered_evaluation_points.size();
+                       ++rank)
+                    {
+                      AssertThrow(gathered_evaluation_point_areas[rank].size()
+                                  == gathered_evaluation_points[rank].size(),
+                                  ExcMessage("The conservative surface transfer requires "
+                                             "one positive area for every external "
+                                             "evaluation point."));
+                      for (unsigned int i = 0;
+                           i < gathered_evaluation_points[rank].size();
+                           ++i)
+                        {
+                          const Point<dim> &point =
+                            gathered_evaluation_points[rank][i];
+                          Tensor<1,dim> normal;
+                          for (unsigned int d = 0; d < dim; ++d)
+                            normal[d] = point[d] / point.norm();
+                          const double value =
+                            gathered_velocities[rank][i] * normal;
+                          const double area =
+                            gathered_evaluation_point_areas[rank][i];
+                          AssertThrow(area >= 0.0,
+                                      ExcMessage("External surface point areas "
+                                                 "must be nonnegative."));
+                          source_area += area;
+                          source_positive += area * std::max(value, 0.0);
+                          source_negative += area * std::max(-value, 0.0);
+                        }
+                    }
+
+                  double target_area = 0.0;
+                  double target_positive = 0.0;
+                  double target_negative = 0.0;
+                  std::set<types::global_dof_index> counted_target_dofs;
+                  for (const auto &entry : map_dof_to_eval_point)
+                    if (entry.component == 0
+                        && counted_target_dofs.insert(entry.dof_index).second)
+                      {
+                        const double value = normal_speeds[entry.dof_index];
+                        target_area += entry.target_area;
+                        target_positive += entry.target_area * std::max(value, 0.0);
+                        target_negative += entry.target_area * std::max(-value, 0.0);
+                      }
+
+                  AssertThrow(source_area > 0.0 && target_area > 0.0,
+                              ExcMessage("The conservative surface transfer requires "
+                                         "positive source and target areas."));
+                  const double source_area_normalization = target_area / source_area;
+                  source_positive *= source_area_normalization;
+                  source_negative *= source_area_normalization;
+                  if (source_positive > 0.0)
+                    AssertThrow(target_positive > 0.0,
+                                ExcMessage("The target stencil lost all positive "
+                                           "normal surface motion."));
+                  if (source_negative > 0.0)
+                    AssertThrow(target_negative > 0.0,
+                                ExcMessage("The target stencil lost all negative "
+                                           "normal surface motion."));
+                  positive_scale =
+                    source_positive > 0.0 ? source_positive / target_positive : 0.0;
+                  negative_scale =
+                    source_negative > 0.0 ? source_negative / target_negative : 0.0;
+                }
+
+              for (const auto &entry : map_dof_to_eval_point)
+                {
+                  double normal_speed = normal_speeds[entry.dof_index];
+                  normal_speed *= normal_speed >= 0.0
+                                  ? positive_scale
+                                  : negative_scale;
+                  transferred_values[entry.dof_index] =
+                    normal_speed * entry.target_normal_component;
+                }
+            }
+          else
+            {
+              for (const auto &entry : map_dof_to_eval_point)
+                transferred_values[entry.dof_index] +=
+                  entry.weight
+                  * gathered_velocities[entry.evaluation_point_rank]
+                                         [entry.evaluation_point_index]
+                                         [entry.component];
+
+              if (surface_transfer_scheme == SurfaceTransferScheme::conservative)
+                for (unsigned int component = 0; component < dim; ++component)
+                  {
+                    double source_area = 0.0;
+                    double source_positive = 0.0;
+                    double source_negative = 0.0;
+                    for (unsigned int rank = 0;
+                         rank < gathered_evaluation_points.size();
+                         ++rank)
+                      {
+                        AssertThrow(gathered_evaluation_point_areas[rank].size()
+                                    == gathered_evaluation_points[rank].size(),
+                                    ExcMessage("The conservative surface transfer requires "
+                                               "one positive area for every external "
+                                               "evaluation point."));
+                        for (unsigned int i = 0;
+                             i < gathered_evaluation_points[rank].size();
+                             ++i)
+                          {
+                            const double area =
+                              gathered_evaluation_point_areas[rank][i];
+                            AssertThrow(area >= 0.0,
+                                        ExcMessage("External surface point areas "
+                                                   "must be nonnegative."));
+                            const double value =
+                              gathered_velocities[rank][i][component];
+                            source_area += area;
+                            source_positive += area * std::max(value, 0.0);
+                            source_negative += area * std::max(-value, 0.0);
+                          }
+                      }
+
+                    double target_area = 0.0;
+                    double target_positive = 0.0;
+                    double target_negative = 0.0;
+                    std::set<types::global_dof_index> counted_target_dofs;
+                    for (const auto &entry : map_dof_to_eval_point)
+                      if (entry.component == component
+                          && counted_target_dofs.insert(entry.dof_index).second)
+                        {
+                          const double value = transferred_values[entry.dof_index];
+                          target_area += entry.target_area;
+                          target_positive += entry.target_area * std::max(value, 0.0);
+                          target_negative += entry.target_area * std::max(-value, 0.0);
+                        }
+
+                    AssertThrow(source_area > 0.0 && target_area > 0.0,
+                                ExcMessage("The conservative surface transfer requires "
+                                           "positive source and target areas."));
+                    const double source_area_normalization = target_area / source_area;
+                    source_positive *= source_area_normalization;
+                    source_negative *= source_area_normalization;
+                    if (source_positive > 0.0)
+                      AssertThrow(target_positive > 0.0,
+                                  ExcMessage("The target stencil lost all positive "
+                                             "surface motion."));
+                    if (source_negative > 0.0)
+                      AssertThrow(target_negative > 0.0,
+                                  ExcMessage("The target stencil lost all negative "
+                                             "surface motion."));
+                    const double positive_scale =
+                      source_positive > 0.0 ? source_positive / target_positive : 0.0;
+                    const double negative_scale =
+                      source_negative > 0.0 ? source_negative / target_negative : 0.0;
+
+                    counted_target_dofs.clear();
+                    for (const auto &entry : map_dof_to_eval_point)
+                      if (entry.component == component
+                          && counted_target_dofs.insert(entry.dof_index).second)
+                        {
+                          double &value = transferred_values[entry.dof_index];
+                          value *= value >= 0.0 ? positive_scale : negative_scale;
+                        }
+                  }
+            }
+
+          for (const auto &[dof_index, value] : transferred_values)
+            vector_with_surface_velocities[dof_index] = value;
+        }
+
       vector_with_surface_velocities.compress(VectorOperation::insert);
 
       return vector_with_surface_velocities;

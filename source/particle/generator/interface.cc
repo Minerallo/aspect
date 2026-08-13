@@ -43,26 +43,29 @@ namespace aspect
 
       template <int dim>
       void
-      Interface<dim>::save (std::map<std::string, std::string> &status_strings) const
+      Interface<dim>::update ()
       {
-        std::ostringstream os;
-        os << random_number_generator;
-        status_strings["ParticleGenerator"] = os.str();
-      }
-
-
-
-      template <int dim>
-      void
-      Interface<dim>::load (const std::map<std::string, std::string> &status_strings)
-      {
-        const auto saved_state = status_strings.find("ParticleGenerator");
-        if (saved_state != status_strings.end())
-          {
-            std::istringstream is (saved_state->second);
-            is >> random_number_generator;
-            AssertThrow(!is.fail(), ExcMessage("Could not restore the particle generator random number generator."));
-          }
+        // Give the random number generator a deterministic state at
+        // the beginning of each time step so that we don't have to serialize
+        // it. This is relevant because the random number generator is used
+        // to generate new particles and so might be used different numbers
+        // of times on different processes, which would lead to different
+        // states of the random number generator on different MPI ranks.
+        // We could serialize the random number generators from all processes,
+        // but this would require (i) a global MPI operation, and (ii) we
+        // wouldn't quite know what to do if we restart with a different
+        // number of MPI processes than we had when we created the checkpoint.
+        // The work-around to both issues is to set the state of the random
+        // number generator to a deterministic value at the beginning of
+        // each time step.
+        //
+        // We exclude the first time step because the random number generator
+        // is already initialized in the initialize() function, and we don't
+        // want to overwrite that initialization.
+        if (this->get_timestep_number() > 0)
+          random_number_generator.seed(this->get_timestep_number() * 1000000  +
+                                       this->get_particle_manager_index() * 100000 +
+                                       Utilities::MPI::this_mpi_process(this->get_mpi_communicator()));
       }
 
 

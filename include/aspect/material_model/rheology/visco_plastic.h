@@ -235,7 +235,7 @@ namespace aspect
                                             const unsigned int i,
                                             const double current_surface_adiabatic_pressure,
                                             const std::vector<double> &volume_fractions,
-                                            const std::vector<double> &phase_function_values = std::vector<double>(),
+                                            const std::vector<double> &phase_function_values = {},
                                             const std::vector<unsigned int> &n_phase_transitions_per_composition =
                                               std::vector<unsigned int>()) const;
 
@@ -265,7 +265,7 @@ namespace aspect
                                              const double current_surface_adiabatic_pressure,
                                              const MaterialModel::MaterialModelInputs<dim> &in,
                                              MaterialModel::MaterialModelOutputs<dim> &out,
-                                             const std::vector<double> &phase_function_values = std::vector<double>(),
+                                             const std::vector<double> &phase_function_values = {},
                                              const std::vector<unsigned int> &n_phase_transitions_per_composition =
                                                std::vector<unsigned int>()) const;
 

@@ -23,6 +23,7 @@
 #include <aspect/mesh_deformation/interface.h>
 #include <aspect/geometry_model/initial_topography_model/zero_topography.h>
 #include <aspect/geometry_model/box.h>
+#include <aspect/geometry_model/two_merged_boxes.h>
 #include <aspect/simulator.h>
 #include <aspect/simulator/solver/matrix_free_operators.h>
 #include <aspect/simulator/solver/stokes_matrix_free.h>
@@ -1742,8 +1743,26 @@ namespace aspect
                 / (interior_point - surface_point).norm();
 
               reference_surface_points.push_back(surface_point);
-              surface_query_points.push_back(surface_point +
-                                             inward_shift * inward_direction);
+              Point<dim> query_point = surface_point + inward_shift * inward_direction;
+
+              // Remote point evaluation is intentionally performed just
+              // inside the domain. At the two lateral corners of a merged-box
+              // free surface, a vertical shift alone still leaves the query on
+              // a second distributed boundary and may not be assigned to any
+              // process. Nudge only those lateral boundary coordinates inward.
+              if (const auto *merged_boxes =
+                    dynamic_cast<const GeometryModel::TwoMergedBoxes<dim> *>(
+                      &this->get_geometry_model()))
+                {
+                  const Point<dim> origin = merged_boxes->get_origin();
+                  const Point<dim> extents = merged_boxes->get_extents();
+                  for (unsigned int d = 0; d < dim-1; ++d)
+                    query_point[d] = std::clamp(query_point[d],
+                                                origin[d] + inward_shift,
+                                                origin[d] + extents[d] - inward_shift);
+                }
+
+              surface_query_points.push_back(query_point);
             }
 
           dof_indices.push_back(dof_index);

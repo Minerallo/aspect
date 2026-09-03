@@ -404,9 +404,6 @@ namespace aspect
   VolumeOfFluidHandler<dim>::initialize (ParameterHandler &/*prm*/)
   {
     // Do checks on required assumptions
-    AssertThrow(dim==2,
-                ExcMessage("Volume of Fluid Interface Tracking is currently only functional for dim=2."));
-
     AssertThrow(this->get_parameters().CFL_number < 1.0,
                 ExcMessage("Volume of Fluid Interface Tracking requires CFL < 1."));
 

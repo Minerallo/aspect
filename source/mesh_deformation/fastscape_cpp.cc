@@ -15,6 +15,7 @@
 
 #include <aspect/geometry_model/box.h>
 #include <aspect/geometry_model/spherical_shell.h>
+#include <aspect/geometry_model/two_merged_boxes.h>
 #include <aspect/geometry_model/initial_topography_model/interface.h>
 #include <aspect/gravity_model/interface.h>
 #include <aspect/simulator.h>
@@ -1891,10 +1892,16 @@ FastscapeCpp<dim>::build_surface_mesh()
     spherical_geometry =
         (dynamic_cast<const GeometryModel::SphericalShell<dim> *>(
              &this->get_geometry_model()) != nullptr);
+    const auto *box_geometry =
+        dynamic_cast<const GeometryModel::Box<dim> *>(&this->get_geometry_model());
+    const auto *two_merged_boxes_geometry =
+        dynamic_cast<const GeometryModel::TwoMergedBoxes<dim> *>(
+            &this->get_geometry_model());
     AssertThrow(spherical_geometry ||
-                dynamic_cast<const GeometryModel::Box<dim> *>(
-                    &this->get_geometry_model()) != nullptr,
-                ExcMessage("The FastScape C++ coupling supports only Box and "
+                box_geometry != nullptr ||
+                two_merged_boxes_geometry != nullptr,
+                ExcMessage("The FastScape C++ coupling supports only Box, "
+                           "Box with lithosphere boundary indicators, and "
                            "SphericalShell geometry models."));
     this->set_surface_transfer_options(surface_transfer_scheme,
                                        surface_transfer_neighbors,
@@ -1903,12 +1910,15 @@ FastscapeCpp<dim>::build_surface_mesh()
     if (Utilities::MPI::this_mpi_process(this->get_mpi_communicator()) != 0)
         return;
 
-    if (const auto *box =
-                dynamic_cast<const GeometryModel::Box<dim> *>(&this->get_geometry_model()))
+    if (box_geometry != nullptr || two_merged_boxes_geometry != nullptr)
     {
         spherical_geometry = false;
-        const Point<dim> origin = box->get_origin();
-        const Point<dim> extents = box->get_extents();
+        const Point<dim> origin = box_geometry != nullptr
+                                  ? box_geometry->get_origin()
+                                  : two_merged_boxes_geometry->get_origin();
+        const Point<dim> extents = box_geometry != nullptr
+                                   ? box_geometry->get_extents()
+                                   : two_merged_boxes_geometry->get_extents();
         Point<dim-1> lower;
         Point<dim-1> upper;
         for (unsigned int d = 0; d < dim-1; ++d)
@@ -1978,15 +1988,20 @@ FastscapeCpp<dim>::build_surface_mesh()
             }
             else
             {
-                const auto *box =
-                    dynamic_cast<const GeometryModel::Box<dim> *>(
-                        &this->get_geometry_model());
-                Assert(box != nullptr, ExcInternalError());
+                Assert(box_geometry != nullptr ||
+                       two_merged_boxes_geometry != nullptr,
+                       ExcInternalError());
+                const Point<dim> origin = box_geometry != nullptr
+                                          ? box_geometry->get_origin()
+                                          : two_merged_boxes_geometry->get_origin();
+                const Point<dim> extents = box_geometry != nullptr
+                                           ? box_geometry->get_extents()
+                                           : two_merged_boxes_geometry->get_extents();
                 double shape_value = 1.0;
                 for (unsigned int d = 0; d < dim-1; ++d)
                     shape_value *= std::cos(2.0 * numbers::PI
-                                            * (fastscape_points[i][d] - box->get_origin()[d])
-                                            / box->get_extents()[d]);
+                                            * (fastscape_points[i][d] - origin[d])
+                                            / extents[d]);
                 initial_elevation[i] += initial_relief * shape_value;
             }
         }

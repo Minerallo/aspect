@@ -42,6 +42,7 @@
 #include "world_builder/features/subducting_plate.h"
 #include "world_builder/features/subducting_plate_models/velocity/interface.h"
 #include "world_builder/gravity_model/interface.h"
+#include "world_builder/types/composition_property.h"
 #include "world_builder/types/object.h"
 #include "world_builder/utilities.h"
 #include "data/LITHO1.0/litho_coord_data.h"
@@ -211,6 +212,42 @@ namespace WorldBuilder
   Parameters::check_entry(const std::string &name) const
   {
     return Pointer((this->get_full_json_path() + "/" + name).c_str()).Get(parameters) != nullptr;
+  }
+
+  std::vector<Parameters::composition_properties>
+  Parameters::get_composition_properties(const std::string &name) const
+  {
+    std::vector<Parameters::composition_properties> result;
+    const std::string base = this->get_full_json_path() + "/" + name;
+    const Value *entries = Pointer(base.c_str()).Get(parameters);
+
+    if (entries == nullptr)
+      return result;
+
+    WBAssertThrow(entries->IsArray(),
+                  "Invalid entry '" << name << "': expected an array of composition-property objects.");
+
+    std::map<unsigned int, bool> seen_indices;
+    result.reserve(entries->Size());
+    for (SizeType i = 0; i < entries->Size(); ++i)
+      {
+        const Value &entry = (*entries)[i];
+        const unsigned int index = entry["index"].GetUint();
+        WBAssertThrow(seen_indices.find(index) == seen_indices.end(),
+                      "Duplicate composition index " << index << " in '" << name << "'.");
+        seen_indices[index] = true;
+
+        const std::string composition_name =
+          entry.HasMember("name") ? entry["name"].GetString() : std::to_string(index);
+        const double reference_density =
+          entry.HasMember("reference density")
+          ? entry["reference density"].GetDouble()
+          : Types::CompositionProperty::get_default_reference_density();
+
+        result.push_back({index, composition_name, reference_density});
+      }
+
+    return result;
   }
 
 
@@ -2519,4 +2556,3 @@ namespace WorldBuilder
 
 
 } // namespace WorldBuilder
-

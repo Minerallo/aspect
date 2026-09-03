@@ -30,6 +30,7 @@
 #include "world_builder/types/double.h"
 #include "world_builder/types/object.h"
 #include "world_builder/types/plugin_system.h"
+#include "world_builder/types/composition_property.h"
 #include "world_builder/types/point.h"
 #include "world_builder/types/int.h"
 
@@ -70,6 +71,11 @@ namespace WorldBuilder
     :
     parameters(*this),
     surface_coord_conversions(invalid),
+    background_density(NaN::DSNAN),
+    compensation_depth(NaN::DSNAN),
+    number_integration_points(0),
+    compensation_pressure(NaN::DSNAN),
+    reference_profile_point(invalid),
     dim(NaN::ISNAN),
     random_number_engine(random_number_seed),
     limit_debug_consistency_checks(limit_debug_consistency_checks_)
@@ -109,6 +115,48 @@ namespace WorldBuilder
     parameters.initialize(filename, has_output_dir, output_dir);
 
     this->parse_entries(parameters);
+
+    if (!std::isnan(reference_profile_point[0]) &&
+        !std::isnan(reference_profile_point[1]))
+      {
+        WBAssertThrow(compensation_depth > 0.0,
+                      "The isostasy compensation depth must be positive.");
+        WBAssertThrow(number_integration_points > 1,
+                      "The number of isostasy integration points must be greater than one.");
+
+        std::array<double,3> reference_point;
+        const CoordinateSystem coordinate_system =
+          parameters.coordinate_system->natural_coordinate_system();
+        if (coordinate_system == CoordinateSystem::spherical)
+          {
+            const double degrees_to_radians = Consts::PI / 180.0;
+            const std::array<double,3> spherical_reference =
+              {{parameters.coordinate_system->max_model_depth(),
+                reference_profile_point[0] * degrees_to_radians,
+                reference_profile_point[1] * degrees_to_radians}};
+            reference_point =
+              parameters.coordinate_system->natural_to_cartesian_coordinates(spherical_reference);
+          }
+        else
+          reference_point = {{reference_profile_point[0], reference_profile_point[1], 0.0}};
+
+        const Point<3> gravity_point(reference_point, CoordinateSystem::cartesian);
+        const double gravity = parameters.gravity_model->gravity_norm(gravity_point);
+        WBAssertThrow(std::fabs(gravity) > 0.0,
+                      "Gravity at the isostasy reference point must be nonzero.");
+
+        compensation_pressure = 0.0;
+        const double dz = compensation_depth /
+                          static_cast<double>(number_integration_points - 1);
+        double previous_density = density(reference_point, 0.0);
+        for (unsigned int i = 1; i < number_integration_points; ++i)
+          {
+            const double current_density = density(reference_point, i * dz);
+            compensation_pressure +=
+              0.5 * (previous_density + current_density) * dz * gravity;
+            previous_density = current_density;
+          }
+      }
   }
 
   World::~World()
@@ -125,6 +173,9 @@ namespace WorldBuilder
       prm.declare_entry("$schema", Types::String(""),"The optional filename or https address to a JSON schema file");
 
       prm.declare_entry("cross section", Types::Array(Types::Point<2>(),2,2),"This is an array of two points along where the cross section is taken");
+
+      prm.declare_entry("composition properties", Types::Array(Types::CompositionProperty()),
+                        "Composition indices and reference densities used by density and isostasy queries.");
 
       prm.declare_entry("potential mantle temperature", Types::Double(1600),
                         "The potential temperature of the mantle at the surface in Kelvin.");
@@ -160,6 +211,15 @@ namespace WorldBuilder
       prm.declare_entry("random number seed", Types::Int(-1),
                         "This allows the input of a preferred random number seed to generate random numbers."
                         " If no input is given, this value is -1 and triggers the use of default seed = 1.");
+
+      prm.declare_entry("background density", Types::Double(3300.0),
+                        "Reference density in kg/m^3 where no composition is present.");
+      prm.declare_entry("compensation depth", Types::Double(250e3),
+                        "Depth in meters for isostatic density-column integration.");
+      prm.declare_entry("number of integration points", Types::UnsignedInt(100),
+                        "Number of trapezoidal points in each isostatic density column.");
+      prm.declare_entry("reference profile point", Types::Point<2>(),
+                        "Reference-column horizontal coordinates. Use longitude and latitude in degrees for spherical worlds.");
 
     }
     prm.leave_subsection();
@@ -248,6 +308,17 @@ namespace WorldBuilder
     specific_heat = prm.get<double>("specific heat");
     thermal_diffusivity = prm.get<double>("thermal diffusivity");
 
+    background_density = prm.get<double>("background density");
+    compensation_depth = prm.get<double>("compensation depth");
+    number_integration_points = prm.get<unsigned int>("number of integration points");
+    if (prm.check_entry("reference profile point"))
+      reference_profile_point = prm.get<Point<2>>("reference profile point");
+
+    const auto parsed_composition_properties =
+      prm.get_composition_properties("composition properties");
+    for (const auto &entry : parsed_composition_properties)
+      composition_properties.emplace(entry.index, entry);
+
     /**
      * Model discretization parameters
      */
@@ -316,10 +387,15 @@ namespace WorldBuilder
               n_output_entries += 1;
               break;
             }
+            case 7: // reference density
+            {
+              n_output_entries += 1;
+              break;
+            }
             default:
               WBAssertThrow(false,
                             "Internal error: Unimplemented property provided. " <<
-                            "Only temperature (1), composition (2), grains (3), tag (4), velocity (5) or topography (6) are allowed. "
+                            "Only temperature (1), composition (2), grains (3), tag (4), velocity (5), topography (6), or density (7) are allowed. "
                             "Provided property number was: " << property[0]);
           }
       }
@@ -407,10 +483,15 @@ namespace WorldBuilder
               counter += 1;
               break;
             }
+            case 7: // reference density
+            {
+              counter += 1;
+              break;
+            }
             default:
               WBAssertThrow(false,
                             "Internal error: Unimplemented property provided. " <<
-                            "Only temperature (1), composition (2), grains (3), tag (4), velocity (5) or topography (6) are allowed. "
+                            "Only temperature (1), composition (2), grains (3), tag (4), velocity (5), topography (6), or density (7) are allowed. "
                             "Provided property number was: " << property[0]);
           }
 
@@ -442,6 +523,7 @@ namespace WorldBuilder
     std::vector<double> output;
     std::vector<size_t> entry_in_output;
     std::vector<std::array<unsigned int,3>> properties_local;
+    std::vector<size_t> density_output_entries;
     const double gravity_norm = this->parameters.gravity_model->gravity_norm(point);
     for (unsigned int i_property = 0; i_property < properties.size(); ++i_property)
       {
@@ -498,16 +580,29 @@ namespace WorldBuilder
               properties_local.emplace_back(properties[i_property]);
               break;
             }
+            case 7: // reference density
+            {
+              density_output_entries.emplace_back(output.size());
+              output.emplace_back(background_density);
+              break;
+            }
             default:
               WBAssertThrow(false,
                             "Internal error: Unimplemented property provided. " <<
-                            "Only temperature (1), composition (2), grains (3), tag (4), velocity (5) and topography (6) are allowed. "
+                            "Only temperature (1), composition (2), grains (3), tag (4), velocity (5), topography (6), and density (7) are allowed. "
                             "Provided property number was: " << properties[i_property][0]);
           }
       }
     for (auto &&it : parameters.features)
       {
         it->properties(point, natural_coordinate, depth, properties_local, gravity_norm, entry_in_output, output);
+      }
+
+    if (!density_output_entries.empty())
+      {
+        const double reference_density = density(point_, depth);
+        for (const size_t output_index : density_output_entries)
+          output[output_index] = reference_density;
       }
 
     return output;
@@ -557,6 +652,35 @@ namespace WorldBuilder
                      const unsigned int composition_number) const
   {
     return properties(point, depth, {{{2,composition_number,0}}})[0];
+  }
+
+  double
+  World::density(const std::array<double,3> &point,
+                 const double depth) const
+  {
+    if (composition_properties.empty())
+      return background_density;
+
+    std::vector<std::array<unsigned int,3>> composition_queries;
+    composition_queries.reserve(composition_properties.size());
+    for (const auto &entry : composition_properties)
+      composition_queries.push_back({{2, entry.first, 0}});
+
+    const std::vector<double> compositions =
+      properties(point, depth, composition_queries);
+
+    double composition_sum = 0.0;
+    double reference_density = 0.0;
+    unsigned int i = 0;
+    for (const auto &entry : composition_properties)
+      {
+        composition_sum += compositions[i];
+        reference_density += compositions[i] * entry.second.reference_density;
+        ++i;
+      }
+
+    reference_density += (1.0 - composition_sum) * background_density;
+    return reference_density;
   }
 
 

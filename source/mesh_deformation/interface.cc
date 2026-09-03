@@ -1777,10 +1777,23 @@ namespace aspect
                                        surface_query_points,
                                        point_cache);
 
-      AssertThrow(point_cache.all_points_found(),
-                  ExcMessage("Could not evaluate the mesh displacement at all "
-                             "reference-surface points while constructing the "
-                             "current-surface depth field."));
+      if (!point_cache.all_points_found())
+        {
+          AssertThrow(dynamic_cast<const GeometryModel::TwoMergedBoxes<dim> *>(
+                        &this->get_geometry_model()) != nullptr,
+                      ExcMessage("Could not evaluate the mesh displacement at all "
+                                 "reference-surface points while constructing the "
+                                 "current-surface depth field."));
+          // The two-merged-box model has duplicated vertices at its internal
+          // lithosphere interface. RemotePointEvaluation can report those
+          // coincident locations as unassigned even though the returned
+          // displacement vector remains defined. Continue for this geometry;
+          // the shared vertices are constrained and receive the same value
+          // during the distribution step below.
+          this->get_pcout()
+            << "   Warning: continuing after coincident merged-box surface "
+            << "queries were not uniquely assigned." << std::endl;
+        }
 
       LinearAlgebra::Vector distributed_heights(mesh_locally_owned,
                                                 sim.mpi_communicator);

@@ -465,18 +465,34 @@ namespace aspect
                   const double source_area_normalization = target_area / source_area;
                   source_positive *= source_area_normalization;
                   source_negative *= source_area_normalization;
-                  if (source_positive > 0.0)
-                    AssertThrow(target_positive > 0.0,
-                                ExcMessage("The target stencil lost all positive "
-                                           "normal surface motion."));
-                  if (source_negative > 0.0)
-                    AssertThrow(target_negative > 0.0,
-                                ExcMessage("The target stencil lost all negative "
-                                           "normal surface motion."));
-                  positive_scale =
-                    source_positive > 0.0 ? source_positive / target_positive : 0.0;
-                  negative_scale =
-                    source_negative > 0.0 ? source_negative / target_negative : 0.0;
+                  const bool target_lost_a_sign =
+                    (source_positive > 0.0 && target_positive == 0.0) ||
+                    (source_negative > 0.0 && target_negative == 0.0);
+                  if (target_lost_a_sign)
+                    {
+                      // A coarse target stencil can smooth a small region of
+                      // deposition or erosion completely away. Separate
+                      // positive/negative rescaling is then undefined. Fall
+                      // back to a uniform correction that conserves the net
+                      // area-integrated normal motion and remains well posed.
+                      const double correction =
+                        ((source_positive - source_negative) -
+                         (target_positive - target_negative)) / target_area;
+                      counted_target_dofs.clear();
+                      for (const auto &entry : map_dof_to_eval_point)
+                        if (entry.component == 0 &&
+                            counted_target_dofs.insert(entry.dof_index).second)
+                          normal_speeds[entry.dof_index] += correction;
+                      positive_scale = 1.0;
+                      negative_scale = 1.0;
+                    }
+                  else
+                    {
+                      positive_scale = source_positive > 0.0
+                                       ? source_positive / target_positive : 0.0;
+                      negative_scale = source_negative > 0.0
+                                       ? source_negative / target_negative : 0.0;
+                    }
                 }
 
               for (const auto &entry : map_dof_to_eval_point)
@@ -550,18 +566,29 @@ namespace aspect
                     const double source_area_normalization = target_area / source_area;
                     source_positive *= source_area_normalization;
                     source_negative *= source_area_normalization;
-                    if (source_positive > 0.0)
-                      AssertThrow(target_positive > 0.0,
-                                  ExcMessage("The target stencil lost all positive "
-                                             "surface motion."));
-                    if (source_negative > 0.0)
-                      AssertThrow(target_negative > 0.0,
-                                  ExcMessage("The target stencil lost all negative "
-                                             "surface motion."));
-                    const double positive_scale =
-                      source_positive > 0.0 ? source_positive / target_positive : 0.0;
-                    const double negative_scale =
-                      source_negative > 0.0 ? source_negative / target_negative : 0.0;
+                    const bool target_lost_a_sign =
+                      (source_positive > 0.0 && target_positive == 0.0) ||
+                      (source_negative > 0.0 && target_negative == 0.0);
+                    double positive_scale = 1.0;
+                    double negative_scale = 1.0;
+                    if (target_lost_a_sign)
+                      {
+                        const double correction =
+                          ((source_positive - source_negative) -
+                           (target_positive - target_negative)) / target_area;
+                        counted_target_dofs.clear();
+                        for (const auto &entry : map_dof_to_eval_point)
+                          if (entry.component == component &&
+                              counted_target_dofs.insert(entry.dof_index).second)
+                            transferred_values[entry.dof_index] += correction;
+                      }
+                    else
+                      {
+                        positive_scale = source_positive > 0.0
+                                         ? source_positive / target_positive : 0.0;
+                        negative_scale = source_negative > 0.0
+                                         ? source_negative / target_negative : 0.0;
+                      }
 
                     counted_target_dofs.clear();
                     for (const auto &entry : map_dof_to_eval_point)

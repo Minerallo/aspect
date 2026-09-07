@@ -34,22 +34,22 @@ namespace aspect
 {
 namespace MeshDeformation
 {
-template <int dim>
+template <int surface_dim, int space_dim>
 class FastscapeLandscape;
 
-template <int dim>
+template <int surface_dim>
 class SpatialErosionStrength;
 
-template <int dim>
+template <int surface_dim>
 class SpatialSurfaceRunoff;
 
-template <int dim>
+template <int surface_dim>
 class SpatialIceThickness;
 
-template <int dim>
+template <int surface_dim>
 class SpatialBasalIceVelocity;
 
-template <int dim>
+template <int surface_dim, int space_dim>
 class SurfaceResults;
 
 /**
@@ -87,8 +87,10 @@ public:
 
 private:
     using SurfaceMesh = Triangulation<dim-1,dim>;
+    using TSurfaceMesh = Triangulation<2,3>;
 
     void build_surface_mesh();
+    void build_t_coupling_surface_mesh();
     Point<dim> reference_surface_point(const Point<dim> &point) const;
     Point<dim-1> natural_surface_coordinates(const Point<dim> &point) const;
     Point<dim-1> climate_surface_coordinates(const Point<dim> &point) const;
@@ -99,21 +101,42 @@ private:
     SymmetricTensor<2,dim> apply_degree_two_self_gravity(
       const SymmetricTensor<2,dim> &rigid_ice_load);
     std::vector<double> update_regional_ice_load_response(
-      const double time_step_years) const;
+      const double time_step_years,
+      const xt::xarray<double> &ice_thickness) const;
     void write_true_polar_wander_state() const;
 
     mutable SurfaceMesh surface_mesh;
+    mutable TSurfaceMesh t_surface_mesh;
     std::vector<Point<dim>> fastscape_points;
     std::vector<double> fastscape_point_areas;
-    mutable std::unique_ptr<FastscapeLandscape<dim>> landscape;
-    std::unique_ptr<SpatialErosionStrength<dim>> spatial_erosion_strength;
-    std::unique_ptr<SpatialSurfaceRunoff<dim>> spatial_surface_runoff;
-    std::unique_ptr<SpatialIceThickness<dim>> spatial_ice_thickness;
-    std::unique_ptr<SpatialBasalIceVelocity<dim>> spatial_basal_ice_velocity;
-    mutable std::unique_ptr<SurfaceResults<dim>> surface_results;
+    mutable std::unique_ptr<FastscapeLandscape<dim-1,dim>> landscape;
+    std::unique_ptr<SpatialErosionStrength<dim-1>> spatial_erosion_strength;
+    std::unique_ptr<SpatialSurfaceRunoff<dim-1>> spatial_surface_runoff;
+    std::unique_ptr<SpatialIceThickness<dim-1>> spatial_ice_thickness;
+    std::unique_ptr<SpatialBasalIceVelocity<dim-1>> spatial_basal_ice_velocity;
+    mutable std::unique_ptr<SurfaceResults<dim-1,dim>> surface_results;
+
+    // A two-dimensional landscape coupled to a two-dimensional ASPECT
+    // section. The ASPECT solution is sampled along the stem of the T,
+    // replicated across the landscape width, and the landscape response is
+    // reduced back to the stem before it is applied to ASPECT.
+    mutable std::unique_ptr<FastscapeLandscape<2,3>> t_landscape;
+    std::unique_ptr<SpatialErosionStrength<2>> t_spatial_erosion_strength;
+    std::unique_ptr<SpatialSurfaceRunoff<2>> t_spatial_surface_runoff;
+    std::unique_ptr<SpatialIceThickness<2>> t_spatial_ice_thickness;
+    std::unique_ptr<SpatialBasalIceVelocity<2>> t_spatial_basal_ice_velocity;
+    mutable std::unique_ptr<SurfaceResults<2,3>> t_surface_results;
+    std::vector<Point<3>> t_surface_points;
+    std::vector<double> t_surface_point_areas;
+    std::vector<unsigned int> t_column_of_cell;
+    std::vector<std::vector<unsigned int>> t_cells_by_column;
 
     unsigned int box_repetitions = 8;
     unsigned int surface_refinement = 2;
+    bool use_t_coupling = false;
+    double t_coupling_width = 100000.0;
+    double t_coupling_cell_size = 0.0;
+    std::string t_coupling_reduction = "average";
     std::string surface_transfer_scheme = "conservative";
     unsigned int surface_transfer_neighbors = 8;
     unsigned int landscape_steps_per_geodynamic_step = 4;
@@ -124,6 +147,7 @@ private:
     double nonlinear_tolerance = 1e-5;
     double glacial_erosion_coefficient = 0.0;
     double glacial_velocity_exponent = 1.0;
+    double glacial_ice_thickness_scale = 0.0;
     double minimum_ice_thickness = 1.0;
     double initial_relief = 0.0;
     double sea_level = 0.0;

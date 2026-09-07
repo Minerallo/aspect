@@ -14,6 +14,7 @@
 #ifdef ASPECT_WITH_FASTSCAPELIB
 
 #include <aspect/geometry_model/box.h>
+#include <aspect/geometry_model/chunk.h>
 #include <aspect/geometry_model/spherical_shell.h>
 #include <aspect/geometry_model/two_merged_boxes.h>
 #include <aspect/geometry_model/initial_topography_model/interface.h>
@@ -57,25 +58,25 @@ namespace MeshDeformation
  * independent landscape mesh. This class deliberately has no knowledge of
  * the program or physical formula that produced the field.
  */
-template <int dim>
+template <int surface_dim>
 class SpatialErosionStrength
 {
 public:
     void
     initialize(const std::string &filename,
-               const std::vector<Point<dim-1>> &surface_coordinates)
+               const std::vector<Point<surface_dim>> &surface_coordinates)
     {
         values = xt::ones<double>({surface_coordinates.size()});
         if (filename.empty())
             return;
 
-        lookup = std::make_unique<Utilities::StructuredDataLookup<dim-1>>(1, 1.0);
+        lookup = std::make_unique<Utilities::StructuredDataLookup<surface_dim>>(1, 1.0);
         lookup->load_file(filename, MPI_COMM_SELF);
         sample(surface_coordinates);
     }
 
     void
-    sample(const std::vector<Point<dim-1>> &surface_coordinates)
+    sample(const std::vector<Point<surface_dim>> &surface_coordinates)
     {
         if (!lookup)
             return;
@@ -94,7 +95,7 @@ public:
 
 private:
     xt::xarray<double> values;
-    std::unique_ptr<Utilities::StructuredDataLookup<dim-1>> lookup;
+    std::unique_ptr<Utilities::StructuredDataLookup<surface_dim>> lookup;
 };
 
 /**
@@ -103,25 +104,25 @@ private:
  * area by this value before accumulating water supply downstream. A
  * uniform value of one therefore recovers ordinary drainage area.
  */
-template <int dim>
+template <int surface_dim>
 class SpatialSurfaceRunoff
 {
 public:
     void
     initialize(const std::string &filename,
-               const std::vector<Point<dim-1>> &surface_coordinates)
+               const std::vector<Point<surface_dim>> &surface_coordinates)
     {
         values = xt::ones<double>({surface_coordinates.size()});
         if (filename.empty())
             return;
 
-        lookup = std::make_unique<Utilities::StructuredDataLookup<dim-1>>(1, 1.0);
+        lookup = std::make_unique<Utilities::StructuredDataLookup<surface_dim>>(1, 1.0);
         lookup->load_file(filename, MPI_COMM_SELF);
         sample(surface_coordinates);
     }
 
     void
-    sample(const std::vector<Point<dim-1>> &surface_coordinates)
+    sample(const std::vector<Point<surface_dim>> &surface_coordinates)
     {
         if (!lookup)
             return;
@@ -140,7 +141,7 @@ public:
 
 private:
     xt::xarray<double> values;
-    std::unique_ptr<Utilities::StructuredDataLookup<dim-1>> lookup;
+    std::unique_ptr<Utilities::StructuredDataLookup<surface_dim>> lookup;
 };
 
 
@@ -148,25 +149,25 @@ private:
  * Read ice thickness in meters and interpolate it onto the independent
  * landscape mesh. An omitted file represents an ice-free surface.
  */
-template <int dim>
+template <int surface_dim>
 class SpatialIceThickness
 {
 public:
     void
     initialize(const std::string &filename,
-               const std::vector<Point<dim-1>> &surface_coordinates)
+               const std::vector<Point<surface_dim>> &surface_coordinates)
     {
         values = xt::zeros<double>({surface_coordinates.size()});
         if (filename.empty())
             return;
 
-        lookup = std::make_unique<Utilities::StructuredDataLookup<dim-1>>(1, 1.0);
+        lookup = std::make_unique<Utilities::StructuredDataLookup<surface_dim>>(1, 1.0);
         lookup->load_file(filename, MPI_COMM_SELF);
         sample(surface_coordinates);
     }
 
     void
-    sample(const std::vector<Point<dim-1>> &surface_coordinates)
+    sample(const std::vector<Point<surface_dim>> &surface_coordinates)
     {
         if (!lookup)
             return;
@@ -185,7 +186,7 @@ public:
 
 private:
     xt::xarray<double> values;
-    std::unique_ptr<Utilities::StructuredDataLookup<dim-1>> lookup;
+    std::unique_ptr<Utilities::StructuredDataLookup<surface_dim>> lookup;
 };
 
 
@@ -193,25 +194,25 @@ private:
  * Read basal ice velocity in meters per year and interpolate it onto the
  * independent landscape mesh. An omitted file represents no sliding.
  */
-template <int dim>
+template <int surface_dim>
 class SpatialBasalIceVelocity
 {
 public:
     void
     initialize(const std::string &filename,
-               const std::vector<Point<dim-1>> &surface_coordinates)
+               const std::vector<Point<surface_dim>> &surface_coordinates)
     {
         values = xt::zeros<double>({surface_coordinates.size()});
         if (filename.empty())
             return;
 
-        lookup = std::make_unique<Utilities::StructuredDataLookup<dim-1>>(1, 1.0);
+        lookup = std::make_unique<Utilities::StructuredDataLookup<surface_dim>>(1, 1.0);
         lookup->load_file(filename, MPI_COMM_SELF);
         sample(surface_coordinates);
     }
 
     void
-    sample(const std::vector<Point<dim-1>> &surface_coordinates)
+    sample(const std::vector<Point<surface_dim>> &surface_coordinates)
     {
         if (!lookup)
             return;
@@ -230,7 +231,7 @@ public:
 
 private:
     xt::xarray<double> values;
-    std::unique_ptr<Utilities::StructuredDataLookup<dim-1>> lookup;
+    std::unique_ptr<Utilities::StructuredDataLookup<surface_dim>> lookup;
 };
 
 
@@ -239,15 +240,15 @@ private:
  * landscape fields. ASPECT-specific field transfer and file output remain
  * outside this class.
  */
-template <int dim>
+template <int surface_dim, int space_dim>
 class FastscapeLandscape
 {
 public:
-    using SurfaceMesh = Triangulation<dim-1,dim>;
+    using SurfaceMesh = Triangulation<surface_dim,space_dim>;
     using Grid = fastscapelib::dealii_surface_grid<SurfaceMesh>;
     using FlowGraph = fastscapelib::flow_graph<Grid>;
     using Eroder = fastscapelib::spl_eroder<FlowGraph>;
-    using SurfaceVelocity = Tensor<1,dim>;
+    using SurfaceVelocity = Tensor<1,space_dim>;
 
     struct StepResult
     {
@@ -368,6 +369,7 @@ public:
             const xt::xarray<double> &basal_ice_velocity,
             const double glacial_erosion_coefficient,
             const double glacial_velocity_exponent,
+            const double glacial_ice_thickness_scale,
             const double minimum_ice_thickness,
             const bool advect_surface_state,
             const double maximum_advection_courant,
@@ -436,7 +438,11 @@ public:
                     ? step_years * glacial_erosion_coefficient *
                     exposed_erodibility[i] *
                     std::pow(basal_ice_velocity[i],
-                             glacial_velocity_exponent)
+                             glacial_velocity_exponent) *
+                    (glacial_ice_thickness_scale > 0.0
+                     ? 1.0 - std::exp(-ice_thickness[i] /
+                                      glacial_ice_thickness_scale)
+                     : 1.0)
                     : 0.0;
             erosion = fluvial_erosion + glacial_erosion;
 
@@ -1120,11 +1126,11 @@ private:
  * Write landscape budgets and spatial result files. Keeping this code out
  * of the registered model makes the coupling calculation easier to follow.
  */
-template <int dim>
+template <int surface_dim, int space_dim>
 class SurfaceResults
 {
 public:
-    using SurfaceMesh = Triangulation<dim-1,dim>;
+    using SurfaceMesh = Triangulation<surface_dim,space_dim>;
 
     void
     initialize(const xt::xarray<double> &initial_elevation)
@@ -1164,8 +1170,8 @@ public:
           const double time_years,
           const bool write_visualization,
           const SurfaceMesh &surface_mesh,
-          const std::vector<Point<dim>> &surface_points,
-          FastscapeLandscape<dim> &landscape,
+          const std::vector<Point<space_dim>> &surface_points,
+          FastscapeLandscape<surface_dim,space_dim> &landscape,
           const xt::xarray<double> &erosion_strength,
           const xt::xarray<double> &surface_runoff,
           const xt::xarray<double> &ice_thickness,
@@ -1269,11 +1275,11 @@ public:
         surface << std::setprecision(16);
         for (unsigned int i = 0; i < elevation.size(); ++i)
         {
-            const Point<dim> &point = surface_points[i];
+            const Point<space_dim> &point = surface_points[i];
             const double longitude =
                 std::atan2(point[1], point[0]) * 180.0 / numbers::PI;
             double latitude = 0.0;
-            if constexpr (dim == 3)
+            if constexpr (space_dim == 3)
                 latitude =
                     std::asin(point[2] / point.norm()) * 180.0 / numbers::PI;
             surface << longitude << ',' << latitude << ','
@@ -1316,11 +1322,11 @@ public:
                 deposited_thickness += deposited_thickness_by_lithology[rock][i];
             if (deposited_thickness <= 0.0)
                 continue;
-            const Point<dim> &point = surface_points[i];
+            const Point<space_dim> &point = surface_points[i];
             const double longitude =
                 std::atan2(point[1], point[0]) * 180.0 / numbers::PI;
             double latitude = 0.0;
-            if constexpr (dim == 3)
+            if constexpr (space_dim == 3)
                 latitude =
                     std::asin(point[2] / point.norm()) * 180.0 / numbers::PI;
             stratigraphy << longitude << ',' << latitude << ',' << time_years
@@ -1371,42 +1377,42 @@ public:
             bedrock_lithology_output[i] = bedrock_lithology[i];
         }
 
-        DataOut<dim-1,dim> data_out;
+        DataOut<surface_dim,space_dim> data_out;
         data_out.attach_triangulation(surface_mesh);
         data_out.add_data_vector(elevation_output, "elevation",
-                                 DataOut<dim-1,dim>::type_cell_data);
+                                 DataOut<surface_dim,space_dim>::type_cell_data);
         data_out.add_data_vector(erosion_output, "erosion",
-                                 DataOut<dim-1,dim>::type_cell_data);
+                                 DataOut<surface_dim,space_dim>::type_cell_data);
         data_out.add_data_vector(fluvial_erosion_output, "fluvial_erosion",
-                                 DataOut<dim-1,dim>::type_cell_data);
+                                 DataOut<surface_dim,space_dim>::type_cell_data);
         data_out.add_data_vector(glacial_erosion_output, "glacial_erosion",
-                                 DataOut<dim-1,dim>::type_cell_data);
+                                 DataOut<surface_dim,space_dim>::type_cell_data);
         data_out.add_data_vector(drainage_output, "drainage_area",
-                                 DataOut<dim-1,dim>::type_cell_data);
+                                 DataOut<surface_dim,space_dim>::type_cell_data);
         data_out.add_data_vector(flux_output, "sediment_flux",
-                                 DataOut<dim-1,dim>::type_cell_data);
+                                 DataOut<surface_dim,space_dim>::type_cell_data);
         data_out.add_data_vector(marine_flux_output, "marine_sediment_flux",
-                                 DataOut<dim-1,dim>::type_cell_data);
+                                 DataOut<surface_dim,space_dim>::type_cell_data);
         data_out.add_data_vector(sediment_thickness_output, "sediment_thickness",
-                                 DataOut<dim-1,dim>::type_cell_data);
+                                 DataOut<surface_dim,space_dim>::type_cell_data);
         data_out.add_data_vector(deposition_rate_output, "deposition_rate",
-                                 DataOut<dim-1,dim>::type_cell_data);
+                                 DataOut<surface_dim,space_dim>::type_cell_data);
         data_out.add_data_vector(ocean_mask_output, "is_connected_ocean",
-                                 DataOut<dim-1,dim>::type_cell_data);
+                                 DataOut<surface_dim,space_dim>::type_cell_data);
         data_out.add_data_vector(ice_thickness_output, "ice_thickness",
-                                 DataOut<dim-1,dim>::type_cell_data);
+                                 DataOut<surface_dim,space_dim>::type_cell_data);
         data_out.add_data_vector(basal_ice_velocity_output,
                                  "basal_ice_velocity",
-                                 DataOut<dim-1,dim>::type_cell_data);
+                                 DataOut<surface_dim,space_dim>::type_cell_data);
         data_out.add_data_vector(regional_displacement_output,
                                  "regional_ice_load_displacement",
-                                 DataOut<dim-1,dim>::type_cell_data);
+                                 DataOut<surface_dim,space_dim>::type_cell_data);
         data_out.add_data_vector(regional_velocity_output,
                                  "regional_ice_load_velocity",
-                                 DataOut<dim-1,dim>::type_cell_data);
+                                 DataOut<surface_dim,space_dim>::type_cell_data);
         data_out.add_data_vector(bedrock_lithology_output,
                                  "bedrock_lithology",
-                                 DataOut<dim-1,dim>::type_cell_data);
+                                 DataOut<surface_dim,space_dim>::type_cell_data);
         for (unsigned int rock = 0; rock < lithology_names.size(); ++rock)
         {
             Vector<double> rock_fraction(elevation.size());
@@ -1418,7 +1424,7 @@ public:
             data_out.add_data_vector(rock_fraction,
                                      "sediment_fraction_" +
                                      lithology_names[rock],
-                                     DataOut<dim-1,dim>::type_cell_data);
+                                     DataOut<surface_dim,space_dim>::type_cell_data);
         }
         data_out.build_patches();
 
@@ -1441,16 +1447,22 @@ private:
 template <int dim>
 FastscapeCpp<dim>::FastscapeCpp()
     :
-    landscape(std::make_unique<FastscapeLandscape<dim>>()),
+    landscape(std::make_unique<FastscapeLandscape<dim-1,dim>>()),
     spatial_erosion_strength(
-        std::make_unique<SpatialErosionStrength<dim>>()),
+        std::make_unique<SpatialErosionStrength<dim-1>>()),
     spatial_surface_runoff(
-        std::make_unique<SpatialSurfaceRunoff<dim>>()),
+        std::make_unique<SpatialSurfaceRunoff<dim-1>>()),
     spatial_ice_thickness(
-        std::make_unique<SpatialIceThickness<dim>>()),
+        std::make_unique<SpatialIceThickness<dim-1>>()),
     spatial_basal_ice_velocity(
-        std::make_unique<SpatialBasalIceVelocity<dim>>()),
-    surface_results(std::make_unique<SurfaceResults<dim>>())
+        std::make_unique<SpatialBasalIceVelocity<dim-1>>()),
+    surface_results(std::make_unique<SurfaceResults<dim-1,dim>>()),
+    t_landscape(std::make_unique<FastscapeLandscape<2,3>>()),
+    t_spatial_erosion_strength(std::make_unique<SpatialErosionStrength<2>>()),
+    t_spatial_surface_runoff(std::make_unique<SpatialSurfaceRunoff<2>>()),
+    t_spatial_ice_thickness(std::make_unique<SpatialIceThickness<2>>()),
+    t_spatial_basal_ice_velocity(std::make_unique<SpatialBasalIceVelocity<2>>()),
+    t_surface_results(std::make_unique<SurfaceResults<2,3>>())
 {
     spin_axis[dim-1] = 1.0;
     equilibrium_spin_axis = spin_axis;
@@ -1621,10 +1633,9 @@ FastscapeCpp<dim>::apply_degree_two_self_gravity(
 template <int dim>
 std::vector<double>
 FastscapeCpp<dim>::update_regional_ice_load_response(
-    const double time_step_years) const
+    const double time_step_years,
+    const xt::xarray<double> &ice_thickness) const
 {
-    const xt::xarray<double> &ice_thickness =
-        spatial_ice_thickness->get_values();
     std::vector<double> velocity(ice_thickness.size(), 0.0);
     if (!regional_ice_load_response_enabled)
     {
@@ -1897,12 +1908,22 @@ FastscapeCpp<dim>::build_surface_mesh()
     const auto *two_merged_boxes_geometry =
         dynamic_cast<const GeometryModel::TwoMergedBoxes<dim> *>(
             &this->get_geometry_model());
+    const auto *chunk_geometry =
+        dynamic_cast<const GeometryModel::Chunk<dim> *>(
+            &this->get_geometry_model());
     AssertThrow(spherical_geometry ||
                 box_geometry != nullptr ||
-                two_merged_boxes_geometry != nullptr,
+                two_merged_boxes_geometry != nullptr ||
+                chunk_geometry != nullptr,
                 ExcMessage("The FastScape C++ coupling supports only Box, "
                            "Box with lithosphere boundary indicators, and "
-                           "SphericalShell geometry models."));
+                           "Chunk and SphericalShell geometry models."));
+
+    if (use_t_coupling)
+    {
+        build_t_coupling_surface_mesh();
+        return;
+    }
     this->set_surface_transfer_options(surface_transfer_scheme,
                                        surface_transfer_neighbors,
                                        spherical_geometry);
@@ -2064,6 +2085,196 @@ FastscapeCpp<dim>::build_surface_mesh()
 
 template <int dim>
 void
+FastscapeCpp<dim>::build_t_coupling_surface_mesh()
+{
+    AssertThrow(dim == 2,
+                ExcMessage("FastScape T coupling is only meaningful for a "
+                           "two-dimensional ASPECT model."));
+    AssertThrow(t_coupling_width > 0.0,
+                ExcMessage("FastScape T coupling width must be positive."));
+    if constexpr (dim == 2)
+    {
+        const auto *box = dynamic_cast<const GeometryModel::Box<2> *>(
+            &this->get_geometry_model());
+        const auto *two_merged_boxes =
+            dynamic_cast<const GeometryModel::TwoMergedBoxes<2> *>(
+                &this->get_geometry_model());
+        const auto *chunk = dynamic_cast<const GeometryModel::Chunk<2> *>(
+            &this->get_geometry_model());
+        const auto *shell =
+            dynamic_cast<const GeometryModel::SphericalShell<2> *>(
+                &this->get_geometry_model());
+        Assert(box != nullptr || two_merged_boxes != nullptr ||
+               chunk != nullptr || shell != nullptr,
+               ExcInternalError());
+        const bool curved_stem = chunk != nullptr || shell != nullptr;
+        spherical_geometry = curved_stem;
+        this->set_surface_transfer_options(surface_transfer_scheme,
+                                           surface_transfer_neighbors,
+                                           curved_stem);
+        if (Utilities::MPI::this_mpi_process(
+                this->get_mpi_communicator()) != 0)
+            return;
+
+        Point<2> origin;
+        Point<2> extents;
+        double outer_radius = 0.0;
+        double minimum_angle = 0.0;
+        double angle_range = 0.0;
+        if (box != nullptr || two_merged_boxes != nullptr)
+        {
+            origin = box != nullptr ? box->get_origin()
+                                    : two_merged_boxes->get_origin();
+            extents = box != nullptr ? box->get_extents()
+                                     : two_merged_boxes->get_extents();
+        }
+        else if (chunk != nullptr)
+        {
+            outer_radius = chunk->outer_radius();
+            minimum_angle = chunk->west_longitude();
+            angle_range = chunk->longitude_range();
+            extents[0] = outer_radius * angle_range;
+        }
+        else
+        {
+            outer_radius = shell->outer_radius();
+            angle_range = shell->opening_angle()
+                          * numbers::PI / 180.0;
+            extents[0] = outer_radius * angle_range;
+        }
+        const unsigned int refinement_factor =
+            Utilities::pow(2, surface_refinement);
+        const unsigned int nx = t_coupling_cell_size > 0.0
+            ? std::max(1u, static_cast<unsigned int>(
+                  std::ceil(extents[0] / t_coupling_cell_size)))
+            : box_repetitions * refinement_factor;
+        const double dx = extents[0] / nx;
+        const unsigned int ny = std::max(
+            1u, static_cast<unsigned int>(std::lround(t_coupling_width / dx)));
+        const double represented_width = ny * dx;
+
+        const Point<2> lower(origin[0], -0.5 * represented_width);
+        const Point<2> upper(origin[0] + extents[0],
+                             0.5 * represented_width);
+        Triangulation<2,2> planar_surface_mesh;
+        GridGenerator::subdivided_hyper_rectangle(
+            planar_surface_mesh, std::vector<unsigned int>{nx, ny},
+            lower, upper, true);
+        GridGenerator::flatten_triangulation(planar_surface_mesh,
+                                             t_surface_mesh);
+
+        fastscape_points.resize(nx);
+        fastscape_point_areas.assign(nx, dx);
+        for (unsigned int column = 0; column < nx; ++column)
+        {
+            const double longitudinal_distance = (column + 0.5) * dx;
+            if (!curved_stem)
+                fastscape_points[column] =
+                    Point<2>(origin[0] + longitudinal_distance,
+                             origin[1] + extents[1]);
+            else
+            {
+                const std::array<double,2> natural =
+                    {{outer_radius,
+                      minimum_angle + longitudinal_distance / outer_radius}};
+                fastscape_points[column] =
+                    this->get_geometry_model().natural_to_cartesian_coordinates(
+                        natural);
+            }
+        }
+
+        t_surface_points.clear();
+        t_surface_point_areas.clear();
+        t_column_of_cell.clear();
+        t_cells_by_column.assign(nx, {});
+        std::vector<Point<2>> climate_coordinates;
+        xt::xarray<double> initial_elevation =
+            xt::zeros<double>({t_surface_mesh.n_active_cells()});
+        unsigned int index = 0;
+        for (const auto &cell : t_surface_mesh.active_cell_iterators())
+        {
+            const Point<3> point = cell->center();
+            t_surface_points.push_back(point);
+            t_surface_point_areas.push_back(cell->measure());
+            climate_coordinates.emplace_back(point[0], point[1]);
+            const unsigned int column = std::min(
+                nx - 1,
+                static_cast<unsigned int>(
+                    std::floor((point[0] - origin[0]) / dx)));
+            t_column_of_cell.push_back(column);
+            t_cells_by_column[column].push_back(index);
+
+            const Point<1> surface_coordinate = curved_stem
+                ? Point<1>(minimum_angle +
+                           (point[0] - origin[0]) / outer_radius)
+                : Point<1>(point[0]);
+            initial_elevation[index] =
+                this->get_initial_topography_model().value(surface_coordinate);
+            if (initial_relief != 0.0)
+                initial_elevation[index] += initial_relief
+                    * std::cos(2.0 * numbers::PI
+                               * (point[0] - origin[0]) / extents[0])
+                    * std::cos(2.0 * numbers::PI
+                               * (point[1] - lower[1]) / represented_width);
+            ++index;
+        }
+
+        t_landscape->initialize(t_surface_mesh,
+                                false,
+                                initial_elevation,
+                                incision_rate,
+                                drainage_area_exponent,
+                                slope_exponent,
+                                nonlinear_tolerance,
+                                marine_sediment_transport_coefficient,
+                                marine_sediment_porosity,
+                                marine_transport_depth_scale,
+                                restrict_ocean_to_largest_connected_component,
+                                lithology_names,
+                                lithology_probabilities,
+                                lithology_erodibility_factors,
+                                lithology_random_seed);
+        t_spatial_erosion_strength->initialize(spatial_erosion_strength_file,
+                                               climate_coordinates);
+        t_spatial_surface_runoff->initialize(spatial_surface_runoff_file,
+                                             climate_coordinates);
+        t_spatial_ice_thickness->initialize(spatial_ice_thickness_file,
+                                            climate_coordinates);
+        t_spatial_basal_ice_velocity->initialize(
+            spatial_basal_ice_velocity_file, climate_coordinates);
+        t_surface_results->initialize(initial_elevation);
+
+        regional_delayed_ice_load_displacement.assign(
+            initial_elevation.size(), 0.0);
+        regional_total_ice_load_displacement.assign(
+            initial_elevation.size(), 0.0);
+        regional_ice_load_velocity.assign(initial_elevation.size(), 0.0);
+        regional_ice_load_state_is_initialized = false;
+
+        const double inward_offset =
+            1e-6 * this->get_geometry_model().length_scale();
+        const double maximum_landscape_height =
+            std::max(std::abs(*std::min_element(initial_elevation.begin(),
+                                                initial_elevation.end())),
+                     std::abs(*std::max_element(initial_elevation.begin(),
+                                                initial_elevation.end())));
+        const double sampling_depth =
+            2.0 * maximum_landscape_height + inward_offset;
+        for (Point<2> &point : fastscape_points)
+            point[1] -= sampling_depth;
+
+        this->get_pcout()
+            << "   FastScape T-coupled surface grid: " << nx << " x " << ny
+            << " cells, represented width " << represented_width << " m, "
+            << t_surface_points.size() << " landscape cells ("
+            << (curved_stem ? "curved" : "Cartesian")
+            << " ASPECT stem)." << std::endl;
+    }
+}
+
+
+template <int dim>
+void
 FastscapeCpp<dim>::initialize()
 {
     build_surface_mesh();
@@ -2100,6 +2311,133 @@ std::vector<Tensor<1,dim>>
             this->get_timestep() <= 0.0)
         return result;
 
+    const double aspect_dt_years = this->get_timestep() / year_in_seconds;
+    const double current_sea_level =
+        use_sea_level_function
+        ? sea_level_function.value(Point<1>())
+        : sea_level;
+
+    if (use_t_coupling)
+    {
+        Assert(dim == 2, ExcInternalError());
+        Assert(t_landscape && t_spatial_erosion_strength &&
+               t_spatial_surface_runoff && t_spatial_ice_thickness &&
+               t_spatial_basal_ice_velocity && t_surface_results,
+               ExcInternalError());
+        AssertDimension(solution_at_points.size(), t_cells_by_column.size());
+
+        xt::xarray<double> uplift_rate =
+            xt::zeros<double>(t_landscape->get_elevation().shape());
+        std::vector<Tensor<1,3>> tangential_velocity(
+            t_landscape->get_elevation().size());
+        for (unsigned int cell = 0; cell < t_column_of_cell.size(); ++cell)
+        {
+            const unsigned int column = t_column_of_cell[cell];
+            Tensor<1,dim> material_velocity;
+            for (unsigned int d = 0; d < dim; ++d)
+                material_velocity[d] = solution_at_points[column]
+                    [this->introspection().component_indices.velocities[d]];
+            const Tensor<1,dim> normal =
+                outward_direction(this->evaluation_points[column]);
+            const double normal_material_velocity =
+                material_velocity * normal;
+            uplift_rate[cell] = apply_normal_material_velocity
+                ? normal_material_velocity * year_in_seconds
+                : 0.0;
+            tangential_velocity[cell][0] =
+                (material_velocity - normal_material_velocity * normal)[0]
+                * year_in_seconds;
+        }
+
+        const std::vector<double> regional_load_velocity =
+            update_regional_ice_load_response(
+                aspect_dt_years,
+                t_spatial_ice_thickness->get_values());
+        AssertDimension(regional_load_velocity.size(), uplift_rate.size());
+        for (unsigned int i = 0; i < uplift_rate.size(); ++i)
+            uplift_rate[i] += regional_load_velocity[i];
+
+        const typename FastscapeLandscape<2,3>::StepResult landscape_step =
+            t_landscape->advance(
+                uplift_rate,
+                tangential_velocity,
+                aspect_dt_years,
+                landscape_steps_per_geodynamic_step,
+                maximum_landscape_step_years,
+                current_sea_level,
+                t_spatial_erosion_strength->get_values(),
+                t_spatial_surface_runoff->get_values(),
+                t_spatial_ice_thickness->get_values(),
+                t_spatial_basal_ice_velocity->get_values(),
+                glacial_erosion_coefficient,
+                glacial_velocity_exponent,
+                glacial_ice_thickness_scale,
+                minimum_ice_thickness,
+                advect_surface_state,
+                maximum_surface_advection_courant,
+                hillslope_diffusion_coefficient,
+                maximum_hillslope_diffusion_courant);
+
+        for (unsigned int column = 0; column < result.size(); ++column)
+        {
+            Assert(!t_cells_by_column[column].empty(), ExcInternalError());
+            double elevation_change = 0.0;
+            if (t_coupling_reduction == "center")
+            {
+                const auto center = *std::min_element(
+                    t_cells_by_column[column].begin(),
+                    t_cells_by_column[column].end(),
+                    [this](const unsigned int a, const unsigned int b)
+                    {
+                        return std::abs(t_surface_points[a][1]) <
+                               std::abs(t_surface_points[b][1]);
+                    });
+                elevation_change = t_landscape->get_elevation()[center]
+                                   - landscape_step.previous_elevation[center];
+            }
+            else
+            {
+                double total_area = 0.0;
+                for (const unsigned int cell : t_cells_by_column[column])
+                {
+                    elevation_change += t_surface_point_areas[cell]
+                        * (t_landscape->get_elevation()[cell]
+                           - landscape_step.previous_elevation[cell]);
+                    total_area += t_surface_point_areas[cell];
+                }
+                elevation_change /= total_area;
+            }
+            result[column] = elevation_change / this->get_timestep()
+                * outward_direction(this->evaluation_points[column]);
+        }
+
+        if (result_interval > 0 &&
+            this->get_timestep_number() % result_interval == 0)
+            t_surface_results->write(
+                this->get_output_directory(),
+                this->get_timestep_number(),
+                this->get_time() / year_in_seconds,
+                write_visualization_results,
+                t_surface_mesh,
+                t_surface_points,
+                *t_landscape,
+                t_spatial_erosion_strength->get_values(),
+                t_spatial_surface_runoff->get_values(),
+                t_spatial_ice_thickness->get_values(),
+                t_spatial_basal_ice_velocity->get_values(),
+                regional_total_ice_load_displacement,
+                regional_ice_load_velocity,
+                current_sea_level,
+                landscape_step.eroded_volume,
+                landscape_step.fluvial_eroded_volume,
+                landscape_step.glacial_eroded_volume,
+                landscape_step.exported_sediment_flux,
+                landscape_step.coastal_sediment_flux,
+                landscape_step.deposited_sediment_volume,
+                landscape_step.stored_sediment_volume);
+        return result;
+    }
+
     Assert(landscape && spatial_erosion_strength &&
            spatial_surface_runoff && spatial_ice_thickness &&
            spatial_basal_ice_velocity && surface_results,
@@ -2107,11 +2445,6 @@ std::vector<Tensor<1,dim>>
     AssertDimension(solution_at_points.size(),
                     landscape->get_elevation().size());
 
-    const double aspect_dt_years = this->get_timestep() / year_in_seconds;
-    const double current_sea_level =
-        use_sea_level_function
-        ? sea_level_function.value(Point<1>())
-        : sea_level;
     xt::xarray<double> uplift_rate =
         xt::zeros<double>(landscape->get_elevation().shape());
     std::vector<Tensor<1,dim>> tangential_velocity(
@@ -2135,12 +2468,13 @@ std::vector<Tensor<1,dim>>
     }
 
     const std::vector<double> regional_load_velocity =
-        update_regional_ice_load_response(aspect_dt_years);
+        update_regional_ice_load_response(
+            aspect_dt_years, spatial_ice_thickness->get_values());
     AssertDimension(regional_load_velocity.size(), uplift_rate.size());
     for (unsigned int i = 0; i < uplift_rate.size(); ++i)
         uplift_rate[i] += regional_load_velocity[i];
 
-    const typename FastscapeLandscape<dim>::StepResult landscape_step =
+    const typename FastscapeLandscape<dim-1,dim>::StepResult landscape_step =
         landscape->advance(
             uplift_rate,
             tangential_velocity,
@@ -2154,6 +2488,7 @@ std::vector<Tensor<1,dim>>
             spatial_basal_ice_velocity->get_values(),
             glacial_erosion_coefficient,
             glacial_velocity_exponent,
+            glacial_ice_thickness_scale,
             minimum_ice_thickness,
             advect_surface_state,
             maximum_surface_advection_courant,
@@ -2214,11 +2549,24 @@ FastscapeCpp<dim>::save(
     if (Utilities::MPI::this_mpi_process(this->get_mpi_communicator()) != 0)
         return;
 
-    std::vector<double> elevation_values(landscape->get_elevation().begin(),
-                                         landscape->get_elevation().end());
-    std::vector<double> sediment_thickness_values(
-        landscape->get_sediment_thickness().begin(),
-        landscape->get_sediment_thickness().end());
+    std::vector<double> elevation_values;
+    std::vector<double> sediment_thickness_values;
+    if (use_t_coupling)
+    {
+        elevation_values.assign(t_landscape->get_elevation().begin(),
+                                t_landscape->get_elevation().end());
+        sediment_thickness_values.assign(
+            t_landscape->get_sediment_thickness().begin(),
+            t_landscape->get_sediment_thickness().end());
+    }
+    else
+    {
+        elevation_values.assign(landscape->get_elevation().begin(),
+                                landscape->get_elevation().end());
+        sediment_thickness_values.assign(
+            landscape->get_sediment_thickness().begin(),
+            landscape->get_sediment_thickness().end());
+    }
     std::ostringstream stream;
     {
         aspect::oarchive archive(stream);
@@ -2234,13 +2582,23 @@ FastscapeCpp<dim>::save(
     status_strings["FastscapeMarineSediment"] = sediment_stream.str();
 
     std::vector<std::vector<double>> sediment_by_lithology;
-    for (const auto &field : landscape->get_sediment_thickness_by_lithology())
-        sediment_by_lithology.emplace_back(field.begin(), field.end());
+    if (use_t_coupling)
+        for (const auto &field :
+             t_landscape->get_sediment_thickness_by_lithology())
+            sediment_by_lithology.emplace_back(field.begin(), field.end());
+    else
+        for (const auto &field :
+             landscape->get_sediment_thickness_by_lithology())
+            sediment_by_lithology.emplace_back(field.begin(), field.end());
     std::ostringstream lithology_stream;
     {
         aspect::oarchive archive(lithology_stream);
-        archive << landscape->get_lithology_names();
-        archive << landscape->get_bedrock_lithology();
+        archive << (use_t_coupling
+                    ? t_landscape->get_lithology_names()
+                    : landscape->get_lithology_names());
+        archive << (use_t_coupling
+                    ? t_landscape->get_bedrock_lithology()
+                    : landscape->get_bedrock_lithology());
         archive << sediment_by_lithology;
     }
     status_strings["FastscapeLithologyProvenance"] =
@@ -2249,8 +2607,12 @@ FastscapeCpp<dim>::save(
     std::ostringstream output_state_stream;
     {
         aspect::oarchive archive(output_state_stream);
-        archive << surface_results->get_reference_elevation();
-        archive << surface_results->get_output_history();
+        archive << (use_t_coupling
+                    ? t_surface_results->get_reference_elevation()
+                    : surface_results->get_reference_elevation());
+        archive << (use_t_coupling
+                    ? t_surface_results->get_output_history()
+                    : surface_results->get_output_history());
     }
     status_strings["FastscapeSurfaceOutputState"] =
         output_state_stream.str();
@@ -2302,7 +2664,10 @@ FastscapeCpp<dim>::load(
     std::istringstream stream(state->second);
     aspect::iarchive archive(stream);
     archive >> elevation_values;
-    landscape->set_elevation(elevation_values);
+    if (use_t_coupling)
+        t_landscape->set_elevation(elevation_values);
+    else
+        landscape->set_elevation(elevation_values);
 
     const auto sediment_state =
         status_strings.find("FastscapeMarineSediment");
@@ -2312,7 +2677,10 @@ FastscapeCpp<dim>::load(
         std::istringstream sediment_stream(sediment_state->second);
         aspect::iarchive sediment_archive(sediment_stream);
         sediment_archive >> sediment_thickness_values;
-        landscape->set_sediment_thickness(sediment_thickness_values);
+        if (use_t_coupling)
+            t_landscape->set_sediment_thickness(sediment_thickness_values);
+        else
+            landscape->set_sediment_thickness(sediment_thickness_values);
     }
 
     const auto lithology_state =
@@ -2327,11 +2695,18 @@ FastscapeCpp<dim>::load(
         lithology_archive >> stored_names;
         lithology_archive >> stored_bedrock_lithology;
         lithology_archive >> stored_sediment_thickness;
-        AssertThrow(stored_names == landscape->get_lithology_names(),
+        const std::vector<std::string> &active_lithology_names =
+            use_t_coupling ? t_landscape->get_lithology_names()
+                           : landscape->get_lithology_names();
+        AssertThrow(stored_names == active_lithology_names,
                     ExcMessage("The lithology names in the checkpoint differ "
                                "from the current parameter file."));
-        landscape->set_lithology_state(stored_bedrock_lithology,
-                                       stored_sediment_thickness);
+        if (use_t_coupling)
+            t_landscape->set_lithology_state(stored_bedrock_lithology,
+                                             stored_sediment_thickness);
+        else
+            landscape->set_lithology_state(stored_bedrock_lithology,
+                                           stored_sediment_thickness);
     }
 
     const auto output_state =
@@ -2344,8 +2719,12 @@ FastscapeCpp<dim>::load(
         aspect::iarchive output_state_archive(output_state_stream);
         output_state_archive >> reference_elevation;
         output_state_archive >> output_history;
-        surface_results->restore_output_state(reference_elevation,
-                                              output_history);
+        if (use_t_coupling)
+            t_surface_results->restore_output_state(reference_elevation,
+                                                    output_history);
+        else
+            surface_results->restore_output_state(reference_elevation,
+                                                  output_history);
     }
 
     const auto polar_wander_state = status_strings.find(
@@ -2393,12 +2772,14 @@ FastscapeCpp<dim>::load(
         archive >> regional_total_ice_load_displacement;
         archive >> regional_ice_load_velocity;
         archive >> regional_ice_load_state_is_initialized;
+        const std::size_t active_size [[maybe_unused]] = use_t_coupling
+            ? t_landscape->get_elevation().size()
+            : landscape->get_elevation().size();
         AssertDimension(regional_delayed_ice_load_displacement.size(),
-                        landscape->get_elevation().size());
+                        active_size);
         AssertDimension(regional_total_ice_load_displacement.size(),
-                        landscape->get_elevation().size());
-        AssertDimension(regional_ice_load_velocity.size(),
-                        landscape->get_elevation().size());
+                        active_size);
+        AssertDimension(regional_ice_load_velocity.size(), active_size);
     }
 }
 
@@ -2415,6 +2796,29 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
                           "direction before surface refinement.");
         prm.declare_entry("Surface refinement level", "2", Patterns::Integer(0),
                           "Global refinement of the independent surface grid.");
+        prm.declare_entry("Use T coupling in 2d", "false", Patterns::Bool(),
+                          "For a two-dimensional ASPECT Box model, evolve a "
+                          "two-dimensional x-y landscape rather than a line. "
+                          "ASPECT velocities are replicated across y and the "
+                          "landscape response is reduced back to the ASPECT "
+                          "section. This is analogous to the established "
+                          "Fortran FastScape T coupling.");
+        prm.declare_entry("T coupling width", "100000", Patterns::Double(0),
+                          "Requested out-of-plane landscape width in meters. "
+                          "The actual width is rounded to an integer number "
+                          "of square cells with dy equal to dx.");
+        prm.declare_entry("T coupling cell size", "0", Patterns::Double(0),
+                          "Requested maximum cell size in meters for a 2-D "
+                          "T-coupled landscape. A positive value determines "
+                          "the number of x cells directly and constructs "
+                          "square cells. Zero retains Box repetitions times "
+                          "two to the Surface refinement level for backward "
+                          "compatibility.");
+        prm.declare_entry("T coupling reduction", "average",
+                          Patterns::Selection("average|center"),
+                          "Reduce the two-dimensional landscape response to "
+                          "the ASPECT section using an area-weighted average "
+                          "across y or the center row.");
         prm.declare_entry("Surface transfer scheme", "conservative",
                           Patterns::Selection("nearest|weighted|conservative"),
                           "Method used to transfer FastScape surface motion "
@@ -2456,6 +2860,12 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
                           Patterns::Double(0),
                           "Exponent m applied to basal ice velocity in the "
                           "glacial erosion law.");
+        prm.declare_entry("Glacial ice thickness scale", "0",
+                          Patterns::Double(0),
+                          "Ice-thickness saturation scale H* in meters. If "
+                          "positive, glacial erosion is multiplied by "
+                          "1-exp(-H/H*), matching the Fortran coupling. Zero "
+                          "retains the earlier thickness-independent law.");
         prm.declare_entry("Minimum ice thickness", "1",
                           Patterns::Double(0),
                           "Minimum ice thickness in meters required for "
@@ -2674,6 +3084,13 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
     {
         box_repetitions = prm.get_integer("Box repetitions");
         surface_refinement = prm.get_integer("Surface refinement level");
+        use_t_coupling = prm.get_bool("Use T coupling in 2d");
+        t_coupling_width = prm.get_double("T coupling width");
+        t_coupling_cell_size = prm.get_double("T coupling cell size");
+        t_coupling_reduction = prm.get("T coupling reduction");
+        AssertThrow(!use_t_coupling || dim == 2,
+                    ExcMessage("Use T coupling in 2d can only be enabled in a "
+                               "two-dimensional ASPECT model."));
         surface_transfer_scheme = prm.get("Surface transfer scheme");
         surface_transfer_neighbors =
             prm.get_integer("Surface transfer neighbors");
@@ -2689,6 +3106,8 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
             prm.get_double("Glacial erosion coefficient");
         glacial_velocity_exponent =
             prm.get_double("Glacial velocity exponent");
+        glacial_ice_thickness_scale =
+            prm.get_double("Glacial ice thickness scale");
         AssertThrow(glacial_velocity_exponent > 0.0,
                     ExcMessage("Glacial velocity exponent must be positive."));
         minimum_ice_thickness =

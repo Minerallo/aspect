@@ -28,6 +28,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 
 
 namespace aspect
@@ -103,6 +104,10 @@ private:
     std::vector<double> update_regional_ice_load_response(
       const double time_step_years,
       const xt::xarray<double> &ice_thickness) const;
+    std::pair<xt::xarray<double>,xt::xarray<double>> effective_ice_fields(
+      const xt::xarray<double> &surface_elevation,
+      const xt::xarray<double> &spatial_ice_thickness,
+      const xt::xarray<double> &spatial_basal_ice_velocity) const;
     void write_true_polar_wander_state() const;
 
     mutable SurfaceMesh surface_mesh;
@@ -149,6 +154,14 @@ private:
     double glacial_velocity_exponent = 1.0;
     double glacial_ice_thickness_scale = 0.0;
     double minimum_ice_thickness = 1.0;
+    std::string ice_distribution_mode = "spatial field";
+    double glacial_elevation_threshold = 1000.0;
+    double glacial_elevation_transition_width = 0.0;
+    double elevation_threshold_ice_thickness = 300.0;
+    double elevation_threshold_basal_ice_velocity = 0.1;
+    bool restrict_glacial_erosion_to_grounded_ice = true;
+    double minimum_glacial_erosion_elevation = -1.0e99;
+    double seawater_density = 1028.0;
     double initial_relief = 0.0;
     double sea_level = 0.0;
     Functions::ParsedFunction<1> sea_level_function;

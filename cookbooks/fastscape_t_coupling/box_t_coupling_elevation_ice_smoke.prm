@@ -1,0 +1,107 @@
+# Runtime smoke test for PRM-controlled elevation-threshold ice.
+set Dimension                     = 2
+set Use years instead of seconds = true
+set End time                      = 2000
+set Maximum time step             = 1000
+set Nonlinear solver scheme       = no Advection, single Stokes
+set Output directory              = output-box-t-coupling-elevation-ice-smoke
+set Pressure normalization        = no
+set Surface pressure              = 0
+
+subsection Geometry model
+  set Model name = box
+  subsection Box
+    set X extent      = 100e3
+    set Y extent      = 20e3
+    set X repetitions = 4
+  end
+  subsection Initial topography model
+    set Model name = function
+    subsection Function
+      set Function constants       = L=100e3
+      set Function expression      = 1000*sin(pi*x/L)
+      set Maximum topography value = 1000
+    end
+  end
+end
+
+subsection Mesh deformation
+  set Mesh deformation boundary indicators = top: fastscape surface evolution
+  set Additional tangential mesh velocity boundary indicators = left, right
+  subsection FastScape surface evolution
+    set Use T coupling in 2d                       = true
+    set T coupling width                           = 50000
+    set T coupling cell size                       = 2500
+    set T coupling reduction                       = average
+    set Surface transfer scheme                    = conservative
+    set Surface transfer neighbors                 = 4
+    set Landscape steps per geodynamic step        = 2
+    set Maximum landscape step                     = 500
+    set River incision coefficient                 = 1e-5
+    set Hillslope diffusion coefficient            = 1e-2
+    set Marine sediment transport coefficient      = 100
+    set Marine sediment porosity                   = 0.4
+    set Ice distribution mode                      = elevation threshold
+    set Glacial elevation threshold                = 500
+    set Glacial elevation transition width         = 100
+    set Elevation threshold ice thickness          = 300
+    set Elevation threshold basal ice velocity     = 0.1
+    set Glacial erosion coefficient                = 1e-4
+    set Glacial velocity exponent                  = 1
+    set Glacial ice thickness scale                = 150
+    set Minimum ice thickness                      = 5
+    set Restrict glacial erosion to grounded ice   = true
+    set Minimum glacial erosion elevation          = 0
+    set Result interval                            = 1
+    set Write visualization results                = true
+  end
+end
+
+subsection Boundary velocity model
+  set Tangential velocity boundary indicators = bottom, left, right
+end
+
+subsection Gravity model
+  set Model name = vertical
+  subsection Vertical
+    set Magnitude = 0
+  end
+end
+
+subsection Initial temperature model
+  set List of model names = function
+  subsection Function
+    set Function expression = 0
+  end
+end
+
+subsection Boundary temperature model
+  set Fixed temperature boundary indicators = bottom, top
+  set List of model names = initial temperature
+end
+
+subsection Material model
+  set Model name = simple
+  subsection Simple model
+    set Reference density             = 1
+    set Reference specific heat       = 1
+    set Reference temperature         = 0
+    set Thermal conductivity          = 1
+    set Thermal expansion coefficient = 0
+    set Viscosity                     = 1
+  end
+end
+
+subsection Formulation
+  set Formulation = Boussinesq approximation
+end
+
+subsection Mesh refinement
+  set Initial global refinement          = 0
+  set Initial adaptive refinement        = 0
+  set Time steps between mesh refinement = 0
+end
+
+subsection Postprocess
+  set List of postprocessors = topography
+end

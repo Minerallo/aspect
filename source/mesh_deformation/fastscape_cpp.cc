@@ -371,6 +371,10 @@ public:
             const double glacial_velocity_exponent,
             const double glacial_ice_thickness_scale,
             const double minimum_ice_thickness,
+            const bool restrict_glacial_erosion_to_grounded_ice,
+            const double minimum_glacial_erosion_elevation,
+            const double ice_density,
+            const double seawater_density,
             const bool advect_surface_state,
             const double maximum_advection_courant,
             const double hillslope_diffusivity,
@@ -433,8 +437,17 @@ public:
             fluvial_erosion =
                 eroder->erode(uplifted, effective_drainage_area, step_years);
             for (unsigned int i = 0; i < glacial_erosion.size(); ++i)
+            {
+                const bool above_minimum_elevation =
+                    uplifted[i] >= minimum_glacial_erosion_elevation;
+                const bool grounded =
+                    uplifted[i] >= sea_level ||
+                    ice_density * ice_thickness[i] >=
+                        seawater_density * (sea_level - uplifted[i]);
                 glacial_erosion[i] =
-                    ice_thickness[i] >= minimum_ice_thickness
+                    ice_thickness[i] >= minimum_ice_thickness &&
+                    above_minimum_elevation &&
+                    (!restrict_glacial_erosion_to_grounded_ice || grounded)
                     ? step_years * glacial_erosion_coefficient *
                     exposed_erodibility[i] *
                     std::pow(basal_ice_velocity[i],
@@ -444,6 +457,7 @@ public:
                                       glacial_ice_thickness_scale)
                      : 1.0)
                     : 0.0;
+            }
             erosion = fluvial_erosion + glacial_erosion;
 
             const auto areas = grid->nodes_areas();
@@ -1708,6 +1722,46 @@ FastscapeCpp<dim>::update_regional_ice_load_response(
 
 
 template <int dim>
+std::pair<xt::xarray<double>,xt::xarray<double>>
+FastscapeCpp<dim>::effective_ice_fields(
+    const xt::xarray<double> &surface_elevation,
+    const xt::xarray<double> &spatial_ice_thickness_values,
+    const xt::xarray<double> &spatial_basal_ice_velocity_values) const
+{
+    AssertDimension(surface_elevation.size(),
+                    spatial_ice_thickness_values.size());
+    AssertDimension(surface_elevation.size(),
+                    spatial_basal_ice_velocity_values.size());
+    xt::xarray<double> thickness = spatial_ice_thickness_values;
+    xt::xarray<double> velocity = spatial_basal_ice_velocity_values;
+
+    if (ice_distribution_mode == "spatial field")
+        return {thickness, velocity};
+
+    for (unsigned int i = 0; i < surface_elevation.size(); ++i)
+    {
+        const double excess =
+            surface_elevation[i] - glacial_elevation_threshold;
+        const double factor = glacial_elevation_transition_width > 0.0
+            ? std::max(0.0, std::min(1.0,
+                  excess / glacial_elevation_transition_width))
+            : (excess >= 0.0 ? 1.0 : 0.0);
+        if (ice_distribution_mode == "elevation threshold")
+        {
+            thickness[i] = factor * elevation_threshold_ice_thickness;
+            velocity[i] = factor * elevation_threshold_basal_ice_velocity;
+        }
+        else
+        {
+            thickness[i] *= factor;
+            velocity[i] *= factor;
+        }
+    }
+    return {thickness, velocity};
+}
+
+
+template <int dim>
 void
 FastscapeCpp<dim>::write_true_polar_wander_state() const
 {
@@ -2349,10 +2403,14 @@ std::vector<Tensor<1,dim>>
                 * year_in_seconds;
         }
 
+        const auto effective_ice = effective_ice_fields(
+            t_landscape->get_elevation(),
+            t_spatial_ice_thickness->get_values(),
+            t_spatial_basal_ice_velocity->get_values());
         const std::vector<double> regional_load_velocity =
             update_regional_ice_load_response(
                 aspect_dt_years,
-                t_spatial_ice_thickness->get_values());
+                effective_ice.first);
         AssertDimension(regional_load_velocity.size(), uplift_rate.size());
         for (unsigned int i = 0; i < uplift_rate.size(); ++i)
             uplift_rate[i] += regional_load_velocity[i];
@@ -2367,12 +2425,16 @@ std::vector<Tensor<1,dim>>
                 current_sea_level,
                 t_spatial_erosion_strength->get_values(),
                 t_spatial_surface_runoff->get_values(),
-                t_spatial_ice_thickness->get_values(),
-                t_spatial_basal_ice_velocity->get_values(),
+                effective_ice.first,
+                effective_ice.second,
                 glacial_erosion_coefficient,
                 glacial_velocity_exponent,
                 glacial_ice_thickness_scale,
                 minimum_ice_thickness,
+                restrict_glacial_erosion_to_grounded_ice,
+                minimum_glacial_erosion_elevation,
+                ice_density,
+                seawater_density,
                 advect_surface_state,
                 maximum_surface_advection_courant,
                 hillslope_diffusion_coefficient,
@@ -2423,8 +2485,8 @@ std::vector<Tensor<1,dim>>
                 *t_landscape,
                 t_spatial_erosion_strength->get_values(),
                 t_spatial_surface_runoff->get_values(),
-                t_spatial_ice_thickness->get_values(),
-                t_spatial_basal_ice_velocity->get_values(),
+                effective_ice.first,
+                effective_ice.second,
                 regional_total_ice_load_displacement,
                 regional_ice_load_velocity,
                 current_sea_level,
@@ -2467,9 +2529,13 @@ std::vector<Tensor<1,dim>>
              normal_material_velocity * surface_normal) * year_in_seconds;
     }
 
+    const auto effective_ice = effective_ice_fields(
+        landscape->get_elevation(),
+        spatial_ice_thickness->get_values(),
+        spatial_basal_ice_velocity->get_values());
     const std::vector<double> regional_load_velocity =
         update_regional_ice_load_response(
-            aspect_dt_years, spatial_ice_thickness->get_values());
+            aspect_dt_years, effective_ice.first);
     AssertDimension(regional_load_velocity.size(), uplift_rate.size());
     for (unsigned int i = 0; i < uplift_rate.size(); ++i)
         uplift_rate[i] += regional_load_velocity[i];
@@ -2484,12 +2550,16 @@ std::vector<Tensor<1,dim>>
             current_sea_level,
             spatial_erosion_strength->get_values(),
             spatial_surface_runoff->get_values(),
-            spatial_ice_thickness->get_values(),
-            spatial_basal_ice_velocity->get_values(),
+            effective_ice.first,
+            effective_ice.second,
             glacial_erosion_coefficient,
             glacial_velocity_exponent,
             glacial_ice_thickness_scale,
             minimum_ice_thickness,
+            restrict_glacial_erosion_to_grounded_ice,
+            minimum_glacial_erosion_elevation,
+            ice_density,
+            seawater_density,
             advect_surface_state,
             maximum_surface_advection_courant,
             hillslope_diffusion_coefficient,
@@ -2516,8 +2586,8 @@ std::vector<Tensor<1,dim>>
             *landscape,
             spatial_erosion_strength->get_values(),
             spatial_surface_runoff->get_values(),
-            spatial_ice_thickness->get_values(),
-            spatial_basal_ice_velocity->get_values(),
+            effective_ice.first,
+            effective_ice.second,
             regional_total_ice_load_displacement,
             regional_ice_load_velocity,
             current_sea_level,
@@ -2870,6 +2940,47 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
                           Patterns::Double(0),
                           "Minimum ice thickness in meters required for "
                           "glacial erosion.");
+        prm.declare_entry("Ice distribution mode", "spatial field",
+                          Patterns::Selection(
+                              "spatial field|elevation threshold|"
+                              "spatial field and elevation threshold"),
+                          "Choose prescribed climate-model fields, a PRM "
+                          "elevation threshold, or climate fields masked by "
+                          "the elevation threshold.");
+        prm.declare_entry("Glacial elevation threshold", "1000",
+                          Patterns::Double(),
+                          "Surface elevation in meters above which the "
+                          "elevation-threshold ice distribution is active.");
+        prm.declare_entry("Glacial elevation transition width", "0",
+                          Patterns::Double(0),
+                          "Optional elevation interval in meters over which "
+                          "ice thickness and basal velocity increase linearly "
+                          "from zero above the threshold. Zero applies a hard "
+                          "threshold.");
+        prm.declare_entry("Elevation threshold ice thickness", "300",
+                          Patterns::Double(0),
+                          "Ice thickness in meters above the elevation "
+                          "threshold when Ice distribution mode is elevation "
+                          "threshold.");
+        prm.declare_entry("Elevation threshold basal ice velocity", "0.1",
+                          Patterns::Double(0),
+                          "Basal sliding velocity in meters per year above "
+                          "the elevation threshold when Ice distribution "
+                          "mode is elevation threshold.");
+        prm.declare_entry("Restrict glacial erosion to grounded ice", "true",
+                          Patterns::Bool(),
+                          "Suppress basal erosion where prescribed ice would "
+                          "float according to rho_ice H < rho_water "
+                          "(sea_level-bed_elevation).");
+        prm.declare_entry("Minimum glacial erosion elevation", "-1e99",
+                          Patterns::Double(),
+                          "Optional lower bed-elevation limit in meters for "
+                          "glacial erosion. The default leaves grounded marine "
+                          "ice possible; use zero to forbid submarine erosion.");
+        prm.declare_entry("Seawater density", "1028",
+                          Patterns::Double(0),
+                          "Seawater density in kilograms per cubic meter used "
+                          "by the ice-flotation test.");
         prm.declare_entry("Initial relief", "0", Patterns::Double(0),
                           "Amplitude in meters of a deterministic initial "
                           "FastScape relief field. This is independent of "
@@ -3112,6 +3223,22 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
                     ExcMessage("Glacial velocity exponent must be positive."));
         minimum_ice_thickness =
             prm.get_double("Minimum ice thickness");
+        ice_distribution_mode = prm.get("Ice distribution mode");
+        glacial_elevation_threshold =
+            prm.get_double("Glacial elevation threshold");
+        glacial_elevation_transition_width =
+            prm.get_double("Glacial elevation transition width");
+        elevation_threshold_ice_thickness =
+            prm.get_double("Elevation threshold ice thickness");
+        elevation_threshold_basal_ice_velocity =
+            prm.get_double("Elevation threshold basal ice velocity");
+        restrict_glacial_erosion_to_grounded_ice =
+            prm.get_bool("Restrict glacial erosion to grounded ice");
+        minimum_glacial_erosion_elevation =
+            prm.get_double("Minimum glacial erosion elevation");
+        seawater_density = prm.get_double("Seawater density");
+        AssertThrow(seawater_density > 0.0,
+                    ExcMessage("Seawater density must be positive."));
         initial_relief = prm.get_double("Initial relief");
         sea_level = prm.get_double("Sea level");
         use_sea_level_function = prm.get_bool("Use sea level function");

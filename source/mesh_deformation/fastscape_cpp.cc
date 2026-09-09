@@ -273,7 +273,10 @@ public:
                const double marine_transport_coefficient,
                const double sediment_porosity,
                const double transport_depth_scale,
+               const bool use_sea_level_base_level,
                const bool restrict_ocean_connectivity,
+               const double submarine_incision_factor,
+               const std::string &marine_open_boundary,
                const std::vector<std::string> &rock_names,
                const std::vector<double> &rock_probabilities,
                const std::vector<double> &rock_erodibility_factors,
@@ -284,8 +287,11 @@ public:
         marine_sediment_transport_coefficient = marine_transport_coefficient;
         marine_sediment_porosity = sediment_porosity;
         marine_transport_depth_scale = transport_depth_scale;
+        use_sea_level_as_drainage_base_level = use_sea_level_base_level;
         restrict_ocean_to_largest_connected_component =
             restrict_ocean_connectivity;
+        submarine_river_incision_factor = submarine_incision_factor;
+        open_marine_sediment_boundary = marine_open_boundary;
         grid = std::make_unique<Grid>(surface_mesh, closed_surface);
         flow_graph = std::make_unique<FlowGraph>(
                          *grid,
@@ -378,6 +384,8 @@ public:
             const bool advect_surface_state,
             const double maximum_advection_courant,
             const double hillslope_diffusivity,
+            const double submarine_hillslope_diffusivity,
+            const double maximum_marine_transport_courant,
             const double maximum_diffusion_courant)
     {
         Assert(grid && flow_graph && eroder, ExcInternalError());
@@ -436,6 +444,9 @@ public:
 
             fluvial_erosion =
                 eroder->erode(uplifted, effective_drainage_area, step_years);
+            for (unsigned int i = 0; i < fluvial_erosion.size(); ++i)
+                if (ocean_mask[i] >= 0.5)
+                    fluvial_erosion[i] *= submarine_river_incision_factor;
             for (unsigned int i = 0; i < glacial_erosion.size(); ++i)
             {
                 const bool above_minimum_elevation =
@@ -479,7 +490,12 @@ public:
                             sediment_thickness_by_lithology[rock][i] /
                             sediment_thickness[i];
                         sediment_thickness_by_lithology[rock][i] -= removed;
-                        local_source_by_lithology[rock][i] += removed;
+                        // Mobile sediment thickness includes pore space, whereas
+                        // routed sediment flux is solid volume. Without this
+                        // conversion, every erosion/deposition cycle expands
+                        // recycled sediment by 1/(1-porosity).
+                        local_source_by_lithology[rock][i] +=
+                            removed * (1.0 - marine_sediment_porosity);
                     }
                 const double bedrock_erosion = erosion[i] - sediment_erosion;
                 local_source_by_lithology[bedrock_lithology[i]][i] +=
@@ -504,6 +520,7 @@ public:
             if (hillslope_diffusivity > 0.0)
                 diffuse_hillslopes(step_years,
                                    hillslope_diffusivity,
+                                   submarine_hillslope_diffusivity,
                                    maximum_diffusion_courant);
             if (marine_sediment_transport_coefficient > 0.0)
             {
@@ -530,7 +547,10 @@ public:
                     }
 
                 elevation = bedrock_elevation + sediment_thickness;
-                transport_marine_sediment(step_years, sea_level);
+                transport_marine_sediment(step_years,
+                                          sea_level,
+                                          maximum_marine_transport_courant);
+                export_marine_sediment(result);
                 elevation = bedrock_elevation + sediment_thickness;
                 for (unsigned int i = 0; i < sediment_thickness.size(); ++i)
                     deposition_rate[i] =
@@ -546,7 +566,10 @@ public:
 
         if (marine_sediment_transport_coefficient > 0.0 &&
                 total_time_years > 0.0)
+        {
             result.coastal_sediment_flux /= total_time_years;
+            result.exported_sediment_flux /= total_time_years;
+        }
 
         if (marine_sediment_transport_coefficient == 0.0)
             for (const auto index : flow_graph->base_levels())
@@ -712,6 +735,7 @@ private:
     void
     diffuse_hillslopes(const double step_years,
                        const double diffusivity,
+                       const double submarine_diffusivity,
                        const double maximum_courant)
     {
         AssertThrow(maximum_courant > 0.0,
@@ -726,8 +750,12 @@ private:
                 const std::size_t j = grid->cell_neighbor(i, n);
                 if (j <= i)
                     continue;
+                const double local_diffusivity =
+                    ocean_mask[i] >= 0.5 && ocean_mask[j] >= 0.5
+                    ? submarine_diffusivity
+                    : diffusivity;
                 const double conductance =
-                    diffusivity *
+                    local_diffusivity *
                     grid->cell_shared_face_measure(i, n) /
                     grid->cell_neighbor_distance(i, n);
                 conductance_sum[i] += conductance;
@@ -756,8 +784,12 @@ private:
                     const std::size_t j = grid->cell_neighbor(i, n);
                     if (j <= i)
                         continue;
+                    const double local_diffusivity =
+                        ocean_mask[i] >= 0.5 && ocean_mask[j] >= 0.5
+                        ? submarine_diffusivity
+                        : diffusivity;
                     const double volume =
-                        diffusivity *
+                        local_diffusivity *
                         grid->cell_shared_face_measure(i, n) /
                         grid->cell_neighbor_distance(i, n) *
                         (elevation[i] - elevation[j]) *
@@ -799,6 +831,42 @@ private:
                 elevation[i] =
                     bedrock_elevation[i] + sediment_thickness[i];
             }
+        }
+    }
+
+    void
+    export_marine_sediment(StepResult &result)
+    {
+        if (open_marine_sediment_boundary == "none")
+            return;
+
+        for (std::size_t i = 0; i < sediment_thickness.size(); ++i)
+        {
+            const bool on_open_boundary =
+                (open_marine_sediment_boundary == "minimum x" &&
+                 grid->cell_touches_boundary(i, 0, false)) ||
+                (open_marine_sediment_boundary == "maximum x" &&
+                 grid->cell_touches_boundary(i, 0, true)) ||
+                (open_marine_sediment_boundary == "all nonperiodic" &&
+                 [&]()
+            {
+                for (unsigned int d = 0; d < surface_dim; ++d)
+                    if (grid->cell_touches_boundary(i, d, false) ||
+                        grid->cell_touches_boundary(i, d, true))
+                        return true;
+                return false;
+            }());
+            if (!on_open_boundary || ocean_mask[i] < 0.5 ||
+                    sediment_thickness[i] <= 0.0)
+                continue;
+
+            const double bulk_volume =
+                sediment_thickness[i] * grid->nodes_areas(i);
+            result.exported_sediment_flux +=
+                bulk_volume * (1.0 - marine_sediment_porosity);
+            sediment_thickness[i] = 0.0;
+            for (auto &field : sediment_thickness_by_lithology)
+                field[i] = 0.0;
         }
     }
 
@@ -923,7 +991,51 @@ private:
      */
     void
     transport_marine_sediment(const double step_years,
-                              const double sea_level)
+                              const double sea_level,
+                              const double maximum_courant)
+    {
+        unsigned int transport_steps = 1;
+        if (maximum_courant > 0.0)
+        {
+            const auto areas = grid->nodes_areas();
+            std::vector<double> conductance_sum(elevation.size(), 0.0);
+            for (std::size_t i = 0; i < elevation.size(); ++i)
+                if (ocean_mask[i] >= 0.5)
+                    for (std::size_t n = 0;
+                            n < grid->number_of_cell_neighbors(i); ++n)
+                    {
+                        const std::size_t j = grid->cell_neighbor(i, n);
+                        if (j <= i || ocean_mask[j] < 0.5)
+                            continue;
+                        const double conductance =
+                            marine_sediment_transport_coefficient *
+                            grid->cell_shared_face_measure(i, n) /
+                            grid->cell_neighbor_distance(i, n);
+                        conductance_sum[i] += conductance;
+                        conductance_sum[j] += conductance;
+                    }
+
+            double largest_courant = 0.0;
+            for (std::size_t i = 0; i < elevation.size(); ++i)
+                largest_courant =
+                    std::max(largest_courant,
+                             step_years * conductance_sum[i] / areas[i]);
+            transport_steps = std::max(
+                                  1u,
+                                  static_cast<unsigned int>(
+                                      std::ceil(largest_courant / maximum_courant)));
+        }
+
+        const double transport_step_years = step_years / transport_steps;
+        marine_sediment_flux.fill(0.0);
+        for (unsigned int step = 0; step < transport_steps; ++step)
+            transport_marine_sediment_substep(transport_step_years, sea_level);
+        marine_sediment_flux /= transport_steps;
+    }
+
+    void
+    transport_marine_sediment_substep(const double step_years,
+                                      const double sea_level)
     {
         struct Transfer
         {
@@ -935,8 +1047,6 @@ private:
         const auto areas = grid->nodes_areas();
         std::vector<Transfer> transfers;
         std::vector<double> requested_outflow(elevation.size(), 0.0);
-        marine_sediment_flux.fill(0.0);
-
         for (std::size_t i = 0; i < elevation.size(); ++i)
         {
             if (ocean_mask[i] < 0.5)
@@ -1028,6 +1138,7 @@ private:
                              sediment_thickness_by_lithology[rock][i] +
                              lithology_volume_change[rock][i] / areas[i]);
         }
+        elevation = bedrock_elevation + sediment_thickness;
     }
 
     void
@@ -1039,13 +1150,6 @@ private:
         for (std::size_t i = 0; i < surface_elevation.size(); ++i)
             if (surface_elevation[i] <= sea_level)
                 wet_nodes.push_back(i);
-
-        if (!spherical_geometry)
-        {
-            for (const std::size_t index : wet_nodes)
-                ocean_mask[index] = 1.0;
-            return;
-        }
 
         std::vector<std::size_t> base_levels;
         if (!restrict_ocean_to_largest_connected_component)
@@ -1103,7 +1207,8 @@ private:
         else
             for (const std::size_t index : base_levels)
                 ocean_mask[index] = 1.0;
-        flow_graph->set_base_levels(base_levels);
+        if (spherical_geometry || use_sea_level_as_drainage_base_level)
+            flow_graph->set_base_levels(base_levels);
     }
 
     bool spherical_geometry = false;
@@ -1111,6 +1216,9 @@ private:
     double marine_sediment_transport_coefficient = 0.0;
     double marine_sediment_porosity = 0.4;
     double marine_transport_depth_scale = 0.0;
+    double submarine_river_incision_factor = 1.0;
+    bool use_sea_level_as_drainage_base_level = false;
+    std::string open_marine_sediment_boundary = "none";
     bool restrict_ocean_to_largest_connected_component = true;
     std::unique_ptr<Grid> grid;
     std::unique_ptr<FlowGraph> flow_graph;
@@ -2010,6 +2118,18 @@ FastscapeCpp<dim>::build_surface_mesh()
                 lower,
                 upper,
                 true);
+
+        std::vector<GridTools::PeriodicFacePair<typename SurfaceMesh::cell_iterator>>
+        periodicity;
+        for (const unsigned int direction : periodic_surface_dimensions)
+            GridTools::collect_periodic_faces(surface_mesh,
+                                              2*direction,
+                                              2*direction+1,
+                                              direction,
+                                              periodicity);
+        if (!periodicity.empty())
+            surface_mesh.add_periodicity(periodicity);
+
         GridTools::transform(
             [&origin, &extents](const Point<dim> &point)
         {
@@ -2092,7 +2212,10 @@ FastscapeCpp<dim>::build_surface_mesh()
                           marine_sediment_transport_coefficient,
                           marine_sediment_porosity,
                           marine_transport_depth_scale,
+                          use_sea_level_as_drainage_base_level,
                           restrict_ocean_to_largest_connected_component,
+                          submarine_river_incision_factor,
+                          open_marine_sediment_boundary,
                           lithology_names,
                           lithology_probabilities,
                           lithology_erodibility_factors,
@@ -2217,6 +2340,17 @@ FastscapeCpp<dim>::build_t_coupling_surface_mesh()
         GridGenerator::flatten_triangulation(planar_surface_mesh,
                                              t_surface_mesh);
 
+        std::vector<GridTools::PeriodicFacePair<
+            typename Triangulation<2,3>::cell_iterator>> periodicity;
+        for (const unsigned int direction : periodic_surface_dimensions)
+            GridTools::collect_periodic_faces(t_surface_mesh,
+                                              2*direction,
+                                              2*direction+1,
+                                              direction,
+                                              periodicity);
+        if (!periodicity.empty())
+            t_surface_mesh.add_periodicity(periodicity);
+
         fastscape_points.resize(nx);
         fastscape_point_areas.assign(nx, dx);
         for (unsigned int column = 0; column < nx; ++column)
@@ -2283,7 +2417,10 @@ FastscapeCpp<dim>::build_t_coupling_surface_mesh()
                                 marine_sediment_transport_coefficient,
                                 marine_sediment_porosity,
                                 marine_transport_depth_scale,
+                                use_sea_level_as_drainage_base_level,
                                 restrict_ocean_to_largest_connected_component,
+                                submarine_river_incision_factor,
+                                open_marine_sediment_boundary,
                                 lithology_names,
                                 lithology_probabilities,
                                 lithology_erodibility_factors,
@@ -2438,6 +2575,10 @@ std::vector<Tensor<1,dim>>
                 advect_surface_state,
                 maximum_surface_advection_courant,
                 hillslope_diffusion_coefficient,
+                submarine_hillslope_diffusion_coefficient >= 0.0
+                ? submarine_hillslope_diffusion_coefficient
+                : hillslope_diffusion_coefficient,
+                maximum_marine_sediment_transport_courant,
                 maximum_hillslope_diffusion_courant);
 
         for (unsigned int column = 0; column < result.size(); ++column)
@@ -2563,6 +2704,10 @@ std::vector<Tensor<1,dim>>
             advect_surface_state,
             maximum_surface_advection_courant,
             hillslope_diffusion_coefficient,
+            submarine_hillslope_diffusion_coefficient >= 0.0
+            ? submarine_hillslope_diffusion_coefficient
+            : hillslope_diffusion_coefficient,
+            maximum_marine_sediment_transport_courant,
             maximum_hillslope_diffusion_courant);
 
     for (unsigned int i = 0; i < result.size(); ++i)
@@ -2889,6 +3034,13 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
                           "Reduce the two-dimensional landscape response to "
                           "the ASPECT section using an area-weighted average "
                           "across y or the center row.");
+        prm.declare_entry("Periodic surface dimensions", "",
+                          Patterns::List(Patterns::Integer(0)),
+                          "Comma-separated zero-based horizontal coordinate "
+                          "directions to connect periodically on a box surface. "
+                          "For a three-dimensional Cartesian model, use 1 to "
+                          "make the transverse y direction periodic. The default "
+                          "keeps all surface boundaries open/fixed as before.");
         prm.declare_entry("Surface transfer scheme", "conservative",
                           Patterns::Selection("nearest|weighted|conservative"),
                           "Method used to transfer FastScape surface motion "
@@ -3013,6 +3165,18 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
                           "Water-depth scale in meters over which marine "
                           "transport decreases exponentially. Zero uses a "
                           "depth-independent transport coefficient.");
+        prm.declare_entry("Maximum marine sediment transport Courant number", "0",
+                          Patterns::Double(0),
+                          "Maximum explicit Courant number used for marine "
+                          "sediment diffusion. A positive value activates "
+                          "automatic transport substeps; zero preserves the "
+                          "single-step behavior used by earlier models.");
+        prm.declare_entry("Use sea level as drainage base level", "false",
+                          Patterns::Bool(),
+                          "Stop river routing in connected cells at or below sea "
+                          "level and deliver their sediment to the marine transport "
+                          "model. This is always done on a closed spherical surface; "
+                          "the default preserves the previous box behavior.");
         prm.declare_entry("Restrict ocean to largest connected water body",
                           "true",
                           Patterns::Bool(),
@@ -3020,6 +3184,23 @@ FastscapeCpp<dim>::declare_parameters(ParameterHandler &prm)
                           "below-sea-level cells as the global ocean. This "
                           "prevents disconnected inland depressions from "
                           "receiving marine sediment.");
+        prm.declare_entry("Submarine river incision factor", "1",
+                          Patterns::Double(0),
+                          "Multiplier applied to stream-power incision below sea "
+                          "level. Set this to zero when submarine channels are not "
+                          "explicitly represented; one preserves the earlier behavior.");
+        prm.declare_entry("Submarine hillslope diffusion coefficient", "-1",
+                          Patterns::Double(-1),
+                          "Hillslope diffusivity used between two ocean cells. A "
+                          "negative value inherits Hillslope diffusion coefficient; "
+                          "zero disables generic hillslope diffusion below sea level.");
+        prm.declare_entry("Open marine sediment boundary", "none",
+                          Patterns::Selection(
+                              "none|minimum x|maximum x|all nonperiodic"),
+                          "Absorbing box-surface boundary through which mobile marine "
+                          "sediment leaves the landscape. Periodic sides can never "
+                          "export sediment. The default closed basin preserves the "
+                          "previous behavior.");
         prm.declare_entry("Advect surface state", "false",
                           Patterns::Bool(),
                           "Advect bedrock elevation and mobile sediment over "
@@ -3202,6 +3383,16 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
         AssertThrow(!use_t_coupling || dim == 2,
                     ExcMessage("Use T coupling in 2d can only be enabled in a "
                                "two-dimensional ASPECT model."));
+        periodic_surface_dimensions.clear();
+        const std::string periodic_dimensions =
+            prm.get("Periodic surface dimensions");
+        if (!periodic_dimensions.empty())
+            periodic_surface_dimensions = Utilities::string_to_unsigned_int(
+                                              Utilities::split_string_list(periodic_dimensions));
+        for (const unsigned int direction : periodic_surface_dimensions)
+            AssertThrow(direction < (use_t_coupling ? 2u : dim-1),
+                        ExcMessage("Periodic surface dimensions must be smaller "
+                                   "than the number of horizontal dimensions."));
         surface_transfer_scheme = prm.get("Surface transfer scheme");
         surface_transfer_neighbors =
             prm.get_integer("Surface transfer neighbors");
@@ -3256,8 +3447,18 @@ FastscapeCpp<dim>::parse_parameters(ParameterHandler &prm)
             prm.get_double("Marine sediment porosity");
         marine_transport_depth_scale =
             prm.get_double("Marine transport depth scale");
+        maximum_marine_sediment_transport_courant =
+            prm.get_double("Maximum marine sediment transport Courant number");
+        use_sea_level_as_drainage_base_level =
+            prm.get_bool("Use sea level as drainage base level");
         restrict_ocean_to_largest_connected_component =
             prm.get_bool("Restrict ocean to largest connected water body");
+        submarine_river_incision_factor =
+            prm.get_double("Submarine river incision factor");
+        submarine_hillslope_diffusion_coefficient =
+            prm.get_double("Submarine hillslope diffusion coefficient");
+        open_marine_sediment_boundary =
+            prm.get("Open marine sediment boundary");
         advect_surface_state =
             prm.get_bool("Advect surface state");
         apply_normal_material_velocity =

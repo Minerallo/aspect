@@ -22,6 +22,7 @@
 #include <fastscapelib/grid/base.hpp>
 #include <fastscapelib/version.hpp>
 
+#include <array>
 #include <unordered_map>
 #include <vector>
 
@@ -124,6 +125,12 @@ namespace fastscapelib
       cell_shared_face_measure(const size_type index,
                                const size_type neighbor_number) const;
 
+      /** Return whether a cell touches a non-periodic exterior boundary. */
+      bool
+      cell_touches_boundary(const size_type index,
+                            const unsigned int coordinate_direction,
+                            const bool upper_side) const;
+
       direction_type
       cell_neighbor_direction(const size_type index,
                               const size_type neighbor_number) const;
@@ -140,6 +147,8 @@ namespace fastscapelib
       std::vector<neighbors_indices_impl_type> neighbors_indices;
       std::vector<neighbors_distances_impl_type> neighbors_distances;
       std::vector<neighbors_distances_impl_type> shared_face_measures;
+      std::vector<std::array<bool,2*TriangulationType::dimension>> boundary_sides;
+      std::vector<std::array<direction_type,inner_types::n_neighbors_max>> neighbor_directions;
 
       container_type nodes_areas_impl() const;
       grid_data_type nodes_areas_impl(const size_type &index) const noexcept;
@@ -168,7 +177,9 @@ namespace fastscapelib
     neighbors_count(m_size),
     neighbors_indices(m_size),
     neighbors_distances(m_size),
-    shared_face_measures(m_size)
+    shared_face_measures(m_size),
+    boundary_sides(m_size),
+    neighbor_directions(m_size)
   {
     m_shape = {{static_cast<typename shape_type::value_type>(m_size)}};
     std::fill(m_nodes_status.begin(), m_nodes_status.end(), node_status::core);
@@ -181,12 +192,15 @@ namespace fastscapelib
         node_areas[local_index] = cell->measure();
         cell_centers[local_index] = cell->center();
 
+        boundary_sides[local_index].fill(false);
         if (!closed_surface)
           for (const unsigned int face : cell->face_indices())
-            if (cell->at_boundary(face))
+            if (cell->at_boundary(face) && !cell->has_periodic_neighbor(face))
               {
                 m_nodes_status[local_index] = node_status::fixed_value;
-                break;
+                const unsigned int boundary_id = cell->face(face)->boundary_id();
+                if (boundary_id < 2*TriangulationType::dimension)
+                  boundary_sides[local_index][boundary_id] = true;
               }
         ++local_index;
       }
@@ -198,15 +212,29 @@ namespace fastscapelib
         size_type count = 0;
 
         for (const unsigned int face : cell->face_indices())
-          if (!cell->at_boundary(face))
+          if (!cell->at_boundary(face) || cell->has_periodic_neighbor(face))
             {
-              const auto neighbor = cell->neighbor(face);
+              const bool periodic = cell->has_periodic_neighbor(face);
+              const auto neighbor = cell->neighbor_or_periodic_neighbor(face);
               const auto entry = global_to_local.find(neighbor->global_active_cell_index());
               AssertThrow(entry != global_to_local.end(),
                           dealii::ExcMessage("FastScape surface-grid neighbor was not found."));
               AssertIndexRange(count, inner_types::n_neighbors_max);
               neighbors_indices[local_index][count] = entry->second;
-              neighbors_distances[local_index][count] = center.distance(neighbor->center());
+              if (periodic)
+                {
+                  neighbors_distances[local_index][count] =
+                    center.distance(cell->face(face)->center()) +
+                    neighbor->center().distance(
+                      neighbor->face(cell->periodic_neighbor_of_periodic_neighbor(face))->center());
+                  neighbor_directions[local_index][count] =
+                    cell->face(face)->center() - center;
+                }
+              else
+                {
+                  neighbors_distances[local_index][count] = center.distance(neighbor->center());
+                  neighbor_directions[local_index][count] = neighbor->center() - center;
+                }
               if constexpr (TriangulationType::dimension == 1)
                 shared_face_measures[local_index][count] = 1.0;
               else
@@ -218,6 +246,19 @@ namespace fastscapelib
         neighbors_count[local_index] = count;
         ++local_index;
       }
+  }
+
+
+  template <class TriangulationType, class Selector>
+  bool
+  dealii_surface_grid<TriangulationType, Selector>::
+  cell_touches_boundary(const size_type index,
+                        const unsigned int coordinate_direction,
+                        const bool upper_side) const
+  {
+    AssertIndexRange(index, m_size);
+    AssertIndexRange(coordinate_direction, TriangulationType::dimension);
+    return boundary_sides[index][2*coordinate_direction + (upper_side ? 1 : 0)];
   }
 
 
@@ -280,13 +321,12 @@ namespace fastscapelib
   {
     AssertIndexRange(index, m_size);
     AssertIndexRange(neighbor_number, neighbors_count[index]);
-    const size_type neighbor_index =
-      neighbors_indices[index][neighbor_number];
-    direction_type direction =
-      cell_centers[neighbor_index] - cell_centers[index];
+    direction_type direction = neighbor_directions[index][neighbor_number];
 
     if (closed_surface)
       {
+        const size_type neighbor_index =
+          neighbors_indices[index][neighbor_number];
         direction_type surface_normal =
           cell_centers[index] + cell_centers[neighbor_index];
         const double normal_norm = surface_normal.norm();

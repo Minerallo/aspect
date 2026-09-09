@@ -168,6 +168,9 @@ private:
     double marine_sediment_transport_coefficient = 0.0;
     double marine_sediment_porosity = 0.4;
     double marine_transport_depth_scale = 0.0;
+    double maximum_marine_sediment_transport_courant = 0.0;
+    double submarine_river_incision_factor = 1.0;
+    double submarine_hillslope_diffusion_coefficient = -1.0;
     double maximum_surface_advection_courant = 0.5;
     double hillslope_diffusion_coefficient = 0.0;
     double maximum_hillslope_diffusion_courant = 0.25;
@@ -184,8 +187,11 @@ private:
     bool advect_surface_state = false;
     bool apply_normal_material_velocity = true;
     bool use_sea_level_function = false;
+    bool use_sea_level_as_drainage_base_level = false;
     bool restrict_ocean_to_largest_connected_component = true;
     bool spherical_geometry = false;
+    std::vector<unsigned int> periodic_surface_dimensions;
+    std::string open_marine_sediment_boundary = "none";
 
     bool true_polar_wander_enabled = false;
     bool include_ice_load_in_true_polar_wander = true;

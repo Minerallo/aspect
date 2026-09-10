@@ -1491,6 +1491,13 @@ namespace aspect
                 }
               local_solution_average /= local_area;
 
+              // A conservative limiter cannot restore the prescribed bounds if
+              // the cell average itself is outside them. In that case, use the
+              // nearest bound as the new cell average.
+              local_solution_average = std::clamp(local_solution_average,
+                                                  min_solution_exact_global,
+                                                  max_solution_exact_global);
+
               /*
                * Define theta: a scaling constant used to correct the old solution by the formula
                *   new_value = theta * (old_value-old_solution_cell_average)+old_solution_cell_average
@@ -1529,7 +1536,9 @@ namespace aspect
                                                              ),
                                                              /*dof index within component=*/ j);
                   const double solution_value = solution(local_dof_indices[support_point_index]);
-                  const double limited_solution_value = theta * (solution_value-local_solution_average) + local_solution_average;
+                  const double limited_solution_value = std::clamp(theta * (solution_value-local_solution_average) + local_solution_average,
+                                                                   min_solution_exact_global,
+                                                                   max_solution_exact_global);
                   distributed_solution(local_dof_indices[support_point_index]) = limited_solution_value;
                 }
             }

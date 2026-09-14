@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -17,8 +17,10 @@
   along with ASPECT; see the file LICENSE.  If not see
   <http://www.gnu.org/licenses/>.
 */
-#include <aspect/simulator.h>
+
 #include <aspect/postprocess/visualization/dynamic_topography.h>
+
+#include <aspect/geometry_model/interface.h>
 #include <aspect/postprocess/dynamic_topography.h>
 
 namespace aspect

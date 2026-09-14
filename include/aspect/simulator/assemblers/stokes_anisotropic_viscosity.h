@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2025 - by the authors of the ASPECT code.
+  Copyright (C) 2025 - 2026 - by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -30,9 +30,9 @@ namespace aspect
   namespace Assemblers
   {
     /**
-    * A class containing the functions to assemble the Stokes preconditioner for the
-    * case of anisotropic viscosities.
-    */
+     * A class containing the functions to assemble the Stokes preconditioner for the
+     * case of anisotropic viscosities.
+     */
     template <int dim>
     class StokesPreconditionerAnisotropicViscosity : public Assemblers::Interface<dim>,
       public SimulatorAccess<dim>

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2020 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2020 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -22,7 +22,7 @@
 #include "analytical_topography.h"
 #include <aspect/geometry_model/two_merged_boxes.h>
 #include <aspect/geometry_model/box.h>
-#include <aspect/simulator.h>
+
 #include <aspect/global.h>
 
 #include <deal.II/fe/fe_values.h>

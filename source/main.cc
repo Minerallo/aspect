@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -598,8 +598,11 @@ namespace
           {
             parse_parameters (input_as_string, prm);
           }
-        catch (...)
+        catch (const std::exception &exc)
           {
+            if (i_am_proc_0)
+              std::cerr << "Validation failed:\n\n" << exc.what() << std::endl;
+
             throw aspect::QuietException();
           }
         if (i_am_proc_0)

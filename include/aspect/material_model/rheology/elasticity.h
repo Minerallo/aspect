@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2019 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -54,18 +54,18 @@ namespace aspect
         std::vector<double> elastic_shear_moduli;
 
         /**
-        * Elastic viscosity at the evaluation points passed to
-        * the instance of MaterialModel::Interface::evaluate() that fills
-        * the current object.
-        */
+         * Elastic viscosity at the evaluation points passed to
+         * the instance of MaterialModel::Interface::evaluate() that fills
+         * the current object.
+         */
         std::vector<double> elastic_viscosity;
 
         /**
-        * The deviatoric stress of the current timestep, so including
-        * the rotation, advection and stress update, at the evaluation points
-        * passed to the instance of MaterialModel::Interface::evaluate()
-        * that fills the current object.
-        */
+         * The deviatoric stress of the current timestep, so including
+         * the rotation, advection and stress update, at the evaluation points
+         * passed to the instance of MaterialModel::Interface::evaluate()
+         * that fills the current object.
+         */
         std::vector<SymmetricTensor<2,dim>> deviatoric_stress;
     };
 

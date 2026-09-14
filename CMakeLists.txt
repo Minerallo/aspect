@@ -1,4 +1,4 @@
-# Copyright (C) 2013 - 2024 by the authors of the ASPECT code.
+# Copyright (C) 2013 - 2026 by the authors of the ASPECT code.
 #
 # This file is part of ASPECT.
 #
@@ -780,14 +780,6 @@ add_custom_target(aspect ALL
 install(PROGRAMS ${CMAKE_BINARY_DIR}/aspect
 	TYPE BIN)
 
-
-# This should be done in DEAL_II_SETUP_TARGET, but deal.II 9.5
-# does not do so, so do it here. Remove this when we require deal.II 9.6.
-if(${ASPECT_BUILD_RELEASE} STREQUAL "ON")
-  if(DEAL_II_PACKAGE_VERSION VERSION_LESS 9.6.0)
-    target_compile_definitions(${TARGET_EXE_RELEASE} PUBLIC "NDEBUG")
-  endif()
-endif()
 
 # Turn on debug checks like invalid element access in c++ standard library:
 if(${ASPECT_BUILD_DEBUG} STREQUAL "ON")

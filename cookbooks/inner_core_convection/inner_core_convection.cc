@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2025 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -20,6 +20,7 @@
 
 #include <aspect/material_model/simple.h>
 #include <aspect/heating_model/interface.h>
+#include <aspect/geometry_model/interface.h>
 #include <aspect/gravity_model/radial_linear.h>
 #include <deal.II/base/parsed_function.h>
 

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2020 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2020 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -103,8 +103,8 @@ namespace aspect
                              const std::vector<double> &volume_fractions,
                              const SymmetricTensor<2,dim> &strain_rate,
                              std::vector<double> &partial_strain_rates,
-                             const std::vector<double> &phase_function_values = std::vector<double>(),
-                             const std::vector<unsigned int> &n_phase_transitions_per_composition = std::vector<unsigned int>()) const;
+                             const std::vector<double> &phase_function_values = {},
+                             const std::vector<unsigned int> &n_phase_transitions_per_composition = {}) const;
 
         private:
           /**
@@ -122,8 +122,8 @@ namespace aspect
                                        const std::vector<double> &volume_fractions,
                                        const SymmetricTensor<2,dim> &strain_rate,
                                        std::vector<double> &partial_strain_rates,
-                                       const std::vector<double> &phase_function_values = std::vector<double>(),
-                                       const std::vector<unsigned int> &n_phase_transitions_per_composition = std::vector<unsigned int>()) const;
+                                       const std::vector<double> &phase_function_values = {},
+                                       const std::vector<unsigned int> &n_phase_transitions_per_composition = {}) const;
 
           /**
            * Compute the total strain rate and the first derivative of log strain rate
@@ -150,8 +150,8 @@ namespace aspect
                                        const std::vector<double> &volume_fractions,
                                        const SymmetricTensor<2,dim> &strain_rate,
                                        std::vector<double> &partial_strain_rates,
-                                       const std::vector<double> &phase_function_values = std::vector<double>(),
-                                       const std::vector<unsigned int> &n_phase_transitions_per_composition = std::vector<unsigned int>()) const;
+                                       const std::vector<double> &phase_function_values = {},
+                                       const std::vector<unsigned int> &n_phase_transitions_per_composition = {}) const;
 
 
           /**
@@ -169,8 +169,8 @@ namespace aspect
                                          const unsigned int composition,
                                          const SymmetricTensor<2,dim> &strain_rate,
                                          std::vector<double> &partial_strain_rates,
-                                         const std::vector<double> &phase_function_values = std::vector<double>(),
-                                         const std::vector<unsigned int> &n_phase_transitions_per_composition = std::vector<unsigned int>()) const;
+                                         const std::vector<double> &phase_function_values = {},
+                                         const std::vector<unsigned int> &n_phase_transitions_per_composition = {}) const;
 
           /**
            * Compute the total strain rate and the first derivative of log strain rate
@@ -196,15 +196,15 @@ namespace aspect
            */
           bool use_diffusion_creep;
           /**
-           *  This variable is read from the parameter file through a parameter called 'Include dislocation creep in composite rheology'.
+           * This variable is read from the parameter file through a parameter called 'Include dislocation creep in composite rheology'.
            */
           bool use_dislocation_creep;
           /**
-           *  This variable is read from the parameter file through a parameter called 'Include Peierls creep in composite rheology'.
+           * This variable is read from the parameter file through a parameter called 'Include Peierls creep in composite rheology'.
            */
           bool use_peierls_creep;
           /**
-           *  This variable is read from the parameter file through a parameter called 'Include Drucker Prager plasticity in composite rheology'.
+           * This variable is read from the parameter file through a parameter called 'Include Drucker Prager plasticity in composite rheology'.
            */
           bool use_drucker_prager;
 

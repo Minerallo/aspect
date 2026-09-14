@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2018 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -19,8 +19,10 @@
 */
 
 
-#include <aspect/simulator.h>
 #include <aspect/time_stepping/convection_time_step.h>
+
+#include <aspect/gravity_model/interface.h>
+
 #include <aspect/melt.h>
 #include <aspect/utilities.h>
 

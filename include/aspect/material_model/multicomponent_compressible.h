@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2014 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2014 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -107,10 +107,10 @@ namespace aspect
          */
 
         /**
-        * Creates additional output objects of type PrescribedFieldOutput filled with
-        * the densities (necessary for the projected density approximation of
-        * the Stokes equation).
-        */
+         * Creates additional output objects of type PrescribedFieldOutput filled with
+         * the densities (necessary for the projected density approximation of
+         * the Stokes equation).
+         */
         void
         create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const override;
 

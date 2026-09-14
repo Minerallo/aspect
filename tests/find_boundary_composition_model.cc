@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -23,7 +23,7 @@
 #include <aspect/geometry_model/box.h>
 #include <aspect/boundary_composition/initial_composition.h>
 #include <aspect/boundary_composition/box.h>
-#include <aspect/simulator.h>
+
 
 #include <utility>
 #include <limits>

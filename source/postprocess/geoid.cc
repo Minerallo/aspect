@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
+ Copyright (C) 2015 - 2026 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -19,12 +19,13 @@
  */
 
 
-#include <aspect/simulator.h>
-#include <aspect/mesh_deformation/free_surface.h>
-#include <aspect/utilities.h>
 #include <aspect/postprocess/geoid.h>
 #include <aspect/postprocess/dynamic_topography.h>
 #include <aspect/postprocess/boundary_densities.h>
+
+#include <aspect/gravity_model/interface.h>
+#include <aspect/mesh_deformation/free_surface.h>
+#include <aspect/utilities.h>
 #include <aspect/geometry_model/spherical_shell.h>
 
 #include <deal.II/base/quadrature_lib.h>

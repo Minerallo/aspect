@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -19,7 +19,7 @@
 */
 
 #include <algorithm>
-#include <aspect/simulator.h>
+
 #include <deal.II/grid/tria.h>
 #include <aspect/material_model/interface.h>
 #include <aspect/simulator_access.h>

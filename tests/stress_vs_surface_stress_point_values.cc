@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,4 +18,4 @@
   <http://www.gnu.org/licenses/>.
 */
 
-#include "simple_shear.cc"
+#include "benchmarks/simple_shear.cc"

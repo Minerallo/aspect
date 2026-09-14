@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -22,8 +22,6 @@
 #define _aspect_mesh_deformation_fastscape_h
 
 #include <aspect/global.h>
-
-#ifdef ASPECT_WITH_FASTSCAPE
 
 #include <aspect/mesh_deformation/interface.h>
 #include <deal.II/base/parsed_function.h>
@@ -70,6 +68,19 @@ namespace aspect
         compute_velocity_constraints_on_boundary(const DoFHandler<dim> &mesh_deformation_dof_handler,
                                                  AffineConstraints<double> &mesh_velocity_constraints,
                                                  const std::set<types::boundary_id> &boundary_ids) const override;
+
+        /**
+         * This function returns the compositional field value at the
+         * requested point on the requested boundary. If the fastscape
+         * plugin cannot provide a boundary condition for a field (e.g.
+         * for a field storing viscoelastic stresses), a value of zero
+         * is returned.
+         *
+         * @copydoc aspect::MeshDeformation::Interface::boundary_composition()
+         */
+        double boundary_composition (const types::boundary_id boundary_indicator,
+                                     const Point<dim> &position,
+                                     const unsigned int compositional_field) const override;
 
         /**
          * Returns whether or not the plugin requires surface stabilization
@@ -730,5 +741,4 @@ namespace aspect
   }
 }
 
-#endif
 #endif

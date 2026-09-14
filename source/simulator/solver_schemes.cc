@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2017 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2017 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -507,8 +507,8 @@ namespace aspect
     assemble_stokes_system ();
 
     // build the preconditioner
-    if (stokes_matrix_free)
-      stokes_matrix_free->build_preconditioner();
+    if (is_stokes_matrix_free())
+      dynamic_cast<StokesMatrixFreeHandler<dim>*>(stokes_solver.get())->build_preconditioner();
     else
       build_stokes_preconditioner();
 
@@ -596,8 +596,8 @@ namespace aspect
     // build the preconditioner
     auto build_preconditioner = [&]()
     {
-      if (stokes_matrix_free)
-        stokes_matrix_free->build_preconditioner();
+      if (is_stokes_matrix_free())
+        dynamic_cast<StokesMatrixFreeHandler<dim>*>(stokes_solver.get())->build_preconditioner();
       else
         build_stokes_preconditioner();
     };

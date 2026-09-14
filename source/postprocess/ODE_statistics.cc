@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -21,11 +21,7 @@
 
 #include <aspect/postprocess/ODE_statistics.h>
 
-#include <deal.II/base/quadrature_lib.h>
-#include <deal.II/fe/fe_values.h>
-#include <aspect/simulator.h>
-
-
+#include <aspect/simulator_signals.h>
 
 namespace aspect
 {
@@ -71,17 +67,11 @@ namespace aspect
     std::pair<std::string,std::string>
     ODEStatistics<dim>::execute (TableHandler &statistics)
     {
-#if DEAL_II_VERSION_GTE(9,6,0)
       const double average_iteration_count = number_of_solves > 0
                                              ?
                                              total_iteration_count / number_of_solves
                                              :
                                              total_iteration_count;
-#else
-      // The computation is not correct for dealii versions older than
-      // June 2024.
-      const double average_iteration_count = std::numeric_limits<double>::quiet_NaN();
-#endif
       statistics.add_value("Average iterations for ODE solver",
                            average_iteration_count);
 

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2023 by the authors of the ASPECT code.
+  Copyright (C) 2023 - 2025 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,7 +18,9 @@
   <http://www.gnu.org/licenses/>.
 */
 
-#include <aspect/simulator.h>
+
+#include <aspect/simulator_signals.h>
+#include <aspect/introspection.h>
 #include <aspect/parameters.h>
 #include <aspect/material_model/utilities.h>
 

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2026 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -55,20 +55,13 @@ namespace aspect
 
         for (auto it = begin_particle; it != end_particle; ++it)
           {
-#if DEAL_II_VERSION_GTE(9, 6, 0)
             // Get a reference to the particle location, so that we can update it in-place
             Point<dim> &location = it->get_location();
-#else
-            Point<dim> location = it->get_location();
-#endif
             location += dt * (*old_velocity);
 
             if (at_periodic_boundary)
               this->get_geometry_model().adjust_positions_for_periodicity(location);
 
-#if !DEAL_II_VERSION_GTE(9, 6, 0)
-            it->set_location(location);
-#endif
             ++old_velocity;
           }
       }

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -20,7 +20,6 @@
 
 
 #include <aspect/termination_criteria/interface.h>
-#include <aspect/simulator.h>
 #include <aspect/utilities.h>
 
 #include <typeinfo>

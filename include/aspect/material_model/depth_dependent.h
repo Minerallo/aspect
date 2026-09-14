@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2014 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2014 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -130,7 +130,7 @@ namespace aspect
          */
         std::vector<double> depth_values;
         /**
-         *  This variable is read from the parameter file through a parameter called 'Viscosity list'.
+         * This variable is read from the parameter file through a parameter called 'Viscosity list'.
          */
         std::vector<double> viscosity_values;
 

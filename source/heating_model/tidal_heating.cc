@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2025 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -21,7 +21,6 @@
 
 #include <aspect/heating_model/tidal_heating.h>
 
-#include <aspect/simulator.h>
 #include <aspect/geometry_model/interface.h>
 #include <aspect/geometry_model/chunk.h>
 #include <aspect/geometry_model/two_merged_chunks.h>

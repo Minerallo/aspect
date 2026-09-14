@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -23,6 +23,7 @@
 #include <aspect/advection_field.h>
 #include <aspect/mesh_deformation/free_surface.h>
 #include <aspect/mesh_deformation/interface.h>
+#include <aspect/simulator/solver/stokes_matrix_free.h>
 #include <aspect/particle/manager.h>
 
 namespace WorldBuilder
@@ -850,12 +851,15 @@ namespace aspect
   }
 
 
+
   template <int dim>
   double
   SimulatorAccess<dim>::get_pressure_scaling () const
   {
     return (simulator->pressure_scaling);
   }
+
+
 
   template <int dim>
   bool
@@ -864,12 +868,25 @@ namespace aspect
     return simulator->do_pressure_rhs_compatibility_modification;
   }
 
+
+
+  template <int dim>
+  bool
+  SimulatorAccess<dim>::stokes_A_block_is_symmetric () const
+  {
+    return simulator->stokes_A_block_is_symmetric();
+  }
+
+
+
   template <int dim>
   bool
   SimulatorAccess<dim>::model_has_prescribed_stokes_solution () const
   {
     return (simulator->prescribed_stokes_solution.get() != nullptr);
   }
+
+
 
   template <int dim>
   const Postprocess::Manager<dim> &
@@ -910,9 +927,9 @@ namespace aspect
 
 
   template <int dim>
-  bool SimulatorAccess<dim>::is_stokes_matrix_free()
+  bool SimulatorAccess<dim>::is_stokes_matrix_free() const
   {
-    return (simulator->stokes_matrix_free ? true : false);
+    return simulator->is_stokes_matrix_free();
   }
 
 
@@ -921,9 +938,18 @@ namespace aspect
   const StokesMatrixFreeHandler<dim> &
   SimulatorAccess<dim>::get_stokes_matrix_free () const
   {
-    Assert (simulator->stokes_matrix_free.get() != nullptr,
+    Assert (simulator->is_stokes_matrix_free(),
             ExcMessage("You can not call this function if the matrix-free Stokes solver is not used."));
-    return *(simulator->stokes_matrix_free);
+    return *dynamic_cast<StokesMatrixFreeHandler<dim>*>(simulator->stokes_solver.get());
+  }
+
+
+
+  template <int dim>
+  const StokesSolver::Interface<dim> &
+  SimulatorAccess<dim>::get_stokes_solver () const
+  {
+    return *(simulator->stokes_solver.get());
   }
 
 

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2023 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2023 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -521,19 +521,19 @@ namespace aspect
         double trench_viscosity;
 
         /**
-        * Parameter that determines the thickness of weak zones above the slabs
-        * in the slab2 model.
-        */
+         * Parameter that determines the thickness of weak zones above the slabs
+         * in the slab2 model.
+         */
         double trench_weak_zone_thickness;
 
         /**
-        * Parameter that determines the depth to the top of the mid mantle layer
-        */
+         * Parameter that determines the depth to the top of the mid mantle layer
+         */
         double depth_to_top_of_mid_mantle_viscosity_layer;
 
         /**
-        * Parameter that determines the depth to the base of the mid mantle layer
-        */
+         * Parameter that determines the depth to the base of the mid mantle layer
+         */
         double depth_to_base_of_mid_mantle_viscosity_layer;
 
         /**

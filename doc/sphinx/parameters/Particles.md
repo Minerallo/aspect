@@ -89,7 +89,7 @@ Select one of the following models:
 :name: parameters:Particles/List_20of_20particle_20properties
 **Default value:**
 
-**Pattern:** [MultipleSelection composition|composition reaction|cpo bingham average|cpo elastic tensor|crust and lithosphere formation|crystal preferred orientation|elastic stress|elastic tensor decomposition|function|grain size|initial composition|initial position|integrated strain|integrated strain invariant|melt particle|pT path|position|reference position|strain rate|velocity|velocity gradient|viscoplastic strain invariants ]
+**Pattern:** [MultipleSelection composition|composition reaction|cpo bingham average|cpo elastic tensor|crust and lithosphere formation|crystal preferred orientation|elastic stress|elastic tensor decomposition|function|general composition reaction|grain size|initial composition|initial position|integrated strain|integrated strain invariant|melt particle|pT path|particle generation time|position|reference position|strain rate|velocity|velocity gradient|viscoplastic strain invariants ]
 
 **Documentation:** A comma separated list of particle properties that should be tracked. By default none is selected, which means only position, velocity and id of the particles are output.
 
@@ -113,6 +113,8 @@ The following properties are available:
 
 &lsquo;function&rsquo;: Implementation of a model in which the particle property is set by evaluating an explicit function at the initial position of each particle. The function is defined in the parameters in section &ldquo;Particles|Function&rdquo;. The format of these functions follows the syntax understood by the muparser library, see {ref}`sec:run-aspect:parameters-overview:muparser-format`.
 
+&lsquo;general composition reaction&rsquo;: A particle property that stores compositional fields and updates them using the &rsquo;reaction terms&rsquo; returned by the material model. While this particle property allows fields to be tracked on different particle managers, for now it is recommended to have only one particle manager with this property in your simulation.
+
 &lsquo;grain size&rsquo;: A plugin in which the particle property is defined as the evolving grain size of a particle. See the grain_size material model documentation for more detailed information.
 
 &lsquo;initial composition&rsquo;: Implementation of a plugin in which the particle property is given as the initial composition at the particle&rsquo;s initial position. The &rsquo;Selected compositional fields&rsquo; chooses which compositional fields to track on this particle manager. If no &rsquo;Selected compositional fields&rsquo; are chosen, the particle manager gets as many properties as there are compositional fields.
@@ -126,6 +128,8 @@ The following properties are available:
 &lsquo;melt particle&rsquo;: Implementation of a plugin in which the particle property is defined as presence of melt above a threshold, which can be set as an input parameter. This property is set to 0 if melt is not present and set to 1 if melt is present.
 
 &lsquo;pT path&rsquo;: Implementation of a plugin in which the particle property is defined as the current pressure and temperature at this position. This can be used to generate pressure-temperature paths of material points over time.
+
+&lsquo;particle generation time&rsquo;: A plugin that stores the model time at which the particle was generated in the model domain.
 
 &lsquo;position&rsquo;: Implementation of a plugin in which the particle property is defined as the current position.
 
@@ -273,13 +277,13 @@ The following properties are available:
 **Documentation:** The seed used to generate random numbers. This will make sure that results are reproducible as long as the problem is run with the same amount of MPI processes. It is implemented as final seed = Random number seed + MPI Rank.
 ::::
 
-::::{dropdown} __Parameter:__ {ref}`Use rotation matrix<parameters:Particles/CPO_20Bingham_20Average/Use_20rotation_20matrix>`
-:name: parameters:Particles/CPO_20Bingham_20Average/Use_20rotation_20matrix
-**Default value:** true
+::::{dropdown} __Parameter:__ {ref}`Rotation format<parameters:Particles/CPO_20Bingham_20Average/Rotation_20format>`
+:name: parameters:Particles/CPO_20Bingham_20Average/Rotation_20format
+**Default value:** full matrix
 
-**Pattern:** [Bool]
+**Pattern:** [List of <[Anything]> of length 0...4294967295 (inclusive)]
 
-**Documentation:** This determines whether the orientations will be saved as rotation matrices or Euler angles. Setting it to fause means that the orientations will be saved as Euler angles.
+**Documentation:** Options: full matrix, euler angles, quaternion. This determines whether the orientations will be saved as: full matrix: returns 3 eigenvectors, i.e. one full rotation matrix for each axis; Euler angles: returns one set of 3 Euler angles in the zxz convention (not equivalent to the Bunge convention); they represent a passive rotation matrix derived from the principal eigenvectors of each axis; quaternion: returns a unit quaternion representing an active rotation matrix derived from the principal eigenvectors of each axis.
 ::::
 
 (parameters:Particles/Composition_20reaction)=
@@ -439,7 +443,7 @@ A typical example would be to set this runtime parameter to &lsquo;pi=3.14159265
 
 **Pattern:** [List of <[Anything]> of length 0...4294967295 (inclusive)]
 
-**Documentation:** Options: Spin tensor
+**Documentation:** Options: Spin tensor, D-Rex 2004
 ::::
 
 ::::{dropdown} __Parameter:__ {ref}`Number of grains per particle<parameters:Particles/Crystal_20Preferred_20Orientation/Number_20of_20grains_20per_20particle>`
@@ -650,6 +654,17 @@ If the function you are describing represents a vector-valued function with mult
 **Pattern:** [Anything]
 
 **Documentation:** The names of the variables as they will be used in the function, separated by commas. By default, the names of variables at which the function will be evaluated are &lsquo;x&rsquo; (in 1d), &lsquo;x,y&rsquo; (in 2d) or &lsquo;x,y,z&rsquo; (in 3d) for spatial coordinates and &lsquo;t&rsquo; for time. You can then use these variable names in your function expression and they will be replaced by the values of these variables at which the function is currently evaluated. However, you can also choose a different set of names for the independent variables at which to evaluate your function expression. For example, if you work in spherical coordinates, you may wish to set this input parameter to &lsquo;r,phi,theta,t&rsquo; and then use these variable names in your function expression.
+::::
+
+(parameters:Particles/General_20composition_20reaction)=
+## **Subsection:** Particles / General composition reaction
+::::{dropdown} __Parameter:__ {ref}`Selected compositional fields<parameters:Particles/General_20composition_20reaction/Selected_20compositional_20fields>`
+:name: parameters:Particles/General_20composition_20reaction/Selected_20compositional_20fields
+**Default value:** all
+
+**Pattern:** [List of <[Anything]> of length 0...4294967295 (inclusive)]
+
+**Documentation:** A list that determines which compositional fields are stored for particles in this particle manager. The value &rsquo;all&rsquo; selects every compositional field.
 ::::
 
 (parameters:Particles/Generator)=

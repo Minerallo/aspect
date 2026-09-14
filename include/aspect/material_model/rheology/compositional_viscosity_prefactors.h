@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2024 by the authors of the ASPECT code.
+  Copyright (C) 2024 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -101,21 +101,21 @@ namespace aspect
             interface_weakening,
           };
           /**
-           *  This variable is read from the parameter file through a parameter called 'Viscosity prefactor scheme'.
+           * This variable is read from the parameter file through a parameter called 'Viscosity prefactor scheme'.
            */
           ViscosityPrefactorScheme viscosity_prefactor_scheme;
 
           // Initialize variables for the water fugacity calculation, from HK04
           /**
-           *  This variable is read from the parameter file through a parameter called 'Water fugacity exponents for diffusion creep'.
+           * This variable is read from the parameter file through a parameter called 'Water fugacity exponents for diffusion creep'.
            */
           std::vector<double> diffusion_water_fugacity_exponents;
           /**
-           *  This variable is read from the parameter file through a parameter called 'Water fugacity exponents for dislocation creep'.
+           * This variable is read from the parameter file through a parameter called 'Water fugacity exponents for dislocation creep'.
            */
           std::vector<double> dislocation_water_fugacity_exponents;
           /**
-           *  This variable is read from the parameter file through a parameter called 'Minimum mass fraction bound water content for fugacity'.
+           * This variable is read from the parameter file through a parameter called 'Minimum mass fraction bound water content for fugacity'.
            */
           std::vector<double> minimum_mass_fraction_water_for_dry_creep;
 

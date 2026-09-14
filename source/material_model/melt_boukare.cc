@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,13 +18,14 @@
   <http://www.gnu.org/licenses/>.
 */
 
-#include <algorithm>
-#include <aspect/adiabatic_conditions/interface.h>
 #include <aspect/material_model/melt_boukare.h>
+
+#include <aspect/adiabatic_conditions/interface.h>
 #include <aspect/gravity_model/interface.h>
-#include <aspect/simulator.h>
 
 #include <deal.II/base/parameter_handler.h>
+
+#include <algorithm>
 
 
 namespace aspect

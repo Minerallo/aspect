@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2020 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2020 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -19,8 +19,8 @@
 */
 
 #include <aspect/postprocess/visualization/boundary_velocity_residual.h>
+
 #include <aspect/postprocess/boundary_velocity_residual_statistics.h>
-#include <aspect/simulator.h>
 
 namespace aspect
 {

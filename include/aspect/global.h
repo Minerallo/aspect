@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -290,8 +290,8 @@ namespace aspect
     using BlockSparseMatrix = dealii::LinearAlgebra::TpetraWrappers::BlockSparseMatrix<double>;
 #else
     /**
-    * Typedef for the vector type used.
-    */
+     * Typedef for the vector type used.
+     */
     using Vector = dealii::TrilinosWrappers::MPI::Vector;
 
     /**

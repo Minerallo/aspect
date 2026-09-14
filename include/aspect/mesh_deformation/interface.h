@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -137,6 +137,26 @@ namespace aspect
         compute_velocity_constraints_on_boundary(const DoFHandler<dim> &mesh_deformation_dof_handler,
                                                  AffineConstraints<double> &mesh_velocity_constraints,
                                                  const std::set<types::boundary_id> &boundary_ids) const;
+
+        /**
+         * Return the composition that is to hold at a particular position on
+         * the boundary of the domain.
+         *
+         * @param boundary_indicator The boundary indicator of the part of the
+         * boundary of the domain on which the point is located at which we
+         * are requesting the composition.
+         * @param position The position of the point at which we ask for the
+         * composition.
+         * @param compositional_field The index of the compositional field
+         * between 0 and @p parameters.n_compositional_fields.
+         * @return Boundary value of the compositional field @p
+         * compositional_field at the position @p position.
+         */
+        virtual
+        double
+        boundary_composition (const types::boundary_id boundary_indicator,
+                              const Point<dim> &position,
+                              const unsigned int compositional_field) const;
     };
 
 
@@ -379,6 +399,18 @@ namespace aspect
         get_level_mapping(const unsigned int level) const;
 
         /**
+         * Loop over all mesh deformation objects that are active on the boundary
+         * with the ID boundary_indicator and sum their contributions to the compositional field
+         * with index compositional_field at the given position.
+         * For example, the plugin might want to set the field representing sediment to 1
+         * if deposition occurs, or a field representing deposition depth to the depth below sea level.
+         */
+        double
+        boundary_composition (const types::boundary_id boundary_indicator,
+                              const Point<dim> &position,
+                              const unsigned int compositional_field) const;
+
+        /**
          * For the current plugin subsystem, write a connection graph of all of the
          * plugins we know about, in the format that the
          * programs dot and neato understand. This allows for a visualization of
@@ -453,6 +485,14 @@ namespace aspect
          */
         template <unsigned int mesh_deformation_fe_degree>
         void compute_mesh_displacements_gmg_for_degree();
+
+        /**
+         * Check that the current mesh deformation has not produced any cells
+         * with a negative Jacobian determinant (inverted cells) in the deformed
+         * mesh. If such a cell is found, this function aborts with an
+         * explanatory error message.
+         */
+        void check_mesh_deformation ();
 
         /**
          * Set up the vector with initial displacements of the mesh

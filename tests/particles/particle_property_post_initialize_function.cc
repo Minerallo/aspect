@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,7 +18,8 @@
   <http://www.gnu.org/licenses/>.
 */
 
-#include <aspect/simulator.h>
+
+#include <aspect/particle/manager.h>
 #include <aspect/simulator_access.h>
 #include <aspect/particle/property/interface.h>
 

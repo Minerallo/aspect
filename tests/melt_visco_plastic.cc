@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -22,8 +22,9 @@
 #define _aspect_material_model_melt_visco_plastic_h
 
 #include <algorithm>
+#include <aspect/adiabatic_conditions/interface.h>
 #include <aspect/material_model/interface.h>
-#include <aspect/simulator.h>
+
 #include <aspect/simulator_access.h>
 #include <aspect/postprocess/melt_statistics.h>
 #include <aspect/melt.h>

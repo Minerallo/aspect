@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2018 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -305,8 +305,8 @@ namespace aspect
 
 
     /**
-    * Operator for the B^T block.
-    */
+     * Operator for the B^T block.
+     */
     template <int dim, int degree_v, typename number>
     class BTBlockOperator
       : public MatrixFreeOperators::Base<dim, dealii::LinearAlgebra::distributed::BlockVector<number>>

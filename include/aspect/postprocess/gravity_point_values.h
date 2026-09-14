@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2018 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2018 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -68,7 +68,7 @@ namespace aspect
         void initialize() override;
 
         /**
-         * Specify the creation of output_gravity.txt.
+         * Specify the creation of gravity_point_values.txt.
          */
         std::pair<std::string,std::string> execute (TableHandler &) override;
 

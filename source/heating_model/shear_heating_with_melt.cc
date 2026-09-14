@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -21,8 +21,6 @@
 
 #include <aspect/heating_model/shear_heating_with_melt.h>
 #include <aspect/melt.h>
-#include <aspect/simulator.h>
-#include <deal.II/numerics/fe_field_function.h>
 
 
 namespace aspect

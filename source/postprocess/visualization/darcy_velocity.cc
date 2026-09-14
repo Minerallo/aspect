@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -20,9 +20,11 @@
 
 
 #include <aspect/postprocess/visualization/darcy_velocity.h>
+
+#include <aspect/gravity_model/interface.h>
+
 #include <aspect/utilities.h>
 #include <aspect/melt.h>
-#include <aspect/simulator.h>
 
 namespace aspect
 {

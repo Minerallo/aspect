@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2025 - by the authors of the ASPECT code.
+  Copyright (C) 2025 - 2026 - by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -172,8 +172,8 @@ namespace aspect
                                    const unsigned int z_index) const;
 
         /**
-        * Calculates the relevant statistics from the contents of the PDF.
-        */
+         * Calculates the relevant statistics from the contents of the PDF.
+         */
         void
         compute_statistical_values();
 

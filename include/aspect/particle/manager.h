@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2012 - 2021 by the authors of the ASPECT code.
+ Copyright (C) 2012 - 2026 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -129,7 +129,7 @@ namespace aspect
 
         /**
          * Update the particle manager at the beginning of each time step.
-        */
+         */
         void update();
 
         /**
@@ -261,15 +261,9 @@ namespace aspect
          * before a refinement step. A weight is attached to every cell
          * depending on the number of contained particles.
          */
-#if DEAL_II_VERSION_GTE(9,6,0)
         unsigned int
         cell_weight(const typename parallel::distributed::Triangulation<dim>::cell_iterator &cell,
                     const CellStatus status);
-#else
-        unsigned int
-        cell_weight(const typename parallel::distributed::Triangulation<dim>::cell_iterator &cell,
-                    const typename parallel::distributed::Triangulation<dim>::CellStatus status);
-#endif
 
         /**
          * Update the particle properties if necessary.

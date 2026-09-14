@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2026 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -20,7 +20,6 @@
 
 
 #include <aspect/particle/property/melt_particle.h>
-#include <aspect/simulator.h>
 #include <aspect/melt.h>
 
 namespace aspect

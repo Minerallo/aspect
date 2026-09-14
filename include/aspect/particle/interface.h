@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
+ Copyright (C) 2015 - 2026 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -47,7 +47,7 @@ namespace aspect
          *
          * @param particle_manager_index The index of the particle manager this plugin belongs to.
          */
-        void set_particle_manager_index(unsigned int particle_manager_index);
+        void set_particle_manager_index(const unsigned int particle_manager_index);
 
         /**
          * @brief Gets which particle manager the plugin belong to.

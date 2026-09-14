@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2016 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2016 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,13 +18,10 @@
   <http://www.gnu.org/licenses/>.
 */
 
-#include <aspect/simulator.h>
-#include <aspect/simulator_access.h>
-#include <aspect/utilities.h>
-#include <aspect/geometry_model/spherical_shell.h>
 #include <aspect/postprocess/visualization/geoid.h>
 
-
+#include <aspect/utilities.h>
+#include <aspect/geometry_model/spherical_shell.h>
 
 namespace aspect
 {

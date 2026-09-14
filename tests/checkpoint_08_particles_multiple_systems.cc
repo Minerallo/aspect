@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2024 by the authors of the ASPECT code.
+  Copyright (C) 2024 - 2025 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,8 +18,12 @@
   <http://www.gnu.org/licenses/>.
 */
 
-#include <aspect/simulator.h>
+
+#include <aspect/global.h>
+
+#include <cstdlib>
 #include <iostream>
+#include <string>
 
 /*
  * Launch the following function when this plugin is created. Launch ASPECT

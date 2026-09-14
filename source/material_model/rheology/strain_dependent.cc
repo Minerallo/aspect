@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2019 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,21 +18,23 @@
   <http://www.gnu.org/licenses/>.
 */
 
-#include <algorithm>
 #include <aspect/material_model/rheology/strain_dependent.h>
+
+#include <aspect/utilities.h>
+#include <aspect/postprocess/particles.h>
+#include <aspect/particle/manager.h>
+#include <aspect/particle/property/interface.h>
+#include <aspect/simulator_signals.h>
 
 #include <deal.II/base/signaling_nan.h>
 #include <deal.II/base/parameter_handler.h>
-#include <aspect/utilities.h>
-#include <aspect/postprocess/particles.h>
-#include <aspect/particle/property/interface.h>
-#include <aspect/simulator.h>
-#include <aspect/simulator_signals.h>
-
 #include <deal.II/fe/fe_values.h>
 #include <deal.II/numerics/fe_field_function.h>
 #include <deal.II/base/quadrature_lib.h>
 #include <limits>
+
+#include <algorithm>
+
 
 namespace aspect
 {

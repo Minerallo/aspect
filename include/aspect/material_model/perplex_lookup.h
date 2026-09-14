@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -97,31 +97,31 @@ namespace aspect
 
       private:
         /**
-         *  This variable is read from the parameter file through a parameter called 'PerpleX input file name'.
+         * This variable is read from the parameter file through a parameter called 'PerpleX input file name'.
          */
         std::string perplex_file_name;
         /**
-         *  This variable is read from the parameter file through a parameter called 'Viscosity'.
+         * This variable is read from the parameter file through a parameter called 'Viscosity'.
          */
         double eta;
         /**
-         *  This variable is read from the parameter file through a parameter called 'Thermal conductivity'.
+         * This variable is read from the parameter file through a parameter called 'Thermal conductivity'.
          */
         double k_value;
         /**
-         *  This variable is read from the parameter file through a parameter called 'Minimum material temperature'.
+         * This variable is read from the parameter file through a parameter called 'Minimum material temperature'.
          */
         double min_temperature;
         /**
-         *  This variable is read from the parameter file through a parameter called 'Maximum material temperature'.
+         * This variable is read from the parameter file through a parameter called 'Maximum material temperature'.
          */
         double max_temperature;
         /**
-         *  This variable is read from the parameter file through a parameter called 'Minimum material pressure'.
+         * This variable is read from the parameter file through a parameter called 'Minimum material pressure'.
          */
         double min_pressure;
         /**
-         *  This variable is read from the parameter file through a parameter called 'Maximum material pressure'.
+         * This variable is read from the parameter file through a parameter called 'Maximum material pressure'.
          */
         double max_pressure;
     };

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2017 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2017 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -20,7 +20,8 @@
 
 
 #include <aspect/postprocess/global_statistics.h>
-#include <aspect/simulator.h>
+
+#include <aspect/simulator_signals.h>
 
 namespace aspect
 {

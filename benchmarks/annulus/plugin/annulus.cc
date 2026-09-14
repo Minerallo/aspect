@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2025 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -17,13 +17,15 @@
   along with ASPECT; see the file LICENSE.  If not see
   <http://www.gnu.org/licenses/>.
 */
-#include <aspect/simulator.h>
+
 #include <aspect/boundary_velocity/interface.h>
 #include <aspect/simulator_access.h>
 #include <aspect/global.h>
 #include <aspect/utilities.h>
 
 #include <aspect/gravity_model/interface.h>
+#include <aspect/initial_composition/interface.h>
+#include <aspect/particle/property/interface.h>
 #include <aspect/postprocess/dynamic_topography.h>
 #include <aspect/postprocess/visualization.h>
 

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -19,21 +19,20 @@
 */
 
 #include <aspect/particle/manager.h>
+
 #include <aspect/global.h>
 #include <aspect/utilities.h>
-#include <aspect/simulator.h>
 #include <aspect/melt.h>
+#include <aspect/particle/distribution.h>
 
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/fe/fe_values.h>
 #include <deal.II/grid/grid_tools.h>
-
 #include <deal.II/fe/mapping_cartesian.h>
 
 #include <boost/serialization/map.hpp>
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/archive/text_iarchive.hpp>
-#include <aspect/particle/distribution.h>
 
 namespace aspect
 {
@@ -59,6 +58,8 @@ namespace aspect
     template <int dim>
     Manager<dim>::~Manager()
       = default;
+
+
 
     template <int dim>
     Manager<dim>::Manager(Manager &&other) noexcept
@@ -1003,7 +1004,13 @@ namespace aspect
     void
     Manager<dim>::advance_timestep()
     {
-      this->get_pcout() << "   Advecting particles... " << std::flush;
+      this->get_pcout() << "   Advecting particles"
+                        << (this->n_particle_managers() >1 ?
+                            // print the particle world number if there are multiple particle worlds,
+                            // starting at one
+                            " (particle manager " + std::to_string(particle_manager_index+1) + ")" :
+                            "")
+                        << "... " << std::flush;
       do
         {
           advect_particles();

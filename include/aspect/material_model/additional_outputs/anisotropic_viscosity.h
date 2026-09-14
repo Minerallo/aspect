@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2025 - by the authors of the ASPECT code.
+  Copyright (C) 2025 - 2026 - by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -29,10 +29,10 @@ namespace aspect
   namespace MaterialModel
   {
     /**
-      * Additional output fields for anisotropic viscosities to be added to
-      * the MaterialModel::MaterialModelOutputs structure and filled in the
-      * MaterialModel::Interface::evaluate() function.
-      */
+     * Additional output fields for anisotropic viscosities to be added to
+     * the MaterialModel::MaterialModelOutputs structure and filled in the
+     * MaterialModel::Interface::evaluate() function.
+     */
     template <int dim>
     class AnisotropicViscosity : public NamedAdditionalMaterialOutputs<dim>
     {

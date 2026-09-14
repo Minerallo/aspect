@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -150,6 +150,11 @@ namespace aspect
   namespace Particle
   {
     template <int dim> class Manager;
+  }
+
+  namespace StokesSolver
+  {
+    template <int dim> class Interface;
   }
 
   namespace TimeStepping
@@ -978,6 +983,16 @@ namespace aspect
       pressure_rhs_needs_compatibility_modification() const;
 
       /**
+       * Return whether to the best of our knowledge the A block of the
+       * Stokes system is symmetric. This is the case for most models, except
+       * if additional non-symmetric terms are added by special assemblers
+       * (e.g., the free surface stabilization term). This can be important
+       * information for picking the preconditioner of the A block.
+       */
+      bool
+      stokes_A_block_is_symmetric() const;
+
+      /**
        * Return whether the model uses a prescribed Stokes solution.
        */
       bool
@@ -1038,7 +1053,7 @@ namespace aspect
       /**
        * Return true if using the block GMG Stokes solver.
        */
-      bool is_stokes_matrix_free();
+      bool is_stokes_matrix_free() const;
 
       /**
        * Return a reference to the StokesMatrixFreeHandler that controls the
@@ -1046,6 +1061,12 @@ namespace aspect
        */
       const StokesMatrixFreeHandler<dim> &
       get_stokes_matrix_free () const;
+
+      /**
+       * Return a reference to the active Stokes solver.
+       */
+      const StokesSolver::Interface<dim> &
+      get_stokes_solver () const;
 
       /**
        * Return a reference to the PrescribedSolution::Manager that manages the
@@ -1071,14 +1092,14 @@ namespace aspect
                                    const bool limit_to_top_faces = false) const;
 
       /**
-      * Eliminate the nullspace of the velocity in the given vector. Both
-      * vectors are expected to contain the current solution.
-      *
-      * @param solution The locally relevant vector for the whole
-      * finite element, this vector will be filled at the end.
-      * @param distributed_stokes_solution only contains velocity and pressure and
-      * only locally owned elements.
-      */
+       * Eliminate the nullspace of the velocity in the given vector. Both
+       * vectors are expected to contain the current solution.
+       *
+       * @param solution The locally relevant vector for the whole
+       * finite element, this vector will be filled at the end.
+       * @param distributed_stokes_solution only contains velocity and pressure and
+       * only locally owned elements.
+       */
       void remove_nullspace(LinearAlgebra::BlockVector &solution,
                             LinearAlgebra::BlockVector &distributed_stokes_solution) const;
 

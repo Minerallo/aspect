@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -31,6 +31,7 @@
 #endif
 
 #include <cstring>
+#include <fstream>
 
 #include <mpi.h>
 

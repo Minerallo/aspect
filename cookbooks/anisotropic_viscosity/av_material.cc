@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2015 - 2023 by the authors of the ASPECT code.
+ Copyright (C) 2015 - 2025 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -39,7 +39,7 @@
 #include <vector>
 
 #include <aspect/simulator_access.h>
-#include <aspect/simulator.h>
+
 #include <aspect/global.h>
 
 #include <deal.II/base/quadrature_lib.h>

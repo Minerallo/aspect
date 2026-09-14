@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2022 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -98,23 +98,23 @@ namespace aspect
 
       private:
         /**
-         *  This variable is read from the parameter file through a parameter called 'Reference temperature'.
+         * This variable is read from the parameter file through a parameter called 'Reference temperature'.
          */
         double reference_T;
         /**
-         *  This variable is read from the parameter file through a parameter called 'Viscosity'.
+         * This variable is read from the parameter file through a parameter called 'Viscosity'.
          */
         double eta;
         /**
-         *  This variable is read from the parameter file through a parameter called 'Composition viscosity prefactor 1'.
+         * This variable is read from the parameter file through a parameter called 'Composition viscosity prefactor 1'.
          */
         double composition_viscosity_prefactor_1;
         /**
-         *  This variable is read from the parameter file through a parameter called 'Composition viscosity prefactor 2'.
+         * This variable is read from the parameter file through a parameter called 'Composition viscosity prefactor 2'.
          */
         double composition_viscosity_prefactor_2;
         /**
-         *  This variable is read from the parameter file through a parameter called 'Thermal viscosity exponent'.
+         * This variable is read from the parameter file through a parameter called 'Thermal viscosity exponent'.
          */
         double thermal_viscosity_exponent;
 

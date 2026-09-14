@@ -48,7 +48,7 @@ namespace aspect
 
       // Take the velocities computed above and constrain the DoF's on the surface of ASPECT's mesh.
       const LinearAlgebra::Vector v_interpolated
-        = interpolate_external_velocities_to_surface_support_points(external_surface_velocities);
+        = interpolate_external_vector_field_to_surface_support_points(external_surface_velocities);
 
       // Create a ghosted vector that contains the interpolated velocities. This is necessary
       // because the constraints are set on all locally relevant DoFs (shared DoFs), not just
@@ -75,14 +75,9 @@ namespace aspect
           if (mesh_velocity_constraints.can_store_line(index))
             if (mesh_velocity_constraints.is_constrained(index)==false)
               {
-#if DEAL_II_VERSION_GTE(9,6,0)
                 mesh_velocity_constraints.add_constraint(index,
                                                          {},
                                                          v_interpolated_ghosted(index));
-#else
-                mesh_velocity_constraints.add_line(index);
-                mesh_velocity_constraints.set_inhomogeneity(index, v_interpolated_ghosted(index));
-#endif
               }
         }
     }
@@ -315,7 +310,7 @@ namespace aspect
     template <int dim>
     LinearAlgebra::Vector
     ParallelUnstructuredInterface<dim>::
-    interpolate_external_velocities_to_surface_support_points (const std::vector<Tensor<1,dim>> &velocities) const
+    interpolate_external_vector_field_to_surface_support_points (const std::vector<Tensor<1,dim>> &velocities) const
     {
       Assert (remote_point_evaluator != nullptr,
               ExcMessage("You can only call this function if you have previously "

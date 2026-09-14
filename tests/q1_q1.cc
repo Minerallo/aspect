@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2025 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -20,12 +20,13 @@
 
 // Check the Donea-Huerta benchmark using the Q1 x Q1 element
 
-#include <aspect/simulator.h>
+
 #include <aspect/material_model/simple.h>
 #include <aspect/boundary_velocity/interface.h>
 #include <aspect/simulator_access.h>
 #include <aspect/global.h>
 #include <aspect/gravity_model/interface.h>
+#include <aspect/postprocess/interface.h>
 #include <aspect/utilities.h>
 
 #include <deal.II/dofs/dof_tools.h>

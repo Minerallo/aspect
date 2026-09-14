@@ -1,4 +1,4 @@
-# Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+# Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 #
 # This file is part of ASPECT.
 #
@@ -493,6 +493,7 @@ add_subdirectory(postprocess)
 add_subdirectory(prescribed_solution)
 add_subdirectory(reactions_and_two_phase_flow)
 add_subdirectory(rheology)
+add_subdirectory(volume_of_fluid)
 
 if (ASPECT_ENABLE_PERFORMANCE_TESTS)
   add_subdirectory(performance)

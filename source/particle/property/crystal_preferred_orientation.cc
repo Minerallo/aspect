@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2026 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -53,6 +53,20 @@ namespace aspect
                                    "there is a compositional field called water."));
             water_index = this->introspection().compositional_index_for_name("water");
           }
+      }
+
+
+
+      template <int dim>
+      void
+      CrystalPreferredOrientation<dim>::update ()
+      {
+        // Set the random number generator seed to a different value for each MPI process and
+        // timestep to ensure that the random numbers are different for each process and timestep,
+        // but at the same time reproducible for each process and timestep. With this trick,
+        // we don't have to serialize the random number generator.
+        const unsigned int my_rank = Utilities::MPI::this_mpi_process(MPI_COMM_WORLD);
+        this->random_number_generator.seed(random_number_seed + my_rank + this->get_timestep_number() + 1234);
       }
 
 
@@ -1151,7 +1165,7 @@ namespace aspect
 
           prm.declare_entry ("CPO derivatives algorithm", "Spin tensor",
                              Patterns::List(Patterns::Anything()),
-                             "Options: Spin tensor");
+                             "Options: Spin tensor, D-Rex 2004");
 
           prm.enter_subsection("Initial grains");
           {
@@ -1236,10 +1250,6 @@ namespace aspect
       void
       CrystalPreferredOrientation<dim>::parse_parameters (ParameterHandler &prm)
       {
-        AssertThrow(dim == 3, ExcMessage("CPO computations are currently only supported for 3d models. "
-                                         "2d computations will work when this assert is removed, but you will need to make sure that the "
-                                         "correct 3d strain-rate and velocity gradient tensors are provided to the algorithm."));
-
         prm.enter_subsection("Crystal Preferred Orientation");
         {
           random_number_seed = prm.get_integer ("Random number seed");
@@ -1385,32 +1395,6 @@ namespace aspect
           prm.leave_subsection();
         }
         prm.leave_subsection ();
-      }
-
-
-
-      template <int dim>
-      void
-      CrystalPreferredOrientation<dim>::save (std::map<std::string, std::string> &status_strings) const
-      {
-        std::ostringstream os;
-        os << random_number_generator;
-        status_strings["CrystalPreferredOrientationParticleProperty"] = os.str();
-      }
-
-
-
-      template <int dim>
-      void
-      CrystalPreferredOrientation<dim>::load (const std::map<std::string, std::string> &status_strings)
-      {
-        const auto saved_state = status_strings.find("CrystalPreferredOrientationParticleProperty");
-        if (saved_state != status_strings.end())
-          {
-            std::istringstream is (saved_state->second);
-            is >> random_number_generator;
-            AssertThrow(!is.fail(), ExcMessage("Could not restore the crystal preferred orientation random number generator."));
-          }
       }
     }
   }

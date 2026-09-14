@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2016 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2016 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -20,10 +20,11 @@
 
 
 #include <aspect/newton.h>
+
+#include <aspect/boundary_traction/interface.h>
+#include <aspect/prescribed_dilation/interface.h>
 #include <aspect/simulator/assemblers/advection.h>
 #include <aspect/simulator/assemblers/stokes.h>
-
-#include <aspect/simulator.h>
 
 namespace aspect
 {

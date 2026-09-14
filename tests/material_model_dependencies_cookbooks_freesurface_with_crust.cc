@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -19,4 +19,4 @@
 */
 
 #include "material_model_dependencies.cc"
-#include "cookbook_simpler_with_crust.cc"
+#include "cookbooks/cookbook_simpler_with_crust.cc"

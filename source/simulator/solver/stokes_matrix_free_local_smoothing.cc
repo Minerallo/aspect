@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2017 - 2025 by the authors of the ASPECT code.
+  Copyright (C) 2017 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -27,7 +27,6 @@
 
 #include <aspect/mesh_deformation/interface.h>
 #include <aspect/mesh_deformation/free_surface.h>
-#include <aspect/melt.h>
 #include <aspect/newton.h>
 
 #include <deal.II/base/template_constraints.h>
@@ -35,10 +34,7 @@
 
 #include <deal.II/matrix_free/tools.h>
 #include <deal.II/lac/solver_gmres.h>
-#include <deal.II/lac/read_write_vector.templates.h>
 #include <deal.II/lac/solver_idr.h>
-#include <deal.II/lac/solver_cg.h>
-#include <deal.II/lac/solver_bicgstab.h>
 #include <deal.II/lac/precondition.h>
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/dofs/dof_handler.h>
@@ -153,7 +149,7 @@ namespace aspect
 
 
   template <int dim, int velocity_degree>
-  void StokesMatrixFreeHandlerLocalSmoothingImplementation<dim, velocity_degree>::assemble ()
+  void StokesMatrixFreeHandlerLocalSmoothingImplementation<dim, velocity_degree>::assemble (LinearAlgebra::BlockVector &system_rhs)
   {
     if (this->get_parameters().mesh_deformation_enabled)
       {
@@ -167,7 +163,7 @@ namespace aspect
 
     evaluate_material_model();
 
-    correct_stokes_rhs();
+    correct_stokes_rhs(system_rhs);
   }
 
   template <int dim, int velocity_degree>
@@ -615,7 +611,7 @@ namespace aspect
 
 
   template <int dim, int velocity_degree>
-  void StokesMatrixFreeHandlerLocalSmoothingImplementation<dim, velocity_degree>::correct_stokes_rhs()
+  void StokesMatrixFreeHandlerLocalSmoothingImplementation<dim, velocity_degree>::correct_stokes_rhs(LinearAlgebra::BlockVector &system_rhs)
   {
     // We never include Newton terms in step 0 and after that we solve with zero boundary conditions.
     // Therefore, we don't need to include Newton terms here.
@@ -632,15 +628,11 @@ namespace aspect
     // has the correct boundary values:
     u0 = 0;
 
-#if DEAL_II_VERSION_GTE(9,6,0)
     IndexSet stokes_dofs (this->get_dof_handler().n_dofs());
     stokes_dofs.add_range (0, u0.size());
     const AffineConstraints<double> current_stokes_constraints
       = this->get_current_constraints().get_view (stokes_dofs);
     current_stokes_constraints.distribute(u0);
-#else
-    this->get_current_constraints().distribute(u0);
-#endif
 
     u0.update_ghost_values();
 
@@ -749,8 +741,8 @@ namespace aspect
     LinearAlgebra::BlockVector stokes_rhs_correction (this->introspection().index_sets.stokes_partitioning, this->get_mpi_communicator());
     internal::ChangeVectorTypes::copy(stokes_rhs_correction,rhs_correction);
 
-    sim.system_rhs.block(0) += stokes_rhs_correction.block(0);
-    sim.system_rhs.block(1) += stokes_rhs_correction.block(1);
+    system_rhs.block(0) += stokes_rhs_correction.block(0);
+    system_rhs.block(1) += stokes_rhs_correction.block(1);
   }
 
 
@@ -1068,14 +1060,14 @@ namespace aspect
       A_block_matrix,
       prec_A,
       /* do_solve_A = */ false,
-      sim.stokes_A_block_is_symmetric(),
+      this->stokes_A_block_is_symmetric(),
       this->get_parameters().linear_solver_A_block_tolerance);
 
     internal::InverseVelocityBlock<GMGPreconditioner,VectorType, ABlockMatrixType> inverse_velocity_block_expensive(
       A_block_matrix,
       prec_A,
       /* do_solve_A = */ true,
-      sim.stokes_A_block_is_symmetric(),
+      this->stokes_A_block_is_symmetric(),
       this->get_parameters().linear_solver_A_block_tolerance);
 
     using SchurApproximationType = internal::SchurApproximation<GMGPreconditioner,StokesMatrixType,SchurComplementMatrixType, VectorType>;
@@ -1360,7 +1352,8 @@ namespace aspect
           {
             ++sim.linear_solver_failures;
 
-            this->get_signals().post_stokes_solver(sim,
+            // *this is converted to a pointer to SimulatorAccess for the signal
+            this->get_signals().post_stokes_solver(*this,
                                                    schur_approximation_cheap.n_iterations() + schur_approximation_expensive.n_iterations(),
                                                    inverse_velocity_block_cheap.n_iterations() + inverse_velocity_block_expensive.n_iterations(),
                                                    solver_control_cheap,
@@ -1396,8 +1389,9 @@ namespace aspect
           }
       }
 
-    //signal successful solver
-    this->get_signals().post_stokes_solver(sim,
+    // signal successful solver
+    // *this is converted to a pointer to SimulatorAccess for the signal
+    this->get_signals().post_stokes_solver(*this,
                                            schur_approximation_cheap.n_iterations() + schur_approximation_expensive.n_iterations(),
                                            inverse_velocity_block_cheap.n_iterations() + inverse_velocity_block_expensive.n_iterations(),
                                            solver_control_cheap,
@@ -1407,15 +1401,11 @@ namespace aspect
     solution_copy.update_ghost_values();
     internal::ChangeVectorTypes::copy(distributed_stokes_solution,solution_copy);
 
-#if DEAL_II_VERSION_GTE(9,6,0)
     IndexSet stokes_dofs (this->get_dof_handler().n_dofs());
     stokes_dofs.add_range (0, distributed_stokes_solution.size());
     const AffineConstraints<double> current_stokes_constraints
       = this->get_current_constraints().get_view (stokes_dofs);
     current_stokes_constraints.distribute(distributed_stokes_solution);
-#else
-    this->get_current_constraints().distribute(distributed_stokes_solution);
-#endif
 
     // now rescale the pressure back to real physical units
     distributed_stokes_solution.block(block_p) *= this->get_pressure_scaling();
@@ -1497,11 +1487,7 @@ namespace aspect
       DoFTools::extract_locally_relevant_dofs(dof_handler_v, locally_relevant_dofs);
 #endif
 
-#if DEAL_II_VERSION_GTE(9,6,0)
       constraints_v.reinit(dof_handler_v.locally_owned_dofs(), locally_relevant_dofs);
-#else
-      constraints_v.reinit(locally_relevant_dofs);
-#endif
 
       this->get_geometry_model().make_periodicity_constraints(dof_handler_v,
                                                               constraints_v);
@@ -1545,10 +1531,10 @@ namespace aspect
                                                           true);
         }
 
-      sim.prescribed_solution_manager.constrain_solution(constraints_v);
+      this->get_prescribed_solution().constrain_solution(constraints_v);
 
       // Let plugins add more constraints if they so choose:
-      sim.signals.post_constraints_creation(*this, constraints_v);
+      this->get_signals().post_constraints_creation(*this, constraints_v);
 
       constraints_v.close ();
     }
@@ -1569,9 +1555,7 @@ namespace aspect
 #endif
 
       constraints_p.reinit(
-#if DEAL_II_VERSION_GTE(9,6,0)
         dof_handler_p.locally_owned_dofs(),
-#endif
         locally_relevant_dofs);
 
       this->get_geometry_model().make_periodicity_constraints(dof_handler_p,
@@ -1710,14 +1694,9 @@ namespace aspect
             DoFTools::extract_locally_relevant_level_dofs(dof_handler_v, level, relevant_dofs);
 #endif
 
-#if DEAL_II_VERSION_GTE(9,6,0)
             level_constraints_v.reinit(dof_handler_v.locally_owned_mg_dofs(level), relevant_dofs);
             for (const auto index : mg_constrained_dofs_A_block.get_boundary_indices(level))
               level_constraints_v.constrain_dof_to_zero(index);
-#else
-            level_constraints_v.reinit(relevant_dofs);
-            level_constraints_v.add_lines(mg_constrained_dofs_A_block.get_boundary_indices(level));
-#endif
             level_constraints_v.close();
 
             const std::set<types::boundary_id> &no_flux_boundaries
@@ -1725,11 +1704,7 @@ namespace aspect
             if (!no_flux_boundaries.empty())
               {
                 AffineConstraints<double> user_level_constraints;
-#if DEAL_II_VERSION_GTE(9,6,0)
                 user_level_constraints.reinit(dof_handler_v.locally_owned_mg_dofs(level), relevant_dofs);
-#else
-                user_level_constraints.reinit(relevant_dofs);
-#endif
                 const IndexSet &refinement_edge_indices =
                   mg_constrained_dofs_A_block.get_refinement_edge_indices(level);
 
@@ -1793,11 +1768,7 @@ namespace aspect
             DoFTools::extract_locally_relevant_level_dofs(dof_handler_p, level, relevant_dofs);
 #endif
 
-#if DEAL_II_VERSION_GTE(9,6,0)
             level_constraints_p.reinit(dof_handler_p.locally_owned_mg_dofs(level), relevant_dofs);
-#else
-            level_constraints_p.reinit(relevant_dofs);
-#endif
 
             level_constraints_p.close();
           }
@@ -1848,6 +1819,21 @@ namespace aspect
     mg_transfer_Schur_complement.clear();
     mg_transfer_Schur_complement.initialize_constraints(mg_constrained_dofs_Schur_complement);
     mg_transfer_Schur_complement.build(dof_handler_p);
+  }
+
+
+
+  template <int dim, int velocity_degree>
+  const std::vector<std::shared_ptr<const Triangulation<dim, dim>>> &
+  StokesMatrixFreeHandlerLocalSmoothingImplementation<dim, velocity_degree>::get_multigrid_triangulations() const
+  {
+    AssertThrow(false,
+                ExcMessage("The local smoothing matrix-free Stokes solver does not "
+                           "use a sequence of triangulations."));
+
+    // Unreachable, but it is necessary to return something:
+    static const std::vector<std::shared_ptr<const Triangulation<dim, dim>>> empty_triangulations;
+    return empty_triangulations;
   }
 
 

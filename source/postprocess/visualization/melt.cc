@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2015 - 2023 by the authors of the ASPECT code.
+  Copyright (C) 2015 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -20,9 +20,9 @@
 
 
 #include <aspect/postprocess/visualization/melt.h>
+
 #include <aspect/melt.h>
 #include <aspect/utilities.h>
-#include <aspect/simulator.h>
 #include <aspect/material_model/interface.h>
 
 #include <deal.II/numerics/data_out.h>

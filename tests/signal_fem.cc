@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2022 by the authors of the ASPECT code.
+  Copyright (C) 2022 - 2025 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,10 +18,11 @@
   <http://www.gnu.org/licenses/>.
 */
 
-#include <aspect/simulator.h>
+
 #include <deal.II/grid/tria.h>
 #include <aspect/material_model/simple.h>
 #include <aspect/simulator_access.h>
+#include <aspect/simulator_signals.h>
 #include <aspect/simulator/assemblers/interface.h>
 
 #include <deal.II/fe/fe_dgq.h>

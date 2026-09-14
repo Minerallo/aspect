@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -159,9 +159,9 @@ namespace aspect
         create_additional_material_model_inputs(MaterialModel::MaterialModelInputs<dim> &inputs) const;
 
         /**
-        * Let the heating model specify which material model outputs it
-        * requires for computing the heating terms.
-        */
+         * Let the heating model specify which material model outputs it
+         * requires for computing the heating terms.
+         */
         virtual
         MaterialModel::MaterialProperties::Property
         get_required_properties() const;

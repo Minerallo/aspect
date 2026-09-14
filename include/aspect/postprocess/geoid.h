@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2015 - 2022 by the authors of the ASPECT code.
+ Copyright (C) 2015 - 2026 by the authors of the ASPECT code.
 
  This file is part of ASPECT.
 
@@ -196,7 +196,7 @@ namespace aspect
 
         /**
          * A vector to store the cosine terms of the geoid anomaly spherical harmonic coefficients.
-        *
+         *
          * These coefficients are computed afresh by execute() and are subsequently
          * accessed through evaluate(), for example by the sea level postprocessor.
          * Consequently, they do not need to be serialized for checkpoint/restart:

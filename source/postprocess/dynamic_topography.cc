@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -18,10 +18,12 @@
   <http://www.gnu.org/licenses/>.
 */
 
-#include <aspect/simulator.h>
 #include <aspect/postprocess/dynamic_topography.h>
 
+#include <aspect/geometry_model/interface.h>
+#include <aspect/gravity_model/interface.h>
 #include <aspect/postprocess/boundary_pressures.h>
+#include <aspect/utilities.h>
 
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/fe/fe_values.h>

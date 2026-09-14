@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2024 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2026 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -327,9 +327,9 @@ namespace aspect
         using InterfaceBase::save;
 
         /**
-           * Read the data of this object from a stream for the purpose of
-           * serialization.
-           */
+         * Read the data of this object from a stream for the purpose of
+         * serialization.
+         */
         template <class Archive>
         void load (Archive &ar,
                    const unsigned int version);

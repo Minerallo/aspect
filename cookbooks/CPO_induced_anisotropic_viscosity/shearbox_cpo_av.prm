@@ -71,7 +71,7 @@ subsection Geometry model
 end
 
 subsection Initial temperature model
-  set Model name = function
+  set List of model names = function
 
   subsection Function
     # Temperature function
@@ -182,7 +182,7 @@ subsection Particles
 
   subsection CPO Bingham Average
     set Random number seed = 200
-    set Use rotation matrix = false
+    set Rotation format = euler angles
   end
 end
 

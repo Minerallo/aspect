@@ -20,6 +20,8 @@
 
 #include <aspect/volume_of_fluid/utilities.h>
 
+#include <array>
+
 namespace aspect
 {
   namespace VolumeOfFluid
@@ -117,96 +119,58 @@ namespace aspect
       double compute_fluid_fraction (const Tensor<1, 3> normal,
                                      const double d)
       {
-        // Calculations done by Scardovelli and Zaleski in
-        // doi:10.1006/jcph.2000.6567,
-        // modified to fit chosen convention on normal interface
-        const int dim = 3;
+        // Shift the centered unit cell [-1/2,1/2]^3 to [0,1]^3 and use
+        // inclusion-exclusion for the volume of a clipped box. This is the
+        // three-dimensional counterpart of the analytic 2d implementation
+        // above, but remains well-defined when one or more normal components
+        // vanish.
+        std::array<double, 3> coefficients;
+        unsigned int n_nonzero_components = 0;
+        for (unsigned int direction = 0; direction < 3; ++direction)
+          if (std::abs(normal[direction]) > std::numeric_limits<double>::epsilon())
+            coefficients[n_nonzero_components++] = std::abs(normal[direction]);
 
-        Tensor<1, 3> nnormal;
-        //Simplify calculation by reducing to case of d<=0
-        if (d>0.0)
-          {
-            return 1.0-compute_fluid_fraction(-normal, -d);
-          }
+        if (n_nonzero_components == 0)
+          return (d < 0.0 ? 0.0 : (d > 0.0 ? 1.0 : 0.5));
 
-        //Get 1-Norm
-        double norm1 = 0.0;
-        for (unsigned int i = 0; i < dim; ++i)
-          {
-            double term = std::abs(normal[i]);
-            norm1 += term;
-          }
+        double normal_l1_norm = 0.0;
+        for (unsigned int direction = 0; direction < n_nonzero_components; ++direction)
+          normal_l1_norm += coefficients[direction];
 
-        //Return volume in simple cases
-        if (d <= -0.5*norm1)
-          {
-            return 0.0;
-          }
-        if (norm1 == 0.0)
-          {
-            // Case should never occur, return reasonable output for edge circumstance
-            return 0.5;
-          }
-        const double dtest = d / norm1;
+        const double shifted_interface_location = d + 0.5 * normal_l1_norm;
+        if (shifted_interface_location <= 0.0)
+          return 0.0;
+        if (shifted_interface_location >= normal_l1_norm)
+          return 1.0;
 
-        // sort normalized values for normal into nnormal in ascending order of absolute value
-        double mprod = 1.0;
-        for (unsigned int i = 0; i < dim; ++i)
-          {
-            nnormal[i]=std::abs(normal[i])/norm1;
-            mprod *= nnormal[i];
-          }
-        for (unsigned int i =0; i < dim; ++i)
-          {
-            for (unsigned int j=i+1; j < dim; ++j)
-              {
-                if (nnormal[j]<nnormal[i])
-                  {
-                    //Swap
-                    const double tmp = nnormal[j];
-                    nnormal[j] = nnormal[i];
-                    nnormal[i] = tmp;
-                  }
-              }
-          }
-        const double m12 = nnormal[0]+nnormal[1];
-        const double mmin = (m12<nnormal[2])?m12:nnormal[2];
-        const double eps = 1e-10;
-        const double v1= (6.0*nnormal[1]*nnormal[2]>eps)
-                         ?
-                         nnormal[0]*nnormal[0]/(eps)
-                         :
-                         nnormal[0]*nnormal[0]/(6*nnormal[1]*nnormal[2]);
+        if (n_nonzero_components == 1)
+          return shifted_interface_location / coefficients[0];
 
-        // do computation for standard cases
-        // Case 1 of Scardovelli and Zaleski (Tetrahedron)
-        if (dtest<nnormal[0]-0.5)
+        if (n_nonzero_components == 2)
           {
-            return (dtest+0.5)*(dtest+0.5)*(dtest+0.5)/(6*mprod);
-          }
-        // Case 2 of Scardovelli and Zaleski ("Triangular prism-like")
-        else if (dtest<nnormal[1]-0.5)
-          {
-            return (dtest+0.5)*(dtest+0.5-nnormal[0])/(2*nnormal[1]*nnormal[2])+v1;
-          }
-        // Case 3 of Scardovelli and Zaleski
-        else if (dtest<mmin-0.5)
-          {
-            return (dtest+0.5)*(dtest+0.5)*(3*m12-dtest-0.5)/(6*mprod) +
-                   nnormal[0]*nnormal[0]*(nnormal[0]-3*dtest-1.5)/(6*mprod) +
-                   nnormal[1]*nnormal[1]*(nnormal[1]-3*dtest-1.5)/(6*mprod);
-          }
-        // Case 4 of Scardovelli and Zaleski
-        else if ( nnormal[2]<m12)
-          {
-            return (dtest+0.5)*(dtest+0.5)*(3-2*dtest-1.0)/(6*mprod) +
-                   nnormal[0]*nnormal[0]*(nnormal[0]-3*dtest-1.5)/(6*mprod) +
-                   nnormal[1]*nnormal[1]*(nnormal[1]-3*dtest-1.5)/(6*mprod) +
-                   nnormal[2]*nnormal[2]*(nnormal[2]-3*dtest-1.5)/(6*mprod);
+            Tensor<1, 2> reduced_normal;
+            reduced_normal[0] = coefficients[0];
+            reduced_normal[1] = coefficients[1];
+            return compute_fluid_fraction(reduced_normal, d);
           }
 
-        // Case 5 of Scardovelli and Zaleski
-        return 0.5*(2.0*dtest+1.0-m12)/nnormal[2];
+        const auto positive_cube = [] (const double value)
+        {
+          const double positive_part = std::max(0.0, value);
+          return positive_part * positive_part * positive_part;
+        };
+
+        double volume = positive_cube(shifted_interface_location);
+        for (unsigned int i = 0; i < 3; ++i)
+          volume -= positive_cube(shifted_interface_location - coefficients[i]);
+        for (unsigned int i = 0; i < 3; ++i)
+          for (unsigned int j = i + 1; j < 3; ++j)
+            volume += positive_cube(shifted_interface_location
+                                    - coefficients[i] - coefficients[j]);
+        volume -= positive_cube(shifted_interface_location - normal_l1_norm);
+
+        volume /= 6.0 * coefficients[0] * coefficients[1] * coefficients[2];
+        return std::max(0.0, std::min(1.0, volume));
       }
 
 
@@ -214,121 +178,31 @@ namespace aspect
       double compute_interface_location (const Tensor<1, 3, double> normal,
                                          const double vol)
       {
-        // Calculations done by Scardovelli and Zaleski in
-        // doi:10.1006/jcph.2000.6567,
-        // modified to fit chosen convention on normal interface
-        const int dim = 3;
-        // Simplify to vol<0.5 case
-        if (vol>0.5)
-          {
-            return -compute_interface_location(-normal, 1.0-vol);
-          }
+        double normal_l1_norm = 0.0;
+        for (unsigned int direction = 0; direction < 3; ++direction)
+          normal_l1_norm += std::abs(normal[direction]);
 
-        //Get 1-Norm
-        double norm1 = 0.0;
-        for (unsigned int i = 0; i < dim; ++i)
-          {
-            double term = std::abs(normal[i]);
-            norm1 += term;
-          }
-        const double eps = 1e-10;
-        double mprod = 1.0;
-        Tensor<1, 3> nnormal;
-        if (norm1<eps)
-          {
-            nnormal[0] = 0.0;
-            nnormal[1] = 0.0;
-            nnormal[2] = 1.0;
-            norm1 = 1.0;
-            mprod =0.0;
-          }
-        else
-          {
-            // sort normalized values for normal into nnormal in ascending order of absolute value
-            for (unsigned int i = 0; i < dim; ++i)
-              {
-                nnormal[i]=std::abs(normal[i])/norm1;
-                mprod *= nnormal[i];
-              }
-            for (unsigned int i =0; i < dim; ++i)
-              {
-                for (unsigned int j=i+1; j < dim; ++j)
-                  {
-                    if (nnormal[j]<nnormal[i])
-                      {
-                        //Swap
-                        const double tmp = nnormal[j];
-                        nnormal[j] = nnormal[i];
-                        nnormal[i] = tmp;
-                      }
-                  }
-              }
-          }
-        //Simple cases
-        if (vol<=0.0)
-          {
-            return -0.5*norm1;
-          }
+        if (normal_l1_norm == 0.0)
+          return 0.0;
+        if (vol <= 0.0)
+          return -0.5 * normal_l1_norm;
+        if (vol >= 1.0)
+          return 0.5 * normal_l1_norm;
 
-        const double m1 = nnormal[0];
-        const double m2 = nnormal[1];
-        const double m3 = nnormal[2];
-        const double m12 = m1+m2;
-
-        // Case 1 of Scardovelli and Zaleski
-        const double v1=(6.0*m2*m3>eps)
-                        ?
-                        m1*m1/(eps)
-                        :
-                        m1*m1/(6*m2*m3);
-
-        if (vol<v1)
+        // The clipped volume is continuous and monotone in d. A bounded
+        // bisection is inexpensive compared with interface reconstruction and
+        // avoids the singular special cases of the closed-form inverse.
+        double lower_bound = -0.5 * normal_l1_norm;
+        double upper_bound = 0.5 * normal_l1_norm;
+        for (unsigned int iteration = 0; iteration < 64; ++iteration)
           {
-            return -0.5+std::pow(6*mprod*vol, 1./3.);
+            const double midpoint = 0.5 * (lower_bound + upper_bound);
+            if (compute_fluid_fraction(normal, midpoint) < vol)
+              lower_bound = midpoint;
+            else
+              upper_bound = midpoint;
           }
-
-        // Case 2 of Scardovelli and Zaleski
-        const double v2 = v1 + 0.5*(m2-m1)/m3;
-        if (vol<v2)
-          {
-            return 0.5*(-1+m1+std::sqrt(m1*m1+8*m2*m3*(vol-v1)));
-          }
-
-        // Case 3 of Scardovelli and Zaleski
-        double v3 = (m12<m3)
-                    ?
-                    m3*m3*(3*m12-m3)/(6.0*mprod)
-                    + m1*m1*(m1-3*m3)/(6*mprod)
-                    + m2*m2*(m2-3*m3)/(6*mprod)
-                    :
-                    0.5*m12/m3;
-
-        if (vol<v3)
-          {
-            // Solve appropriate cubic
-            const double a2 = -3.0*m12;
-            const double a1 = 3.0*(m1*m1+m2*m2);
-            const double a0 = 6*mprod*vol-m1*m1*m1-m2*m2*m2;
-            const double np0 = a2*a2/9.0-a1/3.0;
-            const double q0 = (a1*a2-3.0*a0)/6.0-a2*a2*a2/27.0;
-            const double theta = std::acos(q0/std::sqrt(np0*np0*np0))/3.0;
-            return std::sqrt(np0)*(std::sqrt(3.0)*std::sin(theta)-std::cos(theta))-a2/3.0;
-          }
-
-        // Case 4
-        if (m3<m12)
-          {
-            // Solve appropriate cubic
-            double a2 = -1.5;
-            double a1 = 1.5*(m1*m1+m2*m2+m3*m3);
-            double a0 = 6*mprod*vol-m1*m1*m1-m2*m2*m2-m3*m3*m3;
-            double np0 = a2*a2/9.0-a1/3.0;
-            double q0 = (a1*a2-3.0*a0)/6.0-a2*a2*a2/27.0;
-            double theta = std::acos(q0/std::sqrt(np0*np0*np0))/3.0;
-            return std::sqrt(np0)*(std::sqrt(3.0)*std::sin(theta)-std::cos(theta))-a2/3.0;
-          }
-
-        return -0.5+m1*vol+0.5*m12;
+        return 0.5 * (lower_bound + upper_bound);
       }
 
 

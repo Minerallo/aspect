@@ -9,7 +9,7 @@
 :name: parameters:Postprocess/List_20of_20postprocessors
 **Default value:**
 
-**Pattern:** [MultipleSelection ODE statistics|Stokes residual|basic statistics|boundary densities|boundary pressures|boundary strain rate residual statistics|boundary velocity residual statistics|command|composition statistics|composition velocity statistics|core statistics|crystal preferred orientation|current surface|depth average|domain volume statistics|dynamic topography|entropy statistics|entropy viscosity statistics|finite element information|fluid velocity statistics|geoid|global statistics|gravity calculation|heat flux densities|heat flux map|heat flux statistics|heating statistics|load balance statistics|mass flux statistics|material statistics|matrix statistics|maximum depth of field|melt statistics|memory statistics|mobility statistics|particle count statistics|particle distribution score|particle distribution statistics|particle information|particles|point values|pressure statistics|rotation statistics|sea level|spherical velocity statistics|temperature statistics|timing statistics|topography|velocity boundary statistics|velocity statistics|viscous dissipation statistics|visualization|volume of fluid statistics ]
+**Pattern:** [MultipleSelection ODE statistics|Stokes residual|basic statistics|boundary densities|boundary pressures|boundary strain rate residual statistics|boundary velocity residual statistics|command|composition statistics|composition velocity statistics|continental fragmentation statistics|core statistics|crystal preferred orientation|current surface|depth average|domain volume statistics|dynamic topography|entropy statistics|entropy viscosity statistics|finite element information|fluid velocity statistics|geoid|global statistics|gravity calculation|heat flux densities|heat flux map|heat flux statistics|heating statistics|load balance statistics|mantle flux statistics|mass flux statistics|material statistics|matrix statistics|maximum depth of field|melt statistics|memory statistics|mobility statistics|particle count statistics|particle distribution score|particle distribution statistics|particle information|particles|plateness statistics|point values|pressure statistics|rotation statistics|sea level|spherical velocity statistics|temperature statistics|timing statistics|topography|velocity boundary statistics|velocity statistics|viscous dissipation statistics|visualization|volume of fluid statistics ]
 
 **Documentation:** A comma separated list of postprocessor objects that should be run at the end of each time step. Some of these postprocessors will declare their own parameters which may, for example, include that they will actually do something only every so many time steps or years. Alternatively, the text &lsquo;all&rsquo; indicates that all available postprocessors should be run after each time step.
 
@@ -34,6 +34,8 @@ The following postprocessors are available:
 &lsquo;composition statistics&rsquo;: A postprocessor that computes some statistics about the compositional fields, if present in this simulation. In particular, it computes maximal and minimal values of each field, as well as the total mass contained in this field as defined by the integral $m_i(t) = \int_\Omega c_i(\mathbf x,t) \; \text{d}x$.
 
 &lsquo;composition velocity statistics&rsquo;: A postprocessor that computes the root mean square velocity over the area spanned by each compositional field (i.e. where the field values are larger or equal to 0.5.
+
+&lsquo;continental fragmentation statistics&rsquo;: Computes continent-specific diagnostics on the top surface from a user-defined set of compositional fields. Outputs continental area, continent perimeter, number of connected continental blocks, largest continental block area, largest-block fragmentation index, continental perimeter-to-area ratio, normalized perimeter fragmentation index, and average continental drift speed. Can also write per-face and per-block debug files.
 
 &lsquo;core statistics&rsquo;: A postprocessor that computes some statistics about the core evolution. (Working only with dynamic core boundary temperature plugin)
 
@@ -86,6 +88,8 @@ The &ldquo;heat flux densities&rdquo; postprocessor computes the same quantity a
 
 &lsquo;load balance statistics&rsquo;: A postprocessor that computes statistics about the distribution of cells, and if present particles across subdomains. In particular, it computes maximal, average and minimal number of cells across all ranks. If there are particles it also computes the maximal, average, and minimum number of particles across all ranks, and maximal, average, and minimal ratio between local number of particles and local number of cells across all processes. All of these numbers can be useful to assess the load balance between different MPI ranks, as the difference between the minimal and maximal load should be as small as possible.
 
+&lsquo;mantle flux statistics&rsquo;: Measures hot outward flow (plumes) and cold inward flow (slabs) across layers at selected depths in spherical and Cartesian geometries. It reports volume flux, temperature-anomaly flux, thermal-buoyancy mass flux, thermal-buoyancy force rate, the number of detected structures, slab length, and plume radius. In two-dimensional models, fluxes are reported per unit length in the missing third direction. Rate units follow the global choice to use years or seconds in output.
+
 &lsquo;mass flux statistics&rsquo;: A postprocessor that computes some statistics about the mass flux across boundaries. For each boundary indicator (see your geometry description for which boundary indicators are used), the mass flux is computed in outward direction, i.e., from the domain to the outside, using the formula $\int_{\Gamma_i} \rho \mathbf v \cdot \mathbf n$ where $\Gamma_i$ is the part of the boundary with indicator $i$, $\rho$ is the density as reported by the material model, $\mathbf v$ is the velocity, and $\mathbf n$ is the outward normal.
 
 As stated, this postprocessor computes the *outbound* mass flux. If you are interested in the opposite direction, for example from the core into the mantle when the domain describes the mantle, then you need to multiply the result by -1.
@@ -115,6 +119,8 @@ In geodynamics, the term &ldquo;mass flux&rdquo; is often understood to be the q
 &lsquo;particle information&rsquo;: A postprocessor that prints the particle properties in every particle manager at time zero.
 
 &lsquo;particles&rsquo;: A Postprocessor that creates particles that follow the velocity field of the simulation. The particles can be generated and propagated in various ways and they can carry a number of constant or time-varying properties. The postprocessor can write output positions and properties of all particles at chosen intervals, although this is not mandatory. It also allows other parts of the code to query the particles for information.
+
+&lsquo;plateness statistics&rsquo;: A postprocessor that computes surface plateness diagnostics on the top boundary using the second invariant of the deviatoric strain-rate tensor. F80 and F90 are the smallest fractions of the top-boundary area that contain 80% and 90% of the integrated strain-rate invariant, respectively. Smaller values of F80 and F90 indicate more strongly localized surface deformation. The corresponding plateness values are computed as p = 1 - F/reference_fraction. A value of one represents the limiting case of deformation localized into an infinitesimally small area, zero corresponds to the chosen reference fraction, and negative values indicate deformation that is more distributed than the reference case. For example, with the default reference fraction of 0.6, p = 0.5 corresponds to F = 0.3. Plateness is a relative diagnostic whose interpretation depends on the reference fraction, model setup, and numerical resolution.
 
 &lsquo;point values&rsquo;: A postprocessor that evaluates the solution (i.e., velocity, pressure, temperature, and compositional fields along with other fields that are treated as primary variables) at the end of every time step or after a user-specified time interval at a given set of points and then writes this data into the file <point\_values.txt> in the output directory. The points at which the solution should be evaluated are specified in the section `Postprocess/Point values` in the input file.
 
@@ -277,6 +283,72 @@ It is worth comparing this postprocessor with the visualization postprocessor ca
 **Pattern:** [List of <[Anything]> of length 0...4294967295 (inclusive)]
 
 **Documentation:** A list of names for each of the compositional fields that you want to compute the combined RMS velocity for.
+::::
+
+(parameters:Postprocess/Continental_20fragmentation_20statistics)=
+## **Subsection:** Postprocess / Continental fragmentation statistics
+::::{dropdown} __Parameter:__ {ref}`Continent field names<parameters:Postprocess/Continental_20fragmentation_20statistics/Continent_20field_20names>`
+:name: parameters:Postprocess/Continental_20fragmentation_20statistics/Continent_20field_20names
+**Default value:**
+
+**Pattern:** [List of <[Anything]> of length 0...4294967295 (inclusive)]
+
+**Documentation:** Comma-separated list of compositional field names that should be interpreted as continental material.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Continent threshold<parameters:Postprocess/Continental_20fragmentation_20statistics/Continent_20threshold>`
+:name: parameters:Postprocess/Continental_20fragmentation_20statistics/Continent_20threshold
+**Default value:** 0.5
+
+**Pattern:** [Double 0...MAX_DOUBLE (inclusive)]
+
+**Documentation:** A top-surface face is considered continental if the sum of the selected compositional fields exceeds this threshold.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Minimum block area<parameters:Postprocess/Continental_20fragmentation_20statistics/Minimum_20block_20area>`
+:name: parameters:Postprocess/Continental_20fragmentation_20statistics/Minimum_20block_20area
+**Default value:** 0.0
+
+**Pattern:** [Double 0...MAX_DOUBLE (inclusive)]
+
+**Documentation:** Ignore connected continental blocks with area smaller than the user defined minimum block area [m^2].
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Output file prefix<parameters:Postprocess/Continental_20fragmentation_20statistics/Output_20file_20prefix>`
+:name: parameters:Postprocess/Continental_20fragmentation_20statistics/Output_20file_20prefix
+**Default value:** continental_fragmentation_statistics
+
+**Pattern:** [Anything]
+
+**Documentation:** Prefix used for the diagnostic output file names.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Output verbose screen line<parameters:Postprocess/Continental_20fragmentation_20statistics/Output_20verbose_20screen_20line>`
+:name: parameters:Postprocess/Continental_20fragmentation_20statistics/Output_20verbose_20screen_20line
+**Default value:** true
+
+**Pattern:** [Bool]
+
+**Documentation:** Whether to print the full (verbose) summary of the continental statistics postprocessor output to the log.txt file. The default option (true) will provide the full summary,
+while selecting false will produce a compact summary.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Write block summary<parameters:Postprocess/Continental_20fragmentation_20statistics/Write_20block_20summary>`
+:name: parameters:Postprocess/Continental_20fragmentation_20statistics/Write_20block_20summary
+**Default value:** true
+
+**Pattern:** [Bool]
+
+**Documentation:** Write a per-block diagnostic summary file.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Write surface map<parameters:Postprocess/Continental_20fragmentation_20statistics/Write_20surface_20map>`
+:name: parameters:Postprocess/Continental_20fragmentation_20statistics/Write_20surface_20map
+**Default value:** true
+
+**Pattern:** [Bool]
+
+**Documentation:** Write a per-face diagnostic file for the top surface.
 ::::
 
 (parameters:Postprocess/Crystal_20Preferred_20Orientation)=
@@ -778,6 +850,89 @@ all|temperature|composition|adiabatic temperature|adiabatic pressure|adiabatic d
 **Documentation:** The maximum number of time steps between each generation of gravity output files.
 ::::
 
+(parameters:Postprocess/Mantle_20flux_20statistics)=
+## **Subsection:** Postprocess / Mantle flux statistics
+::::{dropdown} __Parameter:__ {ref}`Cold temperature anomaly threshold<parameters:Postprocess/Mantle_20flux_20statistics/Cold_20temperature_20anomaly_20threshold>`
+:name: parameters:Postprocess/Mantle_20flux_20statistics/Cold_20temperature_20anomaly_20threshold
+**Default value:** -200
+
+**Pattern:** [Double -MAX_DOUBLE...MAX_DOUBLE (inclusive)]
+
+**Documentation:** A point colder than this value and moving inward is treated as slab material. Units: K.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Hot temperature anomaly threshold<parameters:Postprocess/Mantle_20flux_20statistics/Hot_20temperature_20anomaly_20threshold>`
+:name: parameters:Postprocess/Mantle_20flux_20statistics/Hot_20temperature_20anomaly_20threshold
+**Default value:** 200
+
+**Pattern:** [Double -MAX_DOUBLE...MAX_DOUBLE (inclusive)]
+
+**Documentation:** A point hotter than this value and moving outward is treated as plume material. Units: K.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Maximum point spacing<parameters:Postprocess/Mantle_20flux_20statistics/Maximum_20point_20spacing>`
+:name: parameters:Postprocess/Mantle_20flux_20statistics/Maximum_20point_20spacing
+**Default value:** 80000
+
+**Pattern:** [Double 0...MAX_DOUBLE (inclusive)]
+
+**Documentation:** Largest surface distance between neighboring cell centers that belong to the same plume or slab. Units: m.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Measurement depths<parameters:Postprocess/Mantle_20flux_20statistics/Measurement_20depths>`
+:name: parameters:Postprocess/Mantle_20flux_20statistics/Measurement_20depths
+**Default value:** 440e3
+
+**Pattern:** [List of <[Double 0...MAX_DOUBLE (inclusive)]> of length 0...4294967295 (inclusive)]
+
+**Documentation:** Depths below the surface where plume and slab fluxes are measured. Units: m.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Measurement layer half thickness<parameters:Postprocess/Mantle_20flux_20statistics/Measurement_20layer_20half_20thickness>`
+:name: parameters:Postprocess/Mantle_20flux_20statistics/Measurement_20layer_20half_20thickness
+**Default value:** 20000
+
+**Pattern:** [Double 0...MAX_DOUBLE (inclusive)]
+
+**Documentation:** Half the thickness of the layer sampled around each measurement depth. Units: m.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Minimum points per structure<parameters:Postprocess/Mantle_20flux_20statistics/Minimum_20points_20per_20structure>`
+:name: parameters:Postprocess/Mantle_20flux_20statistics/Minimum_20points_20per_20structure
+**Default value:** 5
+
+**Pattern:** [Integer range 1...2147483647 (inclusive)]
+
+**Documentation:** Smallest number of detected cell centers needed to count a plume or slab.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Minimum slab length<parameters:Postprocess/Mantle_20flux_20statistics/Minimum_20slab_20length>`
+:name: parameters:Postprocess/Mantle_20flux_20statistics/Minimum_20slab_20length
+**Default value:** 0
+
+**Pattern:** [Double 0...MAX_DOUBLE (inclusive)]
+
+**Documentation:** Do not count cold structures shorter than this surface distance. Units: m.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Time between cluster files<parameters:Postprocess/Mantle_20flux_20statistics/Time_20between_20cluster_20files>`
+:name: parameters:Postprocess/Mantle_20flux_20statistics/Time_20between_20cluster_20files
+**Default value:** 0
+
+**Pattern:** [Double 0...MAX_DOUBLE (inclusive)]
+
+**Documentation:** Time between cluster files. Zero writes a file every time the postprocessor runs. Units: years when output uses years; seconds otherwise.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Write cluster files<parameters:Postprocess/Mantle_20flux_20statistics/Write_20cluster_20files>`
+:name: parameters:Postprocess/Mantle_20flux_20statistics/Write_20cluster_20files
+**Default value:** false
+
+**Pattern:** [Bool]
+
+**Documentation:** Write the cell centers assigned to each plume and slab to mantle_flux_clusters.NNNNN files.
+::::
+
 (parameters:Postprocess/Memory_20statistics)=
 ## **Subsection:** Postprocess / Memory statistics
 ::::{dropdown} __Parameter:__ {ref}`Output peak virtual memory (VmPeak)<parameters:Postprocess/Memory_20statistics/Output_20peak_20virtual_20memory_20_28VmPeak_29>`
@@ -925,6 +1080,17 @@ Units: \si{\year} if the &rsquo;Use years instead of seconds&rsquo; parameter is
 **Documentation:** The time interval between each generation of output files. A value of zero indicates that output should be generated every time step.
 
 Units: \si{\year} if the &rsquo;Use years instead of seconds&rsquo; parameter is set; \si{\second} otherwise.
+::::
+
+(parameters:Postprocess/Plateness_20statistics)=
+## **Subsection:** Postprocess / Plateness statistics
+::::{dropdown} __Parameter:__ {ref}`Reference fraction<parameters:Postprocess/Plateness_20statistics/Reference_20fraction>`
+:name: parameters:Postprocess/Plateness_20statistics/Reference_20fraction
+**Default value:** 0.6
+
+**Pattern:** [Double 0...1 (inclusive)]
+
+**Documentation:** Reference surface-area fraction used to normalize the plateness values. The default value of 0.6 is commonly used for F80, based on internally heated isoviscous reference calculations. Changing this parameter changes the zero point of p80 and p90, but does not change the computed F80 and F90 values.
 ::::
 
 (parameters:Postprocess/Point_20values)=
@@ -1103,7 +1269,7 @@ Of course, activating this option also greatly increases the amount of data ASPE
 :name: parameters:Postprocess/Visualization/List_20of_20output_20variables
 **Default value:**
 
-**Pattern:** [MultipleSelection ISA rotation timescale|Vp anomaly|Vs anomaly|adiabat|artificial viscosity|artificial viscosity composition|boundary indicators|boundary strain rate residual|boundary velocity residual|compositional vector|darcy velocity|density anomaly|depth|depth including mesh deformation|dynamic topography|entropy average|error indicator|geoid|grain lag angle|gravity|heat flux map|heating|material properties|maximum horizontal compressive stress|melt fraction|melt material properties|named additional outputs|nonadiabatic pressure|nonadiabatic temperature|particle count|partition|prescribed dilation|prescribed solution|principal stress|shear stress|spd factor|spherical velocity components|strain rate|strain rate tensor|stress|stress residual|stress second invariant|surface dynamic topography|surface elevation|surface strain rate tensor|surface stress|temperature anomaly|vertical heat flux|volume of fluid values|volumetric strain rate ]
+**Pattern:** [MultipleSelection ISA rotation timescale|Vp anomaly|Vs anomaly|adiabat|artificial viscosity|artificial viscosity composition|boundary indicators|boundary strain rate residual|boundary velocity residual|compositional vector|darcy velocity|density anomaly|depth|depth including mesh deformation|dynamic topography|entropy average|error indicator|geoid|grain lag angle|gravity|heat flux map|heating|mantle flux|material properties|maximum horizontal compressive stress|melt fraction|melt material properties|named additional outputs|nonadiabatic pressure|nonadiabatic temperature|particle count|partition|prescribed dilation|prescribed solution|principal stress|shear stress|spd factor|spherical velocity components|strain rate|strain rate tensor|stress|stress residual|stress second invariant|surface dynamic topography|surface elevation|surface strain rate tensor|surface stress|temperature anomaly|vertical heat flux|volume of fluid values|volumetric strain rate ]
 
 **Documentation:** A comma separated list of visualization objects that should be run whenever writing graphical output. By default, the graphical output files will always contain the primary variables velocity, pressure, and temperature. However, one frequently wants to also visualize derived quantities, such as the thermodynamic phase that corresponds to a given temperature-pressure value, or the corresponding seismic wave speeds. The visualization objects do exactly this: they compute such derived quantities and place them into the output file. The current parameter is the place where you decide which of these additional output variables you want to have in your output file.
 
@@ -1202,6 +1368,8 @@ Physical units: $\frac{\text{W}}{\text{m}^2}$.
 &lsquo;heating&rsquo;: A visualization output object that generates output for all the heating terms used in the energy equation.
 
 Physical units: $\frac{\text{W}}{\text{m}^3}$\si{\watt\per\cubic\meter}.
+
+&lsquo;mantle flux&rsquo;: Writes four fields used by the mantle flux statistics postprocessor: the detected mantle structure, temperature-anomaly flux density, and the thermal-buoyancy mass-flux and force-rate densities. Radial velocity and nonadiabatic temperature are available through existing visualization postprocessors. The mantle structure field is 1 for plume material, -1 for slab material, and 0 for background mantle.
 
 &lsquo;material properties&rsquo;: A visualization output object that generates output for the material properties given by the material model. The current postprocessor allows to output a (potentially large) subset of all of the information provided by material models at once, with just a single material model evaluation per output point. Although individual properties can still be listed in the &ldquo;List of output variables&rdquo;, this visualization plugin is called internally to avoid duplicated evaluations of the material model.
 

@@ -1,0 +1,9 @@
+include fastscape_cpp_eroding_box.prm
+
+set Output directory = output-fastscape-cpp-eroding-box-glacial
+
+subsection Mesh deformation
+  subsection FastScape surface evolution
+    set Glacial erosion coefficient = 2e-5
+  end
+end

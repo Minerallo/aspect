@@ -1,0 +1,7 @@
+New: The buoyancy-density formulation now provides an anelastic reference
+profile deviation option for the Murnaghan equation of state in the
+visco-plastic material model. It solves for dynamic pressure, evaluates
+pressure-dependent material properties at the adiabatic reference pressure,
+and supports the reference-density-profile continuity equation.
+<br>
+(Michael Pons, 2026/08/04)

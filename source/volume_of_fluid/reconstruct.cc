@@ -23,6 +23,8 @@
 #include <aspect/volume_of_fluid/handler.h>
 #include <aspect/volume_of_fluid/utilities.h>
 
+#include <array>
+
 namespace aspect
 {
   template <>
@@ -419,10 +421,272 @@ namespace aspect
 
 
   template <>
-  void VolumeOfFluidHandler<3>::update_volume_of_fluid_normals (const VolumeOfFluidField<3> &/*field*/,
-                                                                LinearAlgebra::BlockVector &/*solution*/)
+  void VolumeOfFluidHandler<3>::update_volume_of_fluid_normals (const VolumeOfFluidField<3> &field,
+                                                                LinearAlgebra::BlockVector &solution)
   {
-    Assert(false, ExcNotImplemented());
+    const unsigned int dim = 3;
+    const unsigned int stencil_side_cell_count = 3;
+    const unsigned int n_cells_local_stencil = 27;
+    const unsigned int n_candidate_normals = 28;
+
+    LinearAlgebra::BlockVector initial_solution;
+    initial_solution.reinit(sim.system_rhs, false);
+
+    this->get_computing_timer().enter_subsection("Reconstruct VolumeOfFluid interfaces");
+
+    const typename DoFHandler<dim>::active_cell_iterator endc =
+      this->get_dof_handler().end();
+
+    Vector<double> local_volume_of_fluids(n_cells_local_stencil);
+    std::vector<Point<dim>> stencil_unit_cell_centers(n_cells_local_stencil);
+    std::vector<typename DoFHandler<dim>::active_cell_iterator>
+    neighbor_cells(n_cells_local_stencil);
+    std::vector<Tensor<1, dim>> normals(n_candidate_normals);
+    std::vector<double> d_values(n_candidate_normals);
+    std::vector<double> errors(n_candidate_normals);
+
+    Point<dim> reconstruction_stencil_unit_cell_center;
+    for (unsigned int direction = 0; direction < dim; ++direction)
+      reconstruction_stencil_unit_cell_center[direction] = 0.5;
+
+    const FiniteElement<dim> &system_fe = this->get_fe();
+    std::vector<types::global_dof_index> cell_dof_indices(system_fe.dofs_per_cell);
+    std::vector<types::global_dof_index> local_dof_indices(system_fe.dofs_per_cell);
+
+    const FEVariable<dim> &volume_of_fluid_var = field.volume_fraction;
+    const unsigned int volume_of_fluid_index =
+      system_fe.component_to_system_index(volume_of_fluid_var.first_component_index, 0);
+
+    const FEVariable<dim> &reconstruction_var = field.reconstruction;
+    const unsigned int reconstruction_component = reconstruction_var.first_component_index;
+    const unsigned int reconstruction_block = reconstruction_var.block_index;
+
+    const FEVariable<dim> &level_set_var = field.level_set;
+    const unsigned int level_set_component = level_set_var.first_component_index;
+    const unsigned int n_level_set_dofs = level_set_var.fe->dofs_per_cell;
+    const unsigned int level_set_block = level_set_var.block_index;
+
+    const auto stencil_index = [] (const unsigned int x,
+                                   const unsigned int y,
+                                   const unsigned int z)
+    {
+      return x + stencil_side_cell_count * (y + stencil_side_cell_count * z);
+    };
+
+    for (const auto &cell : this->get_dof_handler().active_cell_iterators())
+      {
+        if (!cell->is_locally_owned())
+          continue;
+
+        cell->get_dof_indices(local_dof_indices);
+        const double cell_volume_of_fluid = solution(local_dof_indices[volume_of_fluid_index]);
+
+        Tensor<1, dim> normal;
+        double interface_location = -1.0;
+
+        if (cell_volume_of_fluid > 1.0 - volume_fraction_threshold)
+          interface_location = 1.0;
+        else if (cell_volume_of_fluid >= volume_fraction_threshold)
+          {
+            for (unsigned int z = 0; z < stencil_side_cell_count; ++z)
+              for (unsigned int y = 0; y < stencil_side_cell_count; ++y)
+                for (unsigned int x = 0; x < stencil_side_cell_count; ++x)
+                  {
+                    const std::array<unsigned int, dim> stencil_coordinates = {{x, y, z}};
+                    typename DoFHandler<dim>::active_cell_iterator current_cell = cell;
+                    bool valid_neighbor = true;
+
+                    for (unsigned int direction = 0; direction < dim; ++direction)
+                      if (stencil_coordinates[direction] != 1)
+                        {
+                          const unsigned int face_number =
+                            2 * direction + (stencil_coordinates[direction] == 2 ? 1 : 0);
+                          const typename DoFHandler<dim>::face_iterator face =
+                            current_cell->face(face_number);
+
+                          if ((face->at_boundary()
+                               && !current_cell->has_periodic_neighbor(face_number))
+                              || face->has_children())
+                            {
+                              valid_neighbor = false;
+                              break;
+                            }
+
+                          const typename DoFHandler<dim>::cell_iterator neighbor =
+                            current_cell->neighbor_or_periodic_neighbor(face_number);
+                          if (neighbor->level() != cell->level() || !neighbor->is_active())
+                            {
+                              valid_neighbor = false;
+                              break;
+                            }
+                          current_cell = neighbor;
+                        }
+
+                    const unsigned int index = stencil_index(x, y, z);
+                    if (valid_neighbor)
+                      {
+                        current_cell->get_dof_indices(cell_dof_indices);
+                        stencil_unit_cell_centers[index] =
+                          Point<dim>(static_cast<double>(x) - 1.0,
+                                     static_cast<double>(y) - 1.0,
+                                     static_cast<double>(z) - 1.0);
+                        neighbor_cells[index] = current_cell;
+                      }
+                    else
+                      {
+                        cell->get_dof_indices(cell_dof_indices);
+                        stencil_unit_cell_centers[index] = Point<dim>();
+                        neighbor_cells[index] = endc;
+                      }
+
+                    local_volume_of_fluids(index) =
+                      solution(cell_dof_indices[volume_of_fluid_index]);
+                  }
+
+            unsigned int candidate_index = 0;
+            for (unsigned int height_direction = 0;
+                 height_direction < dim;
+                 ++height_direction)
+              {
+                std::array<unsigned int, 2> tangent_directions;
+                unsigned int tangent_index = 0;
+                for (unsigned int direction = 0; direction < dim; ++direction)
+                  if (direction != height_direction)
+                    tangent_directions[tangent_index++] = direction;
+
+                std::array<std::array<double, 3>, 3> column_sums = {{}};
+                std::array<double, 3> tangent_profile_0 = {{0.0, 0.0, 0.0}};
+                std::array<double, 3> tangent_profile_1 = {{0.0, 0.0, 0.0}};
+                double negative_height_plane_sum = 0.0;
+                double positive_height_plane_sum = 0.0;
+
+                for (unsigned int tangent_1 = 0; tangent_1 < 3; ++tangent_1)
+                  for (unsigned int tangent_0 = 0; tangent_0 < 3; ++tangent_0)
+                    {
+                      for (unsigned int height = 0; height < 3; ++height)
+                        {
+                          std::array<unsigned int, dim> coordinates = {{0, 0, 0}};
+                          coordinates[height_direction] = height;
+                          coordinates[tangent_directions[0]] = tangent_0;
+                          coordinates[tangent_directions[1]] = tangent_1;
+                          const double fluid = local_volume_of_fluids(
+                                                 stencil_index(coordinates[0],
+                                                               coordinates[1],
+                                                               coordinates[2]));
+                          column_sums[tangent_0][tangent_1] += fluid;
+                          if (height == 0)
+                            negative_height_plane_sum += fluid;
+                          else if (height == 2)
+                            positive_height_plane_sum += fluid;
+                        }
+                    }
+
+                for (unsigned int position = 0; position < 3; ++position)
+                  for (unsigned int transverse_position = 0;
+                       transverse_position < 3;
+                       ++transverse_position)
+                    {
+                      tangent_profile_0[position] +=
+                        column_sums[position][transverse_position] / 3.0;
+                      tangent_profile_1[position] +=
+                        column_sums[transverse_position][position] / 3.0;
+                    }
+
+                const std::array<double, 3> tangent_differences_0 =
+                {{tangent_profile_0[0] - tangent_profile_0[1],
+                  tangent_profile_0[1] - tangent_profile_0[2],
+                  0.5 * (tangent_profile_0[0] - tangent_profile_0[2])}};
+                const std::array<double, 3> tangent_differences_1 =
+                {{tangent_profile_1[0] - tangent_profile_1[1],
+                  tangent_profile_1[1] - tangent_profile_1[2],
+                  0.5 * (tangent_profile_1[0] - tangent_profile_1[2])}};
+                const double height_component =
+                  (positive_height_plane_sum > negative_height_plane_sum ? -1.0 : 1.0);
+
+                for (unsigned int difference_1 = 0; difference_1 < 3; ++difference_1)
+                  for (unsigned int difference_0 = 0; difference_0 < 3; ++difference_0)
+                    {
+                      normals[candidate_index][height_direction] = height_component;
+                      normals[candidate_index][tangent_directions[0]] =
+                        tangent_differences_0[difference_0];
+                      normals[candidate_index][tangent_directions[1]] =
+                        tangent_differences_1[difference_1];
+                      ++candidate_index;
+                    }
+              }
+
+            Assert(candidate_index == n_candidate_normals - 1, ExcInternalError());
+
+            for (unsigned int direction = 0; direction < dim; ++direction)
+              normals.back()[direction] =
+                solution(local_dof_indices[system_fe.component_to_system_index(
+                           reconstruction_component + direction, 0)]);
+
+            for (unsigned int candidate = 0; candidate < n_candidate_normals; ++candidate)
+              {
+                errors[candidate] = 0.0;
+                if (normals[candidate].norm_square() > volume_fraction_threshold)
+                  d_values[candidate] =
+                    VolumeOfFluid::Utilities::compute_interface_location(normals[candidate],
+                                                                         cell_volume_of_fluid);
+                else
+                  errors[candidate] = static_cast<double>(n_cells_local_stencil);
+              }
+
+            for (unsigned int neighbor_index = 0;
+                 neighbor_index < n_cells_local_stencil;
+                 ++neighbor_index)
+              {
+                if (neighbor_cells[neighbor_index] == endc)
+                  continue;
+
+                for (unsigned int candidate = 0;
+                     candidate < n_candidate_normals;
+                     ++candidate)
+                  if (normals[candidate].norm_square() > volume_fraction_threshold)
+                    {
+                      const double offset =
+                        normals[candidate] * stencil_unit_cell_centers[neighbor_index];
+                      const double reconstructed_fraction =
+                        VolumeOfFluid::Utilities::compute_fluid_fraction(
+                          normals[candidate], d_values[candidate] - offset);
+                      const double cell_error =
+                        local_volume_of_fluids(neighbor_index) - reconstructed_fraction;
+                      errors[candidate] += cell_error * cell_error;
+                    }
+              }
+
+            const unsigned int best_candidate =
+              std::distance(errors.begin(), std::min_element(errors.begin(), errors.end()));
+            normal = normals[best_candidate];
+            interface_location = d_values[best_candidate];
+          }
+
+        for (unsigned int direction = 0; direction < dim; ++direction)
+          initial_solution(local_dof_indices[system_fe.component_to_system_index(
+                             reconstruction_component + direction, 0)]) = normal[direction];
+        initial_solution(local_dof_indices[system_fe.component_to_system_index(
+                           reconstruction_component + dim, 0)]) = interface_location;
+
+        for (unsigned int i = 0; i < n_level_set_dofs; ++i)
+          {
+            const Tensor<1, dim> recentered_support_point =
+              level_set_var.fe->unit_support_point(i)
+              - reconstruction_stencil_unit_cell_center;
+            initial_solution(local_dof_indices[system_fe.component_to_system_index(
+                               level_set_component, i)]) =
+              interface_location - recentered_support_point * normal;
+          }
+      }
+
+    initial_solution.compress(VectorOperation::insert);
+    sim.compute_current_constraints();
+    sim.current_constraints.distribute(initial_solution);
+
+    solution.block(reconstruction_block) = initial_solution.block(reconstruction_block);
+    solution.block(level_set_block) = initial_solution.block(level_set_block);
+
+    this->get_computing_timer().leave_subsection("Reconstruct VolumeOfFluid interfaces");
   }
 
   template <>
@@ -513,10 +777,74 @@ namespace aspect
 
 
   template <>
-  void VolumeOfFluidHandler<3>::update_volume_of_fluid_composition (const Simulator<3>::AdvectionField &/*composition_field*/,
-                                                                    const VolumeOfFluidField<3> &/*volume_of_fluid_field*/,
-                                                                    LinearAlgebra::BlockVector &/*solution*/)
+  void VolumeOfFluidHandler<3>::update_volume_of_fluid_composition (const Simulator<3>::AdvectionField &composition_field,
+                                                                    const VolumeOfFluidField<3> &volume_of_fluid_field,
+                                                                    LinearAlgebra::BlockVector &solution)
   {
-    Assert(false, ExcNotImplemented());
+    const unsigned int dim = 3;
+
+    LinearAlgebra::BlockVector initial_solution;
+    this->get_computing_timer().enter_subsection("Compute VolumeOfFluid compositions");
+    initial_solution.reinit(sim.system_rhs, false);
+
+    Point<dim> reconstruction_stencil_unit_cell_center;
+    for (unsigned int direction = 0; direction < dim; ++direction)
+      reconstruction_stencil_unit_cell_center[direction] = 0.5;
+
+    const FiniteElement<dim> &system_fe = this->get_fe();
+    std::vector<types::global_dof_index> local_dof_indices(system_fe.dofs_per_cell);
+
+    const unsigned int volume_of_fluid_index =
+      system_fe.component_to_system_index(
+        volume_of_fluid_field.volume_fraction.first_component_index, 0);
+    const unsigned int reconstruction_component =
+      volume_of_fluid_field.reconstruction.first_component_index;
+
+    const unsigned int base_element = composition_field.base_element(this->introspection());
+    const std::vector<Point<dim>> support_points =
+      system_fe.base_element(base_element).get_unit_support_points();
+
+    for (const auto &cell : this->get_dof_handler().active_cell_iterators())
+      {
+        if (!cell->is_locally_owned())
+          continue;
+
+        cell->get_dof_indices(local_dof_indices);
+        const double cell_volume_of_fluid = solution(local_dof_indices[volume_of_fluid_index]);
+
+        Tensor<1, dim> normal;
+        double normal_l1_norm = 0.0;
+        for (unsigned int direction = 0; direction < dim; ++direction)
+          {
+            normal[direction] =
+              solution(local_dof_indices[system_fe.component_to_system_index(
+                         reconstruction_component + direction, 0)]);
+            normal_l1_norm += std::abs(normal[direction]);
+          }
+
+        const double correction_factor =
+          (normal_l1_norm < volume_fraction_threshold
+           ? 0.0
+           : 2.0 * (0.5 - std::abs(cell_volume_of_fluid - 0.5)) / normal_l1_norm);
+
+        for (unsigned int i = 0;
+             i < system_fe.base_element(base_element).dofs_per_cell;
+             ++i)
+          {
+            const unsigned int system_local_dof =
+              system_fe.component_to_system_index(
+                composition_field.component_index(sim.introspection), i);
+            const Tensor<1, dim> recentered_support_point =
+              support_points[i] - reconstruction_stencil_unit_cell_center;
+            initial_solution(local_dof_indices[system_local_dof]) =
+              cell_volume_of_fluid
+              - correction_factor * (recentered_support_point * normal);
+          }
+      }
+
+    initial_solution.compress(VectorOperation::insert);
+    const unsigned int block_index = composition_field.block_index(this->introspection());
+    solution.block(block_index) = initial_solution.block(block_index);
+    this->get_computing_timer().leave_subsection("Compute VolumeOfFluid compositions");
   }
 }

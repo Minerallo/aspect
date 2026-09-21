@@ -382,6 +382,19 @@ namespace aspect
 
 
     template <int dim>
+    double
+    TwoMergedBoxes<dim>::height_above_reference_mesh_surface(const Point<dim> &position) const
+    {
+      // The reference mesh already contains the prescribed initial
+      // topography. Projecting to the flat box height can therefore place
+      // query points outside the mesh wherever the initial surface is below
+      // zero (for example, the oceanic part of a subduction model).
+      return -depth(position);
+    }
+
+
+
+    template <int dim>
     Point<dim>
     TwoMergedBoxes<dim>::representative_point(const double depth) const
     {

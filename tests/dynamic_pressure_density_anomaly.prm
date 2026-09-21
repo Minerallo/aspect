@@ -1,0 +1,109 @@
+# Enable if: QUICK_TEST
+
+# Verify that reference-density subtraction preserves a localized physical
+# density anomaly while the material model continues to report full density.
+
+set Dimension                    = 3
+set Use years instead of seconds = true
+set End time                     = 0
+set Pressure normalization       = no
+set Output directory             = output-dynamic_pressure_density_anomaly
+
+subsection Formulation
+  set Buoyancy density = reference density profile deviation
+end
+
+subsection Solver parameters
+  subsection Stokes solver parameters
+    set Stokes solver type                   = block AMG
+    set Linear solver tolerance              = 1e-10
+    set Number of cheap Stokes solver steps  = 0
+  end
+end
+
+subsection Geometry model
+  set Model name = spherical shell
+
+  subsection Spherical shell
+    set Inner radius              = 3481000
+    set Outer radius              = 6371000
+    set Opening angle             = 360
+    set Cells along circumference = 96
+  end
+end
+
+subsection Gravity model
+  set Model name = radial constant
+
+  subsection Radial constant
+    set Magnitude = 9.81
+  end
+end
+
+subsection Mesh refinement
+  set Initial adaptive refinement = 0
+  set Initial global refinement   = 0
+end
+
+subsection Adiabatic conditions model
+  set Model name = function
+
+  subsection Function
+    set Function expression = 0; 0; 3300
+  end
+end
+
+subsection Compositional fields
+  set Number of fields = 1
+  set Names of fields  = dense_blob
+end
+
+subsection Initial composition model
+  set Model name = function
+
+  subsection Function
+    set Variable names      = x,y,z
+    set Function constants  = L=400000, z0=5871000
+    set Function expression = exp(-(x*x+y*y+(z-z0)*(z-z0))/(L*L))
+  end
+end
+
+subsection Material model
+  set Model name = simple
+
+  subsection Simple model
+    set Reference density                              = 3300
+    set Reference temperature                          = 0
+    set Thermal expansion coefficient                  = 0
+    set Density differential for compositional field 1 = 100
+    set Viscosity                                      = 1e21
+  end
+end
+
+subsection Initial temperature model
+  set Model name = function
+
+  subsection Function
+    set Function expression = 0
+  end
+end
+
+subsection Boundary velocity model
+  set Tangential velocity boundary indicators = bottom
+end
+
+subsection Mesh deformation
+  set Mesh deformation boundary indicators = top: free surface
+
+  subsection Free surface
+    set Surface velocity projection = normal
+  end
+end
+
+subsection Nullspace removal
+  set Remove nullspace = angular momentum
+end
+
+subsection Postprocess
+  set List of postprocessors = velocity statistics
+end

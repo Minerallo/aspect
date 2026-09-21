@@ -1,0 +1,21 @@
+New: The visco-plastic material model now supports differential dynamic
+friction weakening. The high-strain-rate friction angle can depend on
+whether the projected surface-velocity divergence indicates a convergent,
+neutral/transform, or divergent tectonic regime.
+<br>
+(Michaël Pons, 2026/07/28)
+
+New: The visco-plastic material model now provides the dominant deformation
+mechanism selected during rheology evaluation as a named additional output.
+The output contains categorical values for diffusion creep, dislocation creep,
+plastic yielding, Peierls creep, the maximum-viscosity limiter, grain-boundary
+sliding, and Frank-Kamenetskii rheology.
+<br>
+(Michael Pons, 2026/07/28)
+
+Fixed: When mesh deformation is enabled, the adiabatic pressure used by the
+visco-plastic material model for plastic yielding and viscous creep is now
+evaluated using depth below the current deformed surface. This prevents surface
+depressions such as trenches from becoming artificially strong.
+<br>
+(Michaël Pons, 2026/07/28)

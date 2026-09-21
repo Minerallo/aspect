@@ -253,6 +253,9 @@ namespace WorldBuilder
        */
       std::mt19937 &get_random_number_engine();
 
+      /** Return the reference density implied by the configured compositions. */
+      double density(const std::array<double, 3> &point, const double depth) const;
+
       /**
        * This is the parameter class, which stores all the values loaded in
        * from the parameter file or which are set directly.
@@ -300,6 +303,21 @@ namespace WorldBuilder
        */
       double thermal_diffusivity;
 
+      /** Density of material where no configured composition is present. */
+      double background_density;
+
+      /** Depth to which density columns are integrated for isostasy. */
+      double compensation_depth;
+
+      /** Number of trapezoidal integration points in an isostatic column. */
+      unsigned int number_integration_points;
+
+      /** Lithostatic pressure of the reference column at compensation depth. */
+      double compensation_pressure;
+
+      /** Horizontal reference-column coordinates (degrees for spherical worlds). */
+      Point<2> reference_profile_point;
+
       /**
        * Todo
        */
@@ -314,6 +332,9 @@ namespace WorldBuilder
        * A list of all the feature tags.
        */
       std::vector<std::string> feature_tags;
+
+      /** Composition indices and their reference densities. */
+      std::map<unsigned int, Parameters::composition_properties> composition_properties;
 
     private:
       /**

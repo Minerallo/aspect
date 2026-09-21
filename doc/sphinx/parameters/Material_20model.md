@@ -4876,6 +4876,15 @@ Note that melt does not freeze unless the &rsquo;Freezing rate&rsquo; parameter 
 **Documentation:** List of constant viscosity prefactors (i.e., multiplicative factors) for background material and compositional fields, for a total of N+1 where N is the number of all compositional fields or only those corresponding to chemical compositions. Units: none.
 ::::
 
+::::{dropdown} __Parameter:__ {ref}`Convergence threshold<parameters:Material_20model/Visco_20Plastic/Convergence_20threshold>`
+:name: parameters:Material_20model/Visco_20Plastic/Convergence_20threshold
+**Default value:** 1e-15
+
+**Pattern:** [Double 0...MAX_DOUBLE (inclusive)]
+
+**Documentation:** Magnitude of negative tangential surface-velocity divergence required to classify flow as convergent. Units: \si{\per\second}.
+::::
+
 ::::{dropdown} __Parameter:__ {ref}`Cutoff stresses for Peierls creep<parameters:Material_20model/Visco_20Plastic/Cutoff_20stresses_20for_20Peierls_20creep>`
 :name: parameters:Material_20model/Visco_20Plastic/Cutoff_20stresses_20for_20Peierls_20creep
 **Default value:** 0.0
@@ -4883,6 +4892,15 @@ Note that melt does not freeze unless the &rsquo;Freezing rate&rsquo; parameter 
 **Pattern:** [Anything]
 
 **Documentation:** List of the Stress thresholds below which the strain rate is solved for as a quadratic function of stress to aid with convergence when stress exponent n=0. Units: \si{\pascal}
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Damage strain saturation value<parameters:Material_20model/Visco_20Plastic/Damage_20strain_20saturation_20value>`
+:name: parameters:Material_20model/Visco_20Plastic/Damage_20strain_20saturation_20value
+**Default value:** 1.
+
+**Pattern:** [Double 0...MAX_DOUBLE (inclusive)]
+
+**Documentation:** Value at which the transported damage strain saturates and the material reaches its maximum weakening. The transported damage strain is capped at this value. Units: None.
 ::::
 
 ::::{dropdown} __Parameter:__ {ref}`Data directory<parameters:Material_20model/Visco_20Plastic/Data_20directory>`
@@ -4921,13 +4939,40 @@ Note that melt does not freeze unless the &rsquo;Freezing rate&rsquo; parameter 
 **Documentation:** List of densities for background mantle and compositional fields,for a total of N+M+1 values, where N is the number of compositional fields and M is the number of phases. If only one value is given, then all use the same value. Units: \si{\kilogram\per\meter\cubed}.
 ::::
 
+::::{dropdown} __Parameter:__ {ref}`Divergence threshold<parameters:Material_20model/Visco_20Plastic/Divergence_20threshold>`
+:name: parameters:Material_20model/Visco_20Plastic/Divergence_20threshold
+**Default value:** 1e-15
+
+**Pattern:** [Double 0...MAX_DOUBLE (inclusive)]
+
+**Documentation:** Positive tangential surface-velocity divergence required to classify flow as divergent. Units: \si{\per\second}.
+::::
+
 ::::{dropdown} __Parameter:__ {ref}`Dynamic angles of internal friction<parameters:Material_20model/Visco_20Plastic/Dynamic_20angles_20of_20internal_20friction>`
 :name: parameters:Material_20model/Visco_20Plastic/Dynamic_20angles_20of_20internal_20friction
 **Default value:** 2
 
 **Pattern:** [List of <[Double 0...MAX_DOUBLE (inclusive)]> of length 0...4294967295 (inclusive)]
 
-**Documentation:** List of dynamic angles of internal friction, $\phi$, for background material and compositional fields, for a total of N$+$1 values, where N is the number of all compositional fields or only those corresponding to chemical compositions. Dynamic angles of friction are used as the current friction angle when the effective strain rate is well above the &rsquo;dynamic characteristic strain rate&rsquo;. Units: \si{\degree}.
+**Documentation:** List of dynamic angles of internal friction, $\phi$, for background material and compositional fields, for a total of N$+$1 values, where N is the number of all compositional fields or only those corresponding to chemical compositions. Dynamic angles of friction are used as the current friction angle when the effective strain rate is well above the &rsquo;dynamic characteristic strain rate&rsquo;. For the &rsquo;differential dynamic friction&rsquo; mechanism these values apply to transform or neutral flow. Units: \si{\degree}.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Dynamic angles of internal friction for convergent flow<parameters:Material_20model/Visco_20Plastic/Dynamic_20angles_20of_20internal_20friction_20for_20convergent_20flow>`
+:name: parameters:Material_20model/Visco_20Plastic/Dynamic_20angles_20of_20internal_20friction_20for_20convergent_20flow
+**Default value:** 2
+
+**Pattern:** [List of <[Double 0...MAX_DOUBLE (inclusive)]> of length 0...4294967295 (inclusive)]
+
+**Documentation:** Dynamic friction angles for convergent flow. Units: \si{\degree}.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Dynamic angles of internal friction for divergent flow<parameters:Material_20model/Visco_20Plastic/Dynamic_20angles_20of_20internal_20friction_20for_20divergent_20flow>`
+:name: parameters:Material_20model/Visco_20Plastic/Dynamic_20angles_20of_20internal_20friction_20for_20divergent_20flow
+**Default value:** 4
+
+**Pattern:** [List of <[Double 0...MAX_DOUBLE (inclusive)]> of length 0...4294967295 (inclusive)]
+
+**Documentation:** Dynamic friction angles for divergent flow. Units: \si{\degree}.
 ::::
 
 ::::{dropdown} __Parameter:__ {ref}`Dynamic characteristic strain rate<parameters:Material_20model/Visco_20Plastic/Dynamic_20characteristic_20strain_20rate>`
@@ -4997,13 +5042,15 @@ Note that melt does not freeze unless the &rsquo;Freezing rate&rsquo; parameter 
 :name: parameters:Material_20model/Visco_20Plastic/Friction_20mechanism
 **Default value:** none
 
-**Pattern:** [Selection none|dynamic friction|function ]
+**Pattern:** [Selection none|dynamic friction|differential dynamic friction|function ]
 
 **Documentation:** Whether to make the friction angle dependent on strain rate or not. This rheology is intended to be used together with the visco-plastic rheology model.
 
 \item &ldquo;none&rdquo;: No dependence of the friction angle is applied.
 
 \item &ldquo;dynamic friction&rdquo;: The friction angle is rate dependent.When &rsquo;dynamic angles of internal friction&rsquo; are specified, the friction angle will be weakened for high strain rates with: $\mu = \mu_d + \frac{\mu_s-\mu_d}{1+\frac{\dot{\epsilon}_{ii}}{\dot{\epsilon}_C}}^x$  where $\mu_s$ and $\mu_d$ are the friction angles at low and high strain rates, respectively. $\dot{\epsilon}_{ii}$ is the second invariant of the strain rate and $\dot{\epsilon}_C$ is the &rsquo;dynamic characteristic strain rate&rsquo; where $\mu = (\mu_s+\mu_d)/2$. The &rsquo;dynamic friction smoothness exponent&rsquo; x controls how smooth or step-like the change from $\mu_s$ to $\mu_d$ is. The equation is modified after Equation (13) in {cite}`van_dinther_seismic_2013`. $\mu_s$ and $\mu_d$ can be specified by setting &rsquo;Angles of internal friction&rsquo; and &rsquo;Dynamic angles of internal friction&rsquo;, respectively. This relationship is similar to rate-and-state friction constitutive relationships, which are applicable to the strength of rocks during earthquakes.
+
+\item &ldquo;differential dynamic friction&rdquo;: As for &ldquo;dynamic friction&rdquo;, but the dynamic angle is selected from convergent, divergent, and transform/neutral values using the divergence of tangential velocity on the top boundary. The surface field is projected down to the specified depth. This indicator remains meaningful in an incompressible model because it is not the divergence of the full velocity field.
 
 \item &ldquo;function&rdquo;: Specify the friction angle as a function of space and time for background material and compositional fields, for a total of N$+$1 values, where N is the number of all compositional fields corresponding to chemical compositions.
 ::::
@@ -5015,6 +5062,15 @@ Note that melt does not freeze unless the &rsquo;Freezing rate&rsquo; parameter 
 **Pattern:** [List of <[Double 0...MAX_DOUBLE (inclusive)]> of length 0...4294967295 (inclusive)]
 
 **Documentation:** List of friction strain weakening factors for background material and compositional fields, for a total of N+1 values, where N is the number of all compositional fields or only those corresponding to chemical compositions. If only one value is given, then all use the same value.  Units: None.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Fully damaged yield stress factors<parameters:Material_20model/Visco_20Plastic/Fully_20damaged_20yield_20stress_20factors>`
+:name: parameters:Material_20model/Visco_20Plastic/Fully_20damaged_20yield_20stress_20factors
+**Default value:** 0.1
+
+**Pattern:** [Anything]
+
+**Documentation:** Factors applied to the complete plastic yield stress at saturated damage for the background material and chemical compositions. Values can be given as a list or as a map using composition names. A value of 0.1 retains 10 percent of the undamaged yield stress. Each value must be between zero and one. Units: None.
 ::::
 
 ::::{dropdown} __Parameter:__ {ref}`Grain size<parameters:Material_20model/Visco_20Plastic/Grain_20size>`
@@ -5466,7 +5522,7 @@ Note that melt does not freeze unless the &rsquo;Freezing rate&rsquo; parameter 
 
 \item &ldquo;no healing&rdquo;: No strain healing is applied.
 
-\item &ldquo;temperature dependent&rdquo;: Purely temperature dependent strain healing applied to plastic yielding and viscosity terms, similar to the temperature-dependent Frank Kamenetskii formulation, computes strain healing as removing strain as a function of temperature, time, and a user-defined healing rate and prefactor as done in Fuchs and Becker, 2019, for mantle convection
+\item &ldquo;temperature dependent&rdquo;: Purely temperature dependent strain healing applied to plastic yielding and viscosity terms, similar to the temperature-dependent Frank Kamenetskii formulation, computes strain healing as removing strain as a function of temperature, time, and a user-defined healing rate and prefactor. The same healing rate is used for exponential relaxation when damage strain weakening is active, as done in Fuchs and Becker, 2019, for mantle convection
 ::::
 
 ::::{dropdown} __Parameter:__ {ref}`Strain healing temperature dependent prefactor<parameters:Material_20model/Visco_20Plastic/Strain_20healing_20temperature_20dependent_20prefactor>`
@@ -5484,14 +5540,14 @@ Note that melt does not freeze unless the &rsquo;Freezing rate&rsquo; parameter 
 
 **Pattern:** [Double 0...MAX_DOUBLE (inclusive)]
 
-**Documentation:** Recovery rate prefactor for temperature dependent strain healing. Units: \si{\per\second}
+**Documentation:** Recovery rate for temperature dependent strain healing. For damage strain, this is the exponential relaxation rate at the reference temperature. Units: \si{\per\second}
 ::::
 
 ::::{dropdown} __Parameter:__ {ref}`Strain weakening mechanism<parameters:Material_20model/Visco_20Plastic/Strain_20weakening_20mechanism>`
 :name: parameters:Material_20model/Visco_20Plastic/Strain_20weakening_20mechanism
 **Default value:** default
 
-**Pattern:** [Selection none|finite strain tensor|total strain|plastic weakening with plastic strain only|plastic weakening with total strain only|plastic weakening with plastic strain and viscous weakening with viscous strain|viscous weakening with viscous strain only|default ]
+**Pattern:** [Selection none|finite strain tensor|total strain|plastic weakening with plastic strain only|plastic weakening with total strain only|plastic weakening with plastic strain and viscous weakening with viscous strain|viscous weakening with viscous strain only|plastic weakening with damage strain|default ]
 
 **Documentation:** Whether to apply strain weakening to viscosity, cohesion and internal angle of friction based on accumulated finite strain, and if yes, which method to use. The following methods are available:
 
@@ -5508,6 +5564,8 @@ Note that melt does not freeze unless the &rsquo;Freezing rate&rsquo; parameter 
 \item &ldquo;plastic weakening with plastic strain and viscous weakening with viscous strain&rdquo;: Both the finite strain accumulated by plastic deformation and by viscous deformation are computed separately (each approximated as the product of the second invariant of the corresponding strain rate in each time step and the time step size). The plastic strain is used to weaken the plastic yield stress (specifically, the cohesion and yield angle), and the viscous strain is used to weaken the pre-yield viscosity.
 
 \item &ldquo;viscous weakening with viscous strain only&rdquo;: The finite strain is approximated as the product of the second invariant of the strain rate in each time step and the time step size in regions where material is not plastically yielding. This quantity is integrated and tracked over time, and used to weaken the pre-yield viscosity. The cohesion and friction angle are not weakened.
+
+\item &ldquo;plastic weakening with damage strain&rdquo;: Track damage strain in a compositional field named &ldquo;damage_strain&rdquo;. Damage strain increases with the strain rate only while the material is plastically yielding, and heals at a rate proportional to its current value following {cite}`fuchs:becker:2019,fuchs:becker:2021`: $d\gamma/dt=\dot{\varepsilon}_{II}-H(T)\gamma$. It linearly reduces the complete plastic yield stress up to a prescribed maximum damage.
 
 \item &ldquo;default&rdquo;: The default option has the same behavior as &ldquo;none&rdquo;, but is there to make sure that the original parameters for specifying the strain weakening mechanism (&ldquo;Use plastic/viscous strain weakening&rdquo;) are still allowed, but to guarantee that one uses either the old parameter names or the new ones, never both.
 
@@ -5548,6 +5606,15 @@ If a compositional field named &rsquo;noninitial\_plastic\_strain&rsquo; is incl
 **Pattern:** [List of <[Double 0...MAX_DOUBLE (inclusive)]> of length 0...4294967295 (inclusive)]
 
 **Documentation:** List of stress limiter exponents, $n_{\text{lim}}$, for background material and compositional fields, for a total of N+1 values, where N is the number of all compositional fields or only those corresponding to chemical compositions. Units: none.
+::::
+
+::::{dropdown} __Parameter:__ {ref}`Surface regime projection depth<parameters:Material_20model/Visco_20Plastic/Surface_20regime_20projection_20depth>`
+:name: parameters:Material_20model/Visco_20Plastic/Surface_20regime_20projection_20depth
+**Default value:** 200e3
+
+**Pattern:** [Double 0...MAX_DOUBLE (inclusive)]
+
+**Documentation:** Maximum depth to which the surface-velocity-divergence classification is projected. Below this depth the default dynamic friction angle is selected. Units: \si{\meter}.
 ::::
 
 ::::{dropdown} __Parameter:__ {ref}`Thermal conductivities<parameters:Material_20model/Visco_20Plastic/Thermal_20conductivities>`
@@ -5601,7 +5668,7 @@ If a compositional field named &rsquo;noninitial\_plastic\_strain&rsquo; is incl
 
 **Pattern:** [Bool]
 
-**Documentation:** Whether to use the adiabatic pressure instead of the full pressure (default) when calculating viscous creep. This may be helpful in models where the full pressure has an unusually large negative value arising from large negative dynamic pressure, resulting in solver convergence issue and in some cases a viscosity of zero.
+**Documentation:** Whether to use the adiabatic pressure instead of the full pressure (default) when calculating viscous creep. This may be helpful in models where the full pressure has an unusually large negative value arising from large negative dynamic pressure, resulting in solver convergence issue and in some cases a viscosity of zero. With mesh deformation, the adiabatic profile is evaluated using depth below the current deformed surface.
 ::::
 
 ::::{dropdown} __Parameter:__ {ref}`Use adiabatic pressure in plasticity<parameters:Material_20model/Visco_20Plastic/Use_20adiabatic_20pressure_20in_20plasticity>`
@@ -5610,7 +5677,7 @@ If a compositional field named &rsquo;noninitial\_plastic\_strain&rsquo; is incl
 
 **Pattern:** [Bool]
 
-**Documentation:** Whether to use the adiabatic pressure instead of the full pressure when calculating plastic yield stress. This may be helpful in models where the full pressure has unusually large variations, resulting in solver convergence issues. Be aware that this setting will change the plastic shear band angle.
+**Documentation:** Whether to use the adiabatic pressure instead of the full pressure when calculating plastic yield stress. This may be helpful in models where the full pressure has unusually large variations, resulting in solver convergence issues. With mesh deformation, the adiabatic profile is evaluated using depth below the current deformed surface, so surface depressions such as oceanic trenches remain at the adiabatic surface pressure. Be aware that this setting will also change the plastic shear band angle.
 ::::
 
 ::::{dropdown} __Parameter:__ {ref}`Use dominant phase for viscosity<parameters:Material_20model/Visco_20Plastic/Use_20dominant_20phase_20for_20viscosity>`

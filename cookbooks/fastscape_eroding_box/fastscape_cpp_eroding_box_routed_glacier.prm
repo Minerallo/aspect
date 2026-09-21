@@ -1,0 +1,31 @@
+include fastscape_cpp_eroding_box.prm
+
+set Output directory = output-fastscape-cpp-eroding-box-routed-glacier
+
+subsection Mesh deformation
+  subsection FastScape surface evolution
+    set Glacial erosion mode                        = routed glacier
+    set Glacial erosion coefficient                 = 1e-5
+    set Glacial velocity exponent                   = 1
+    set Glacial ice thickness scale                 = 300
+    set Minimum ice thickness                       = 40
+    set Routed glacier ELA                          = 1800
+    set Routed glacier accumulation gradient        = 1e-3
+    set Routed glacier maximum accumulation         = 1
+    set Routed glacier ablation gradient             = 2e-3
+    set Routed glacier maximum ablation             = 5
+    set Routed glacier minimum discharge            = 2e5
+    set Routed glacier reference discharge          = 5e7
+    set Routed glacier reference width              = 2500
+    set Routed glacier width exponent               = 0.3
+    set Routed glacier minimum width                = 2000
+    set Routed glacier maximum width                = 6000
+    set Routed glacier reference thickness          = 250
+    set Routed glacier thickness exponent           = 0.2
+    set Routed glacier minimum thickness            = 50
+    set Routed glacier maximum thickness            = 800
+    set Routed glacier thickness slope exponent     = 0.15
+    set Spread routed glacier erosion over width    = true
+    set Terminate routed glacier at sea level       = true
+  end
+end

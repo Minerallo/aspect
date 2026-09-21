@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <aspect/material_model/rheology/visco_plastic.h>
+#include <aspect/mesh_deformation/interface.h>
 #include <aspect/material_model/utilities.h>
 #include <aspect/utilities.h>
 #include <aspect/newton.h>
@@ -28,6 +29,8 @@
 #include <deal.II/base/signaling_nan.h>
 #include <deal.II/base/parameter_handler.h>
 #include <deal.II/fe/fe_values.h>
+
+#include <limits>
 
 namespace aspect
 {
@@ -41,8 +44,14 @@ namespace aspect
         names.emplace_back("current_cohesions");
         names.emplace_back("current_friction_angles");
         names.emplace_back("current_yield_stresses");
+        names.emplace_back("current_yield_stress_prefactors");
         names.emplace_back("plastic_yielding");
         return names;
+      }
+
+      std::vector<std::string> make_tectonic_regime_additional_outputs_names()
+      {
+        return {"surface_velocity_divergence", "tectonic_regime"};
       }
     }
 
@@ -52,6 +61,7 @@ namespace aspect
         cohesions(n_points, numbers::signaling_nan<double>()),
         friction_angles(n_points, numbers::signaling_nan<double>()),
         yield_stresses(n_points, numbers::signaling_nan<double>()),
+        yield_stress_prefactors(n_points, numbers::signaling_nan<double>()),
         yielding(n_points, numbers::signaling_nan<double>())
     {}
 
@@ -61,7 +71,7 @@ namespace aspect
     std::vector<double>
     PlasticAdditionalOutputs<dim>::get_nth_output(const unsigned int idx) const
     {
-      AssertIndexRange (idx, 4);
+      AssertIndexRange (idx, 5);
       switch (idx)
         {
           case 0:
@@ -74,6 +84,9 @@ namespace aspect
             return yield_stresses;
 
           case 3:
+            return yield_stress_prefactors;
+
+          case 4:
             return yielding;
 
           default:
@@ -124,6 +137,15 @@ namespace aspect
 
 
     template <int dim>
+    TectonicRegimeAdditionalOutputs<dim>::TectonicRegimeAdditionalOutputs(const unsigned int n_points)
+      : NamedAdditionalMaterialOutputs<dim>(make_tectonic_regime_additional_outputs_names()),
+        surface_velocity_divergence(n_points, numbers::signaling_nan<double>()),
+        tectonic_regime(n_points, numbers::signaling_nan<double>())
+    {}
+
+
+
+    template <int dim>
     std::vector<double>
     ViscosityAdditionalOutputs<dim>::get_nth_output(const unsigned int idx) const
     {
@@ -145,6 +167,18 @@ namespace aspect
 
 
 
+    template <int dim>
+    std::vector<double>
+    TectonicRegimeAdditionalOutputs<dim>::get_nth_output(const unsigned int idx) const
+    {
+      AssertIndexRange (idx, 2);
+      if (idx == 0)
+        return surface_velocity_divergence;
+      return tectonic_regime;
+    }
+
+
+
     namespace Rheology
     {
 
@@ -159,6 +193,7 @@ namespace aspect
       ViscoPlastic<dim>::
       calculate_isostrain_viscosities (const MaterialModel::MaterialModelInputs<dim> &in,
                                        const unsigned int i,
+                                       const double current_surface_adiabatic_pressure,
                                        const std::vector<double> &volume_fractions,
                                        const std::vector<double> &phase_function_values,
                                        const std::vector<unsigned int> &n_phase_transitions_per_composition) const
@@ -168,6 +203,8 @@ namespace aspect
         // Initialize or fill variables used to calculate viscosities
         output_parameters.composition_yielding.resize(volume_fractions.size(), false);
         output_parameters.composition_viscosities.resize(volume_fractions.size(), numbers::signaling_nan<double>());
+        output_parameters.composition_deformation_mechanisms.resize(volume_fractions.size(),
+                                                                    DeformationMechanism::uninitialized);
         output_parameters.drucker_prager_parameters.resize(volume_fractions.size());
         output_parameters.dilation_lhs_terms.resize(volume_fractions.size(), numbers::signaling_nan<double>());
         output_parameters.dilation_rhs_terms.resize(volume_fractions.size(), numbers::signaling_nan<double>());
@@ -219,18 +256,31 @@ namespace aspect
           edot_ii = std::max(std::sqrt(std::max(-Utilities::Tensors::consistent_second_invariant_of_deviatoric_tensor(Utilities::Tensors::consistent_deviator(in.strain_rate[i])), 0.)),
                              min_strain_rate);
 
+        const bool use_anelastic_reference_pressure =
+          (this->get_parameters().formulation_buoyancy_density
+           == Parameters<dim>::Formulation::BuoyancyDensity::anelastic_reference_density_profile_deviation);
+        const double reference_pressure =
+          (this->get_adiabatic_conditions().is_initialized() == false
+           ? in.pressure[i]
+           : std::isnan(current_surface_adiabatic_pressure)
+           ? this->get_adiabatic_conditions().pressure(in.position[i])
+           : current_surface_adiabatic_pressure);
+
         // Calculate viscosities for each of the individual compositional phases
         for (unsigned int j=0; j < volume_fractions.size(); ++j)
           {
             // Step 1: viscous behavior
             double non_yielding_viscosity = numbers::signaling_nan<double>();
+            double dominant_viscous_viscosity = std::numeric_limits<double>::max();
+            DeformationMechanism dominant_viscous_mechanism = DeformationMechanism::uninitialized;
 
             // Choice of activation volume depends on whether there is an adiabatic temperature
             // gradient used when calculating the viscosity. This allows the same activation volume
             // to be used in incompressible and compressible models.
             const double temperature_for_viscosity = (this->simulator_is_past_initialization())
                                                      ?
-                                                     in.temperature[i] + adiabatic_temperature_gradient_for_viscosity*in.pressure[i]
+                                                     in.temperature[i] + adiabatic_temperature_gradient_for_viscosity
+                                                     * (use_anelastic_reference_pressure ? reference_pressure : in.pressure[i])
                                                      :
                                                      this->get_adiabatic_conditions().temperature(in.position[i]);
 
@@ -250,8 +300,8 @@ namespace aspect
               // when calculating creep viscosity.
               double pressure_for_creep = in.pressure[i];
 
-              if (use_adiabatic_pressure_in_creep)
-                pressure_for_creep = this->get_adiabatic_conditions().pressure(in.position[i]);
+              if (use_adiabatic_pressure_in_creep || use_anelastic_reference_pressure)
+                pressure_for_creep = reference_pressure;
 
               const double viscosity_diffusion
                 = (viscous_flow_law != dislocation
@@ -284,6 +334,8 @@ namespace aspect
                     non_yielding_viscosity = compositional_viscosity_prefactors.compute_viscosity(in, viscosity_diffusion, j, i,
                                                                                                   CompositionalViscosityPrefactors<dim>::ModifiedFlowLaws::diffusion);
                     output_parameters.diffusion_viscosities[j] = non_yielding_viscosity;
+                    dominant_viscous_viscosity = non_yielding_viscosity;
+                    dominant_viscous_mechanism = DeformationMechanism::diffusion;
                     break;
                   }
                   case dislocation:
@@ -291,6 +343,8 @@ namespace aspect
                     non_yielding_viscosity = compositional_viscosity_prefactors.compute_viscosity(in, viscosity_dislocation, j, i,
                                                                                                   CompositionalViscosityPrefactors<dim>::ModifiedFlowLaws::dislocation);
                     output_parameters.dislocation_viscosities[j] = non_yielding_viscosity;
+                    dominant_viscous_viscosity = non_yielding_viscosity;
+                    dominant_viscous_mechanism = DeformationMechanism::dislocation;
                     break;
                   }
                   case frank_kamenetskii:
@@ -299,6 +353,8 @@ namespace aspect
                                                                                            pressure_for_creep,
                                                                                            this->get_adiabatic_conditions().density(this->get_geometry_model().representative_point(0)),
                                                                                            this->get_gravity_model().gravity_vector(in.position[0]).norm());
+                    dominant_viscous_viscosity = non_yielding_viscosity;
+                    dominant_viscous_mechanism = DeformationMechanism::frank_kamenetskii;
                     break;
                   }
                   case composite:
@@ -312,6 +368,17 @@ namespace aspect
 
                     output_parameters.diffusion_viscosities[j] = scaled_viscosity_diffusion;
                     output_parameters.dislocation_viscosities[j] = scaled_viscosity_dislocation;
+
+                    if (scaled_viscosity_diffusion <= scaled_viscosity_dislocation)
+                      {
+                        dominant_viscous_viscosity = scaled_viscosity_diffusion;
+                        dominant_viscous_mechanism = DeformationMechanism::diffusion;
+                      }
+                    else
+                      {
+                        dominant_viscous_viscosity = scaled_viscosity_dislocation;
+                        dominant_viscous_mechanism = DeformationMechanism::dislocation;
+                      }
                     break;
                   }
                   case minimum_diffusion_dislocation:
@@ -321,9 +388,19 @@ namespace aspect
                     const double scaled_viscosity_dislocation = compositional_viscosity_prefactors.compute_viscosity(in, viscosity_dislocation, j, i,
                                                                 CompositionalViscosityPrefactors<dim>::ModifiedFlowLaws::dislocation);
                     non_yielding_viscosity = std::min(scaled_viscosity_diffusion, scaled_viscosity_dislocation);
-
                     output_parameters.diffusion_viscosities[j] = scaled_viscosity_diffusion;
                     output_parameters.dislocation_viscosities[j] = scaled_viscosity_dislocation;
+
+                    if (scaled_viscosity_diffusion <= scaled_viscosity_dislocation)
+                      {
+                        dominant_viscous_viscosity = scaled_viscosity_diffusion;
+                        dominant_viscous_mechanism = DeformationMechanism::diffusion;
+                      }
+                    else
+                      {
+                        dominant_viscous_viscosity = scaled_viscosity_dislocation;
+                        dominant_viscous_mechanism = DeformationMechanism::dislocation;
+                      }
                     break;
                   }
                   default:
@@ -340,6 +417,11 @@ namespace aspect
                                                                                     phase_function_values,
                                                                                     n_phase_transitions_per_composition);
                   non_yielding_viscosity = (non_yielding_viscosity * viscosity_peierls) / (non_yielding_viscosity + viscosity_peierls);
+                  if (viscosity_peierls < dominant_viscous_viscosity)
+                    {
+                      dominant_viscous_viscosity = viscosity_peierls;
+                      dominant_viscous_mechanism = DeformationMechanism::peierls;
+                    }
                 }
 
               // Step 1e: compute the viscosity from the grain boundary sliding and harmonically average with current viscosities
@@ -353,6 +435,11 @@ namespace aspect
                                                                     phase_function_values,
                                                                     n_phase_transitions_per_composition);
                   non_yielding_viscosity = (non_yielding_viscosity * viscosity_grain_boundary_sliding) / (non_yielding_viscosity + viscosity_grain_boundary_sliding);
+                  if (viscosity_grain_boundary_sliding < dominant_viscous_viscosity)
+                    {
+                      dominant_viscous_viscosity = viscosity_grain_boundary_sliding;
+                      dominant_viscous_mechanism = DeformationMechanism::grain_boundary_sliding;
+                    }
                 }
             }
 
@@ -423,6 +510,16 @@ namespace aspect
                                                                                      output_parameters.drucker_prager_parameters[j].angle_internal_friction,
                                                                                      in.position[i]);
 
+            // Add the damage-strain reduction to the existing yield-stress
+            // prefactor for this composition. Reduce the upper limit by the
+            // same amount.
+            const double damage_strain_yield_stress_prefactor =
+              strain_rheology.compute_damage_strain_yield_stress_prefactor(in.composition[i], j);
+            output_parameters.drucker_prager_parameters[j].yield_stress_prefactor *=
+              damage_strain_yield_stress_prefactor;
+            output_parameters.drucker_prager_parameters[j].max_yield_stress *=
+              damage_strain_yield_stress_prefactor;
+
             // Step 5: plastic yielding
 
             // Determine if the pressure used in Drucker Prager plasticity will be capped at 0 (default).
@@ -430,9 +527,8 @@ namespace aspect
             // than the lithostatic pressure.
 
             double pressure_for_plasticity = in.pressure[i];
-
-            if (use_adiabatic_pressure_in_plasticity)
-              pressure_for_plasticity = this->get_adiabatic_conditions().pressure(in.position[i]);
+            if (use_adiabatic_pressure_in_plasticity || use_anelastic_reference_pressure)
+              pressure_for_plasticity = reference_pressure;
 
             if (allow_negative_pressures_in_plasticity == false)
               pressure_for_plasticity = std::max(pressure_for_plasticity,0.0);
@@ -498,6 +594,13 @@ namespace aspect
                                                              );
             output_parameters.composition_viscosities[j] = std::clamp(effective_viscosity, minimum_viscosity_for_composition, maximum_viscosity_for_composition);
 
+            if (output_parameters.composition_yielding[j])
+              output_parameters.composition_deformation_mechanisms[j] = DeformationMechanism::plastic_yielding;
+            else if (effective_viscosity >= maximum_viscosity_for_composition)
+              output_parameters.composition_deformation_mechanisms[j] = DeformationMechanism::maximum_viscosity;
+            else
+              output_parameters.composition_deformation_mechanisms[j] = dominant_viscous_mechanism;
+
             // Compute the dilation terms if necessary.
             if (this->get_parameters().enable_prescribed_dilation == true)
               {
@@ -516,11 +619,52 @@ namespace aspect
 
 
       template <int dim>
+      std::vector<double>
+      ViscoPlastic<dim>::compute_current_surface_adiabatic_pressures(
+        const MaterialModel::MaterialModelInputs<dim> &in) const
+      {
+        std::vector<double> pressures(
+          in.n_evaluation_points(),
+          std::numeric_limits<double>::quiet_NaN());
+
+        const bool use_anelastic_reference_pressure =
+          (this->get_parameters().formulation_buoyancy_density
+           == Parameters<dim>::Formulation::BuoyancyDensity::anelastic_reference_density_profile_deviation);
+
+        if ((use_adiabatic_pressure_in_plasticity == false
+             && use_adiabatic_pressure_in_creep == false
+             && use_anelastic_reference_pressure == false)
+            || this->get_parameters().mesh_deformation_enabled == false
+            || in.current_cell.state() != IteratorState::valid)
+          return pressures;
+
+        const std::vector<double> depths =
+          this->get_mesh_deformation_handler().depth_below_current_surface(
+            in.current_cell, in.position);
+        const double maximal_depth = this->get_geometry_model().maximal_depth();
+
+        for (unsigned int q = 0; q < in.n_evaluation_points(); ++q)
+          {
+            // A deformed domain can extend beyond the reference geometry.
+            // representative_point() is only defined inside its depth range.
+            const double bounded_depth =
+              std::min(std::max(depths[q], 0.0), maximal_depth);
+            pressures[q] =
+              this->get_adiabatic_conditions().pressure_at_depth(bounded_depth);
+          }
+
+        return pressures;
+      }
+
+
+
+      template <int dim>
       void
       ViscoPlastic<dim>::
       compute_viscosity_derivatives(const unsigned int i,
                                     const std::vector<double> &volume_fractions,
                                     const IsostrainViscosities &current_isostrain_values,
+                                    const double current_surface_adiabatic_pressure,
                                     const MaterialModel::MaterialModelInputs<dim> &in,
                                     MaterialModel::MaterialModelOutputs<dim> &out,
                                     const std::vector<double> &phase_function_values,
@@ -566,7 +710,9 @@ namespace aspect
                 in_derivatives.strain_rate[i] = forward_strain_rate;
 
                 const IsostrainViscosities forward_isostrain_values =
-                  calculate_isostrain_viscosities(in_derivatives, i, volume_fractions,
+                  calculate_isostrain_viscosities(in_derivatives, i,
+                                                  current_surface_adiabatic_pressure,
+                                                  volume_fractions,
                                                   phase_function_values, n_phase_transitions_per_composition);
 
                 // For each composition of the independent component, compute the derivative.
@@ -604,7 +750,9 @@ namespace aspect
             in_derivatives.strain_rate[i] = current_strain_rate;
 
             const IsostrainViscosities forward_isostrain_values =
-              calculate_isostrain_viscosities(in_derivatives, i, volume_fractions,
+              calculate_isostrain_viscosities(in_derivatives, i,
+                                              current_surface_adiabatic_pressure,
+                                              volume_fractions,
                                               phase_function_values, n_phase_transitions_per_composition);
 
             for (unsigned int composition_index = 0; composition_index < n_compositions; ++composition_index)
@@ -770,15 +918,21 @@ namespace aspect
                            "This may be helpful in models where the "
                            "full pressure has an unusually large negative value arising from "
                            "large negative dynamic pressure, resulting in solver convergence "
-                           "issue and in some cases a viscosity of zero.");
+                           "issue and in some cases a viscosity of zero. With mesh deformation, "
+                           "the adiabatic profile is evaluated using depth below the current "
+                           "deformed surface.");
         prm.declare_entry ("Use adiabatic pressure in plasticity", "false",
                            Patterns::Bool (),
                            "Whether to use the adiabatic pressure instead of the full "
                            "pressure when calculating plastic yield stress. "
                            "This may be helpful in models where the "
                            "full pressure has unusually large variations, resulting "
-                           "in solver convergence issues. Be aware that this setting "
-                           "will change the plastic shear band angle.");
+                           "in solver convergence issues. With mesh deformation, the "
+                           "adiabatic profile is evaluated using depth below the current "
+                           "deformed surface, so surface depressions such as oceanic "
+                           "trenches remain at the adiabatic surface pressure. Be aware "
+                           "that this setting will also change the "
+                           "plastic shear band angle.");
 
         // Diffusion creep parameters
         Rheology::DiffusionCreep<dim>::declare_parameters(prm);
@@ -1007,7 +1161,17 @@ namespace aspect
             out.additional_outputs.push_back(
               std::make_unique<PlasticAdditionalOutputs<dim>> (n_points));
           }
+
+        if (friction_models.get_friction_mechanism() == differential_dynamic_friction
+            && out.template has_additional_output_object<TectonicRegimeAdditionalOutputs<dim>>() == false)
+          {
+            const unsigned int n_points = out.n_evaluation_points();
+            out.additional_outputs.push_back(
+              std::make_unique<TectonicRegimeAdditionalOutputs<dim>> (n_points));
+          }
       }
+
+
 
       template <int dim>
       void
@@ -1015,6 +1179,7 @@ namespace aspect
       fill_plastic_outputs(const unsigned int i,
                            const std::vector<double> &volume_fractions,
                            const bool plastic_yielding,
+                           const double current_surface_adiabatic_pressure,
                            const MaterialModel::MaterialModelInputs<dim> &in,
                            MaterialModel::MaterialModelOutputs<dim> &out,
                            const IsostrainViscosities &isostrain_viscosities) const
@@ -1030,12 +1195,19 @@ namespace aspect
             plastic_out->cohesions[i] = 0;
             plastic_out->friction_angles[i] = 0;
             plastic_out->yield_stresses[i] = 0;
+            plastic_out->yield_stress_prefactors[i] = 0;
             plastic_out->yielding[i] = plastic_yielding ? 1 : 0;
 
             double pressure_for_plasticity = in.pressure[i];
-
-            if (use_adiabatic_pressure_in_plasticity)
-              pressure_for_plasticity = this->get_adiabatic_conditions().pressure(in.position[i]);
+            if (use_adiabatic_pressure_in_plasticity
+                || this->get_parameters().formulation_buoyancy_density
+                   == Parameters<dim>::Formulation::BuoyancyDensity::anelastic_reference_density_profile_deviation)
+              pressure_for_plasticity =
+                (std::isnan(current_surface_adiabatic_pressure)
+                 ?
+                 this->get_adiabatic_conditions().pressure(in.position[i])
+                 :
+                 current_surface_adiabatic_pressure);
 
             if (allow_negative_pressures_in_plasticity == false)
               pressure_for_plasticity = std::max(pressure_for_plasticity, 0.0);
@@ -1051,7 +1223,29 @@ namespace aspect
 
                 plastic_out->yield_stresses[i] += volume_fractions[j] * drucker_prager_plasticity.compute_yield_stress(pressure_for_plasticity,
                                                   drucker_prager_parameters);
+                plastic_out->yield_stress_prefactors[i] += volume_fractions[j] * drucker_prager_parameters.yield_stress_prefactor;
               }
+          }
+
+        const std::shared_ptr<TectonicRegimeAdditionalOutputs<dim>> tectonic_out
+          = out.template get_additional_output_object<TectonicRegimeAdditionalOutputs<dim>>();
+        if (tectonic_out != nullptr)
+          {
+            tectonic_out->surface_velocity_divergence[i]
+              = friction_models.compute_surface_velocity_divergence(in.position[i]);
+            tectonic_out->tectonic_regime[i]
+              = static_cast<double>(friction_models.compute_tectonic_regime(in.position[i]));
+          }
+
+        if (const std::shared_ptr<DeformationMechanismOutputs<dim>> deformation_mechanism_out =
+              out.template get_additional_output_object<DeformationMechanismOutputs<dim>>())
+          {
+            const std::vector<double>::const_iterator max_composition =
+              std::max_element(volume_fractions.begin(), volume_fractions.end());
+            const unsigned int dominant_composition =
+              std::distance(volume_fractions.begin(), max_composition);
+            deformation_mechanism_out->deformation_mechanisms[i] =
+              isostrain_viscosities.composition_deformation_mechanisms[dominant_composition];
           }
       }
 
@@ -1126,6 +1320,7 @@ namespace aspect
 #define INSTANTIATE(dim) \
   template class PlasticAdditionalOutputs<dim>; \
   template class ViscosityAdditionalOutputs<dim>; \
+  template class TectonicRegimeAdditionalOutputs<dim>; \
   \
   namespace Rheology \
   { \

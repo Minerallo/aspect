@@ -351,6 +351,20 @@ if(ASPECT_WITH_FASTSCAPE)
   endif()
 endif()
 
+# C++ FastScape library. This is independent from the older Fortran
+# FastScape coupling above and is intentionally opt-in.
+set(ASPECT_WITH_FASTSCAPELIB OFF CACHE BOOL
+    "Whether to compile ASPECT with the C++ FastScape library.")
+message(STATUS "Using ASPECT_WITH_FASTSCAPELIB = '${ASPECT_WITH_FASTSCAPELIB}'")
+if(ASPECT_WITH_FASTSCAPELIB)
+  find_package(Threads REQUIRED)
+  find_package(xtl CONFIG REQUIRED)
+  find_package(xtensor CONFIG REQUIRED)
+  find_package(fastscapelib CONFIG REQUIRED)
+  message(STATUS "  fastscapelib_INCLUDE_DIRS: ${fastscapelib_INCLUDE_DIRS}")
+  message(STATUS "  xtensor_INCLUDE_DIRS: ${xtensor_INCLUDE_DIRS}")
+endif()
+
 
 # NetCDF (c including parallel)
 set(ASPECT_WITH_NETCDF ON CACHE BOOL "Check if the user wants to compile ASPECT with the NetCDF libraries.")
@@ -716,6 +730,12 @@ endif()
 # friendly names for all executables being built:
 set(TARGET_FRIENDLY_EXECUTABLES "")
 
+if(APPLE)
+  set(ASPECT_INSTALL_LIBRARY_RPATH "@loader_path/../lib")
+else()
+  set(ASPECT_INSTALL_LIBRARY_RPATH "$ORIGIN/../lib")
+endif()
+
 # Set up targets for ASPECT executables:
 if(${ASPECT_BUILD_DEBUG} STREQUAL "ON")
   add_executable(${TARGET_EXE_DEBUG} ${ASPECT_ALL_SOURCE_FILES})
@@ -731,7 +751,7 @@ if(${ASPECT_BUILD_DEBUG} STREQUAL "ON")
     "${DEAL_II_LINKER_FLAGS} ${DEAL_II_LINKER_FLAGS_DEBUG}"
     )
   target_link_libraries(${TARGET_EXE_DEBUG} dealii::dealii_debug)
-  set_target_properties(${TARGET_EXE_DEBUG} PROPERTIES INSTALL_RPATH "$ORIGIN/../lib")
+  set_target_properties(${TARGET_EXE_DEBUG} PROPERTIES INSTALL_RPATH "${ASPECT_INSTALL_LIBRARY_RPATH}")
 endif()
 
 if(${ASPECT_BUILD_RELEASE} STREQUAL "ON")
@@ -748,7 +768,7 @@ if(${ASPECT_BUILD_RELEASE} STREQUAL "ON")
     "${DEAL_II_LINKER_FLAGS} ${DEAL_II_LINKER_FLAGS_RELEASE}"
     )
   target_link_libraries(${TARGET_EXE_RELEASE} dealii::dealii_release)
-  set_target_properties(${TARGET_EXE_RELEASE} PROPERTIES INSTALL_RPATH "$ORIGIN/../lib")
+  set_target_properties(${TARGET_EXE_RELEASE} PROPERTIES INSTALL_RPATH "${ASPECT_INSTALL_LIBRARY_RPATH}")
 endif()
 
 # Make sure we have the rpath to our dependencies set:
@@ -853,6 +873,15 @@ if (FASTSCAPE_LIB_NAME)
       target_link_libraries(${_T} gfortran)
     endforeach()
   endif()
+endif()
+
+# Linking the imported interface targets propagates their include directories
+# and any transitive dependencies.
+if(ASPECT_WITH_FASTSCAPELIB)
+  message(STATUS "Linking ASPECT against C++ FastScape")
+  foreach(_T ${TARGET_EXECUTABLES})
+    target_link_libraries(${_T} fastscapelib xtensor xtl)
+  endforeach()
 endif()
 
 # NetCDF
@@ -1253,13 +1282,50 @@ message(STATUS "===== Configuring ASPECT documentation =============")
 
 add_subdirectory(doc)
 
-message(STATUS "")
-message(STATUS "")
+
+# Find the deal.II parameter GUI and install helper script
+find_program(PARAMETER_GUI_EXECUTABLE
+        parameter_gui
+        HINTS $ENV{PARAMETER_GUI_DIR} $ENV{PARAMETER_GUI_DIR}/bin ${PARAMETER_GUI_DIR} ${PARAMETER_GUI_DIR}/bin
+        PATH bin)
+mark_as_advanced(CLEAR PARAMETER_GUI_EXECUTABLE)
+
+# Did the user specify something that doesn't exist?
+if(PARAMETER_GUI_EXECUTABLE
+        AND
+    (NOT EXISTS ${PARAMETER_GUI_EXECUTABLE} OR IS_DIRECTORY ${PARAMETER_GUI_EXECUTABLE}))
+  message(STATUS "Warning: PARAMETER_GUI_EXECUTABLE '${PARAMETER_GUI_EXECUTABLE}' does not exist")
+  set(PARAMETER_GUI_EXECUTABLE "PARAMETER_GUI_EXECUTABLE-NOTFOUND" CACHE FILEPATH "" FORCE)
+endif()
+
+if(NOT PARAMETER_GUI_EXECUTABLE)
+  message(STATUS "Parameter GUI not found: install and provide a hint using -D PARAMETER_GUI_DIR or set -D PARAMETER_GUI_EXECUTABLE directly.")
+else()
+  message(STATUS "Found parameter GUI at: ${PARAMETER_GUI_EXECUTABLE}")
+  configure_file(
+    ${CMAKE_SOURCE_DIR}/doc/aspect-gui
+    ${CMAKE_BINARY_DIR}/aspect-gui
+    @ONLY
+  )
+install(FILES ${CMAKE_BINARY_DIR}/aspect-gui
+        DESTINATION bin
+        PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+                GROUP_READ GROUP_EXECUTE
+                WORLD_READ WORLD_EXECUTE)
+endif()
 
 
-###########################################################
-# Finally, print a summary.
-###########################################################
+
+# A target to create parameters.json after building the ASPECT binary.
+
+add_custom_command(TARGET ${TARGET_EXE} POST_BUILD
+  COMMAND sh -c 'echo "" | ./$<TARGET_PROPERTY:${TARGET_EXE},OUTPUT_NAME> --output-json -- > parameters.json'
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+
+
+message(STATUS "")
+message(STATUS "===== Writing final configuration ==================")
 
 include(cmake/write_config)
 

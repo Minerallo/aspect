@@ -164,6 +164,7 @@ namespace aspect
         void initialize_fastscape(std::vector<double> &elevation,
                                   std::vector<double> &basement,
                                   std::vector<double> &silt_fraction,
+                                  std::vector<double> &cumulative_erosion,
                                   bool restart) const;
 
         /**
@@ -340,6 +341,23 @@ namespace aspect
          * This variable is read from the parameter file through a parameter called 'Uplift and advect with fastscape'.
          */
         bool fastscape_advection_uplift;
+
+        /**
+         * FastScape advection implementation: 1 selects the original scheme
+         * and 2 selects the total-variation-diminishing (TVD) scheme.
+         */
+        unsigned int fastscape_advection_scheme;
+
+        /**
+         * Prescribed-field glacial erosion configuration.
+         */
+        bool use_glacial_erosion;
+        Functions::ParsedFunction<2> glacial_erodibility_function;
+        Functions::ParsedFunction<2> ice_thickness_function;
+        Functions::ParsedFunction<2> basal_sliding_velocity_function;
+        double glacial_sliding_exponent;
+        double glacial_thickness_scale;
+        double glacial_minimum_thickness;
 
         /**
          * Node tolerance for how close a ASPECT node must be to the FastScape node

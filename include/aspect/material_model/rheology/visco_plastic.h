@@ -24,6 +24,7 @@
 #include <aspect/global.h>
 #include <aspect/material_model/interface.h>
 #include <aspect/material_model/utilities.h>
+#include <aspect/material_model/additional_outputs/deformation_mechanism.h>
 #include <aspect/material_model/rheology/strain_dependent.h>
 #include <aspect/material_model/rheology/friction_models.h>
 #include <aspect/material_model/rheology/diffusion_creep.h>
@@ -77,6 +78,12 @@ namespace aspect
         std::vector<double> yield_stresses;
 
         /**
+         * The current factor multiplying the plastic yield stress, including
+         * the configured composition factor and damage-strain weakening.
+         */
+        std::vector<double> yield_stress_prefactors;
+
+        /**
          * The area where the viscous stress exceeds the plastic yield stress,
          * and viscosity is rescaled back to the yield envelope.
          */
@@ -85,7 +92,7 @@ namespace aspect
     };
 
     /**
-    * Additional output fields for diffusion and dislocation viscosities.
+     * Additional output fields for diffusion and dislocation viscosities.
     */
     template <int dim>
     class ViscosityAdditionalOutputs : public NamedAdditionalMaterialOutputs<dim>
@@ -137,6 +144,23 @@ namespace aspect
     };
 
     /**
+     * Diagnostic outputs for the differential dynamic friction mechanism.
+     * Tectonic regime uses -1 for convergence, 0 for transform/neutral, and
+     * +1 for divergence.
+     */
+    template <int dim>
+    class TectonicRegimeAdditionalOutputs : public NamedAdditionalMaterialOutputs<dim>
+    {
+      public:
+        TectonicRegimeAdditionalOutputs(const unsigned int n_points);
+
+        std::vector<double> get_nth_output(const unsigned int idx) const override;
+
+        std::vector<double> surface_velocity_divergence;
+        std::vector<double> tectonic_regime;
+    };
+
+    /**
      * A data structure with the output of calculate_isostrain_viscosities.
      */
     struct IsostrainViscosities
@@ -150,6 +174,11 @@ namespace aspect
        * The composition yielding.
        */
       std::vector<bool> composition_yielding;
+
+      /**
+       * The dominant deformation mechanism for each composition.
+       */
+      std::vector<DeformationMechanism> composition_deformation_mechanisms;
 
       /**
        * All the drucker prager plasticity parameters.
@@ -204,10 +233,22 @@ namespace aspect
           IsostrainViscosities
           calculate_isostrain_viscosities ( const MaterialModel::MaterialModelInputs<dim> &in,
                                             const unsigned int i,
+                                            const double current_surface_adiabatic_pressure,
                                             const std::vector<double> &volume_fractions,
                                             const std::vector<double> &phase_function_values = {},
                                             const std::vector<unsigned int> &n_phase_transitions_per_composition =
                                               std::vector<unsigned int>()) const;
+
+          /**
+           * Return adiabatic pressures evaluated using depth below the current
+           * surface at all evaluation points. These values are used by the
+           * pressure-dependent parts of the rheology for which adiabatic
+           * pressure is enabled. A NaN entry indicates that the existing
+           * pressure selection in the rheology should be used.
+           */
+          std::vector<double>
+          compute_current_surface_adiabatic_pressures(
+            const MaterialModel::MaterialModelInputs<dim> &in) const;
 
           /**
            * A function that fills the viscosity derivatives in the
@@ -221,6 +262,7 @@ namespace aspect
           void compute_viscosity_derivatives(const unsigned int point_index,
                                              const std::vector<double> &volume_fractions,
                                              const IsostrainViscosities &isostrain_values,
+                                             const double current_surface_adiabatic_pressure,
                                              const MaterialModel::MaterialModelInputs<dim> &in,
                                              MaterialModel::MaterialModelOutputs<dim> &out,
                                              const std::vector<double> &phase_function_values = {},
@@ -261,13 +303,14 @@ namespace aspect
           create_plastic_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const;
 
           /**
-           * A function that fills the plastic additional output in the
-           * MaterialModelOutputs object that is handed over, if it exists.
-           * Does nothing otherwise.
+           * A function that fills the plastic and deformation mechanism
+           * additional outputs in the MaterialModelOutputs object that is
+           * handed over, if they exist. Does nothing otherwise.
            */
           void fill_plastic_outputs(const unsigned int point_index,
                                     const std::vector<double> &volume_fractions,
                                     const bool plastic_yielding,
+                                    const double current_surface_adiabatic_pressure,
                                     const MaterialModel::MaterialModelInputs<dim> &in,
                                     MaterialModel::MaterialModelOutputs<dim> &out,
                                     const IsostrainViscosities &isostrain_viscosities) const;

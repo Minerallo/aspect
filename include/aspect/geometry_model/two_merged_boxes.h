@@ -101,6 +101,12 @@ namespace aspect
         double height_above_reference_surface(const Point<dim> &position) const override;
 
         /**
+         * Return height relative to the top of the undeformed mesh, including
+         * the geometry model's initial topography.
+         */
+        double height_above_reference_mesh_surface(const Point<dim> &position) const override;
+
+        /**
          * @copydoc Interface<dim>::representative_point()
          */
         Point<dim> representative_point(const double depth) const override;

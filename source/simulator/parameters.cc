@@ -745,6 +745,22 @@ namespace aspect
                          "Note that this parameter is only evaluated "
                          "if `Formulation' is set to `custom'. Other formulations ignore "
                          "the value of this parameter.");
+      prm.declare_entry ("Buoyancy density", "full density",
+                         Patterns::Selection ("full density|reference density profile deviation|anelastic reference density profile deviation"),
+                         "Select which density enters the gravitational body-force term in the "
+                         "momentum equation. `Full density' assembles rho*g and solves for total "
+                         "pressure, which is ASPECT's default formulation. `Reference density "
+                         "profile deviation' assembles (rho-rho_ref)*g, where rho_ref is provided "
+                         "by the adiabatic conditions model, and consequently solves for dynamic "
+                         "pressure. The latter option preserves the full material density for "
+                         "all other equations and output, but is currently restricted to "
+                         "incompressible models without melt transport or pressure-dependent "
+                         "material properties. `Anelastic reference density profile deviation' "
+                         "also assembles (rho-rho_ref)*g, but evaluates supported pressure-dependent "
+                         "material models at the adiabatic reference pressure instead of the solved "
+                         "dynamic pressure. It must be combined with the anelastic liquid approximation "
+                         "and is intended for equations of state such as the Murnaghan option in the "
+                         "visco-plastic model.");
       prm.declare_entry ("Enable additional Stokes RHS", "false",
                          Patterns::Bool (),
                          "Whether to ask the material model for additional terms for the right-hand side "
@@ -1896,6 +1912,8 @@ namespace aspect
       enable_additional_stokes_rhs = prm.get_bool ("Enable additional Stokes RHS");
       enable_elasticity = prm.get_bool("Enable elasticity");
       enable_prescribed_dilation = prm.get_bool("Enable prescribed dilation");
+      formulation_buoyancy_density
+        = Formulation::BuoyancyDensity::parse(prm.get("Buoyancy density"));
     }
     prm.leave_subsection ();
 
@@ -2295,13 +2313,7 @@ namespace aspect
           else if (x_compositional_field_methods[i] == "particles")
             compositional_field_methods[i] = AdvectionFieldMethod::particles;
           else if (x_compositional_field_methods[i] == "volume of fluid")
-            {
-              AssertThrow (dim==2,
-                           ExcMessage ("The 'volume of fluid' method is currently "
-                                       "only implemented for two-dimensional "
-                                       "computations."));
-              compositional_field_methods[i] = AdvectionFieldMethod::volume_of_fluid;
-            }
+            compositional_field_methods[i] = AdvectionFieldMethod::volume_of_fluid;
           else if (x_compositional_field_methods[i] == "static")
             compositional_field_methods[i] = AdvectionFieldMethod::static_field;
           else if (x_compositional_field_methods[i] == "melt field")

@@ -181,6 +181,18 @@ namespace WorldBuilder
       bool
       check_entry(const std::string &name) const;
 
+      /** Material properties associated with one composition index. */
+      struct composition_properties
+      {
+        unsigned int index;
+        std::string name;
+        double reference_density;
+      };
+
+      /** Parse the optional top-level composition-properties array. */
+      std::vector<composition_properties>
+      get_composition_properties(const std::string &name) const;
+
       /**
        * Declares the existence an entry in the parameters class.
        * Default values are supplied by the type.

@@ -48,6 +48,18 @@ namespace aspect
     {
       Assert(in.n_evaluation_points() == 1, ExcInternalError());
 
+      const std::vector<double> current_surface_adiabatic_pressures =
+        rheology->compute_current_surface_adiabatic_pressures(in);
+      const bool use_anelastic_reference_pressure =
+        (this->get_parameters().formulation_buoyancy_density
+         == Parameters<dim>::Formulation::BuoyancyDensity::anelastic_reference_density_profile_deviation);
+      const double pressure_for_material_properties =
+        (use_anelastic_reference_pressure && this->get_adiabatic_conditions().is_initialized()
+         ? (std::isnan(current_surface_adiabatic_pressures[0])
+            ? this->get_adiabatic_conditions().pressure(in.position[0])
+            : current_surface_adiabatic_pressures[0])
+         : in.pressure[0]);
+
       const std::vector<double> volume_fractions = MaterialUtilities::compute_only_composition_fractions(in.composition[0],
                                                    this->introspection().chemical_composition_field_indices(),
                                                    this->get_parameters().minimum_composition_fraction);
@@ -69,12 +81,12 @@ namespace aspect
           else
             {
               EquationOfStateOutputs<dim> eos_outputs_all_phases (n_phases);
-              equation_of_state.evaluate(in, 0, eos_outputs_all_phases);
+              equation_of_state.evaluate(in, 0, pressure_for_material_properties, eos_outputs_all_phases);
               reference_density = eos_outputs_all_phases.densities[0];
             }
 
           MaterialUtilities::PhaseFunctionInputs<dim> phase_inputs(in.temperature[0],
-                                                                   in.pressure[0],
+                                                                   pressure_for_material_properties,
                                                                    this->get_geometry_model().depth(in.position[0]),
                                                                    gravity_norm*reference_density,
                                                                    numbers::invalid_unsigned_int);
@@ -89,7 +101,12 @@ namespace aspect
       /* The following returns whether or not the material is plastically yielding
        * as documented in evaluate.
        */
-      const IsostrainViscosities isostrain_viscosities = rheology->calculate_isostrain_viscosities(in, 0, volume_fractions, phase_function_values, phase_function.n_phase_transitions_for_each_composition());
+      const IsostrainViscosities isostrain_viscosities =
+        rheology->calculate_isostrain_viscosities(in, 0,
+                                                  current_surface_adiabatic_pressures[0],
+                                                  volume_fractions,
+                                                  phase_function_values,
+                                                  phase_function.n_phase_transitions_for_each_composition());
 
       const std::vector<double>::const_iterator max_composition = std::max_element(volume_fractions.begin(), volume_fractions.end());
       const bool plastic_yielding = isostrain_viscosities.composition_yielding[std::distance(volume_fractions.begin(), max_composition)];
@@ -117,12 +134,24 @@ namespace aspect
       std::vector<double> phase_function_discrete_values = (use_dominant_phase_for_viscosity?
                                                             std::vector<double>(phase_function_discrete->n_phase_transitions(), 0.0): std::vector<double>());
 
+      const std::vector<double> current_surface_adiabatic_pressures =
+        rheology->compute_current_surface_adiabatic_pressures(in);
+      const bool use_anelastic_reference_pressure =
+        (this->get_parameters().formulation_buoyancy_density
+         == Parameters<dim>::Formulation::BuoyancyDensity::anelastic_reference_density_profile_deviation);
 
       // Loop through all requested points
       for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
         {
+          const double pressure_for_material_properties =
+            (use_anelastic_reference_pressure && this->get_adiabatic_conditions().is_initialized()
+             ? (std::isnan(current_surface_adiabatic_pressures[i])
+                ? this->get_adiabatic_conditions().pressure(in.position[i])
+                : current_surface_adiabatic_pressures[i])
+             : in.pressure[i]);
+
           // First compute the equation of state variables and thermodynamic properties
-          equation_of_state.evaluate(in, i, eos_outputs_all_phases);
+          equation_of_state.evaluate(in, i, pressure_for_material_properties, eos_outputs_all_phases);
 
           const double gravity_norm = this->get_gravity_model().gravity_vector(in.position[i]).norm();
           const double reference_density = (this->get_adiabatic_conditions().is_initialized())
@@ -151,7 +180,7 @@ namespace aspect
           // The phase index is set to invalid_unsigned_int, because it is only used internally
           // in phase_average_equation_of_state_outputs to loop over all existing phases
           MaterialUtilities::PhaseFunctionInputs<dim> phase_inputs(in.temperature[i],
-                                                                   in.pressure[i],
+                                                                   pressure_for_material_properties,
                                                                    this->get_geometry_model().depth(in.position[i]),
                                                                    gravity_norm*reference_density,
                                                                    numbers::invalid_unsigned_int);
@@ -233,12 +262,20 @@ namespace aspect
                       phase_function_discrete_values[j] = phase_function_discrete->compute_value(phase_inputs);
                     }
                   isostrain_viscosities =
-                    rheology->calculate_isostrain_viscosities(in, i, volume_fractions, phase_function_discrete_values,  phase_function_discrete->n_phase_transitions_for_each_chemical_composition());
+                    rheology->calculate_isostrain_viscosities(in, i,
+                                                              current_surface_adiabatic_pressures[i],
+                                                              volume_fractions,
+                                                              phase_function_discrete_values,
+                                                              phase_function_discrete->n_phase_transitions_for_each_chemical_composition());
                 }
               else
                 {
                   isostrain_viscosities =
-                    rheology->calculate_isostrain_viscosities(in, i, volume_fractions, phase_function_values, n_phase_transitions_for_each_chemical_composition);
+                    rheology->calculate_isostrain_viscosities(in, i,
+                                                              current_surface_adiabatic_pressures[i],
+                                                              volume_fractions,
+                                                              phase_function_values,
+                                                              n_phase_transitions_for_each_chemical_composition);
                 }
 
               // The isostrain condition implies that the viscosity averaging should be arithmetic (see above).
@@ -260,6 +297,7 @@ namespace aspect
 
                 rheology->compute_viscosity_derivatives(i, volume_fractions,
                                                         isostrain_viscosities,
+                                                        current_surface_adiabatic_pressures[i],
                                                         in, out, phase_function_values,
                                                         n_phase_transitions_for_each_chemical_composition);
             }
@@ -271,7 +309,7 @@ namespace aspect
               isostrain_viscosities.composition_viscosities.clear();
               isostrain_viscosities.drucker_prager_parameters.clear();
               isostrain_viscosities.diffusion_viscosities.clear();
-              isostrain_viscosities.dislocation_viscosities.clear();
+              isostrain_viscosities.composition_deformation_mechanisms.clear();
 
               out.viscosities[i] = numbers::signaling_nan<double>();
 
@@ -291,12 +329,15 @@ namespace aspect
           // TODO only when requests_property is set to reaction_terms
           rheology->strain_rheology.fill_reaction_outputs(in, i, rheology->min_strain_rate, plastic_yielding, out);
 
-          // Fill plastic outputs and additional viscosity outputs if they exist.
+          // Fill plastic, deformation mechanism, and additional viscosity outputs
+          // if they exist.
           // The values in isostrain_viscosities only make sense when the calculate_isostrain_viscosities function
           // has been called.
           if (in.requests_property(MaterialProperties::additional_outputs))
             {
-              rheology->fill_plastic_outputs(i, volume_fractions, plastic_yielding, in, out, isostrain_viscosities);
+              rheology->fill_plastic_outputs(i, volume_fractions, plastic_yielding,
+                                             current_surface_adiabatic_pressures[i],
+                                             in, out, isostrain_viscosities);
               rheology->fill_viscosity_outputs(i, volume_fractions, out, isostrain_viscosities);
             }
 
@@ -322,10 +363,10 @@ namespace aspect
               // the values calculated by the Drucker Prager model; otherwise, the LHS and RHS terms
               // should cancel out (RHS = LHS * p) so as to satisfy the loading-unloading conditions.
               plastic_dilation->dilation_lhs_term[i] = dilation_lhs_term;
-              if (dilation_rhs_term - dilation_lhs_term * in.pressure[i] > 0)
+              if (dilation_rhs_term - dilation_lhs_term * pressure_for_material_properties > 0)
                 plastic_dilation->dilation_rhs_term[i] = dilation_rhs_term;
               else
-                plastic_dilation->dilation_rhs_term[i] = dilation_lhs_term * in.pressure[i];
+                plastic_dilation->dilation_rhs_term[i] = dilation_lhs_term * pressure_for_material_properties;
             }
         }
 
@@ -513,6 +554,10 @@ namespace aspect
     {
       rheology->create_plastic_outputs(out);
       rheology->create_viscosity_outputs(out);
+
+      if (out.template has_additional_output_object<DeformationMechanismOutputs<dim>>() == false)
+        out.additional_outputs.push_back(
+          std::make_unique<DeformationMechanismOutputs<dim>> (out.n_evaluation_points()));
 
       if (this->get_parameters().enable_elasticity)
         rheology->elastic_rheology.create_elastic_additional_outputs(out);

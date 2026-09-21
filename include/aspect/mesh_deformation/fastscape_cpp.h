@@ -1,0 +1,304 @@
+/*
+  Copyright (C) 2026 by the authors of the ASPECT code.
+
+  This file is part of ASPECT.
+
+  ASPECT is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2, or (at your option)
+  any later version.
+
+  ASPECT is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with ASPECT; see the file LICENSE.  If not see
+  <http://www.gnu.org/licenses/>.
+ */
+
+#ifndef _aspect_mesh_deformation_fastscape_cpp_h
+#define _aspect_mesh_deformation_fastscape_cpp_h
+
+#include <aspect/config.h>
+
+#ifdef ASPECT_WITH_FASTSCAPELIB
+
+#include <aspect/mesh_deformation/fastscape_cpp_grid.h>
+#include <aspect/mesh_deformation/parallel_unstructured_interface.h>
+
+#include <deal.II/base/parsed_function.h>
+#include <deal.II/grid/tria.h>
+
+#include <map>
+#include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+
+
+namespace aspect
+{
+  namespace MeshDeformation
+  {
+    template <int surface_dim, int space_dim>
+    class FastscapeLandscape;
+
+    template <int surface_dim>
+    class SpatialErosionStrength;
+
+    template <int surface_dim>
+    class SpatialSurfaceRunoff;
+
+    template <int surface_dim>
+    class SpatialIceThickness;
+
+    template <int surface_dim>
+    class SpatialBasalIceVelocity;
+
+    template <int surface_dim, int space_dim>
+    class SurfaceResults;
+
+    /**
+     * Use the FastScape library to evolve an independent surface mesh.
+     *
+     * The plugin uses the ParallelUnstructuredInterface introduced in
+     * geodynamics/aspect#7083 for MPI-safe transfer between ASPECT's volume
+     * mesh and an independent FastScape surface grid. The FastScape grid is
+     * a planar surface mesh for Box geometries and a closed surface mesh for
+     * SphericalShell geometries. FastScape runs on the first process; the
+     * transfer framework distributes ASPECT values to its evaluation points
+     * and transfers the resulting normal velocities back to the surface.
+     *
+     * @ingroup MeshDeformation
+     */
+    template <int dim>
+    class FastscapeCpp : public ParallelUnstructuredInterface<dim>
+    {
+      public:
+        /**
+         * Construct the FastScape C++ coupling and its surface-process helpers.
+         */
+        FastscapeCpp();
+
+        /**
+         * Destroy the coupling after the helper types have been fully defined.
+         */
+        ~FastscapeCpp() override;
+
+        /**
+         * Build the independent landscape mesh and initialize its evolving fields.
+         */
+        void initialize() override;
+
+        /**
+         * Refresh transfer data when the ASPECT mesh or model state changes.
+         */
+        void update() override;
+
+        /**
+         * Advance the landscape model using the ASPECT solution sampled at the
+         * independent surface points and return the resulting mesh velocities.
+         */
+        std::vector<Tensor<1,dim>>
+        compute_updated_velocities_at_points(
+          const std::vector<std::vector<double>> &current_solution_at_points) const override;
+
+        /**
+         * Return whether the mesh-deformation solver should stabilize the free
+         * surface while this plugin is active.
+         */
+        bool needs_surface_stabilization() const override;
+
+        /**
+         * Save evolving landscape and coupling state in an ASPECT checkpoint.
+         */
+        void save(std::map<std::string, std::string> &status_strings) const override;
+
+        /**
+         * Restore evolving landscape and coupling state from an ASPECT checkpoint.
+         */
+        void load(const std::map<std::string, std::string> &status_strings) override;
+
+        /**
+         * Declare input parameters for the FastScape C++ coupling.
+         */
+        static void declare_parameters(ParameterHandler &prm);
+
+        /**
+         * Parse input parameters for the FastScape C++ coupling.
+         */
+        void parse_parameters(ParameterHandler &prm) override;
+
+      private:
+        using SurfaceMesh = Triangulation<dim-1,dim>;
+        using TSurfaceMesh = Triangulation<2,3>;
+
+        void build_surface_mesh();
+        void build_t_coupling_surface_mesh();
+        Point<dim> reference_surface_point(const Point<dim> &point) const;
+        Point<dim-1> natural_surface_coordinates(const Point<dim> &point) const;
+        Point<dim-1> climate_surface_coordinates(const Point<dim> &point) const;
+        Tensor<1,dim> outward_direction(const Point<dim> &point) const;
+        void update_true_polar_wander();
+        void resample_climate_fields();
+        SymmetricTensor<2,dim> ice_load_moment_of_inertia() const;
+        SymmetricTensor<2,dim> apply_degree_two_self_gravity(
+          const SymmetricTensor<2,dim> &rigid_ice_load);
+        std::vector<double> update_regional_ice_load_response(
+          const double time_step_years,
+          const xt::xarray<double> &ice_thickness) const;
+        std::pair<xt::xarray<double>,xt::xarray<double>> effective_ice_fields(
+          const xt::xarray<double> &surface_elevation,
+          const xt::xarray<double> &spatial_ice_thickness,
+          const xt::xarray<double> &spatial_basal_ice_velocity) const;
+        void write_true_polar_wander_state() const;
+        bool should_write_surface_results() const;
+
+        mutable SurfaceMesh surface_mesh;
+        mutable TSurfaceMesh t_surface_mesh;
+        std::vector<Point<dim>> fastscape_points;
+        std::vector<double> fastscape_point_areas;
+        mutable std::unique_ptr<FastscapeLandscape<dim-1,dim>> landscape;
+        std::unique_ptr<SpatialErosionStrength<dim-1>> spatial_erosion_strength;
+        std::unique_ptr<SpatialSurfaceRunoff<dim-1>> spatial_surface_runoff;
+        std::unique_ptr<SpatialIceThickness<dim-1>> spatial_ice_thickness;
+        std::unique_ptr<SpatialBasalIceVelocity<dim-1>> spatial_basal_ice_velocity;
+        mutable std::unique_ptr<SurfaceResults<dim-1,dim>> surface_results;
+
+        // A two-dimensional landscape coupled to a two-dimensional ASPECT
+        // section. The ASPECT solution is sampled along the stem of the T,
+        // replicated across the landscape width, and the landscape response is
+        // reduced back to the stem before it is applied to ASPECT.
+        mutable std::unique_ptr<FastscapeLandscape<2,3>> t_landscape;
+        std::unique_ptr<SpatialErosionStrength<2>> t_spatial_erosion_strength;
+        std::unique_ptr<SpatialSurfaceRunoff<2>> t_spatial_surface_runoff;
+        std::unique_ptr<SpatialIceThickness<2>> t_spatial_ice_thickness;
+        std::unique_ptr<SpatialBasalIceVelocity<2>> t_spatial_basal_ice_velocity;
+        mutable std::unique_ptr<SurfaceResults<2,3>> t_surface_results;
+        std::vector<Point<3>> t_surface_points;
+        std::vector<double> t_surface_point_areas;
+        std::vector<unsigned int> t_column_of_cell;
+        std::vector<std::vector<unsigned int>> t_cells_by_column;
+
+        unsigned int box_repetitions = 8;
+        unsigned int surface_refinement = 2;
+        bool use_t_coupling = false;
+        double t_coupling_width = 100000.0;
+        double t_coupling_cell_size = 0.0;
+        std::string t_coupling_reduction = "average";
+        std::string surface_transfer_scheme = "conservative";
+        unsigned int surface_transfer_neighbors = 8;
+        unsigned int landscape_steps_per_geodynamic_step = 4;
+        double maximum_landscape_step_years = 10000.0;
+        double incision_rate = 5e-5;
+        double drainage_area_exponent = 0.4;
+        double slope_exponent = 1.0;
+        std::string flow_routing_method = "single flow";
+        std::string flow_routing_connectivity = "face";
+        double multiple_flow_slope_exponent = 1.0;
+        double nonlinear_tolerance = 1e-5;
+        double glacial_erosion_coefficient = 0.0;
+        double glacial_velocity_exponent = 1.0;
+        double glacial_ice_thickness_scale = 0.0;
+        double minimum_ice_thickness = 1.0;
+        std::string glacial_erosion_mode = "prescribed fields";
+        double routed_glacier_ela = 1500.0;
+        double routed_glacier_accumulation_gradient = 1e-3;
+        double routed_glacier_maximum_accumulation = 2.0;
+        double routed_glacier_ablation_gradient = 2e-3;
+        double routed_glacier_maximum_ablation = 5.0;
+        double routed_glacier_minimum_discharge = 1e6;
+        double routed_glacier_reference_discharge = 1e8;
+        double routed_glacier_reference_width = 3000.0;
+        double routed_glacier_width_exponent = 0.3;
+        double routed_glacier_minimum_width = 1000.0;
+        double routed_glacier_maximum_width = 8000.0;
+        double routed_glacier_reference_thickness = 300.0;
+        double routed_glacier_thickness_exponent = 0.2;
+        double routed_glacier_minimum_thickness = 50.0;
+        double routed_glacier_maximum_thickness = 1200.0;
+        double routed_glacier_thickness_slope_exponent = 0.2;
+        bool routed_glacier_spread_erosion = true;
+        bool routed_glacier_terminate_at_sea_level = true;
+        std::string ice_distribution_mode = "spatial field";
+        double glacial_elevation_threshold = 1000.0;
+        double glacial_elevation_transition_width = 0.0;
+        double elevation_threshold_ice_thickness = 300.0;
+        double elevation_threshold_basal_ice_velocity = 0.1;
+        bool restrict_glacial_erosion_to_grounded_ice = true;
+        double minimum_glacial_erosion_elevation = -1.0e99;
+        double seawater_density = 1028.0;
+        double initial_relief = 0.0;
+        double sea_level = 0.0;
+        Functions::ParsedFunction<1> sea_level_function;
+        double marine_sediment_transport_coefficient = 0.0;
+        double marine_sediment_porosity = 0.4;
+        double marine_transport_depth_scale = 0.0;
+        double maximum_marine_sediment_transport_courant = 0.0;
+        bool limit_marine_deposition_to_available_accommodation = false;
+        double maximum_marine_deposition_above_sea_level = 0.0;
+        double submarine_river_incision_factor = 1.0;
+        double submarine_hillslope_diffusion_coefficient = -1.0;
+        double maximum_surface_advection_courant = 0.5;
+        double hillslope_diffusion_coefficient = 0.0;
+        double maximum_hillslope_diffusion_courant = 0.25;
+        std::vector<std::string> lithology_names = {"upper_crust"};
+        std::vector<double> lithology_probabilities = {1.0};
+        std::vector<double> lithology_erodibility_factors = {1.0};
+        unsigned int lithology_random_seed = 1;
+        std::string spatial_erosion_strength_file;
+        std::string spatial_surface_runoff_file;
+        std::string spatial_ice_thickness_file;
+        std::string spatial_basal_ice_velocity_file;
+        unsigned int result_interval = 1;
+        double output_interval = 0.0;
+        mutable double last_output_time = std::numeric_limits<double>::lowest();
+        bool write_visualization_results = true;
+        bool output_drainage_diagnostics = false;
+        bool advect_surface_state = false;
+        bool apply_normal_material_velocity = true;
+        bool use_sea_level_function = false;
+        bool use_sea_level_as_drainage_base_level = false;
+        bool restrict_ocean_to_largest_connected_component = true;
+        bool spherical_geometry = false;
+        std::vector<unsigned int> periodic_surface_dimensions;
+        std::string open_marine_sediment_boundary = "none";
+
+        bool true_polar_wander_enabled = false;
+        bool include_ice_load_in_true_polar_wander = true;
+        bool degree_two_self_gravity_enabled = false;
+        bool initialize_self_gravity_in_equilibrium = true;
+        double ice_density = 917.0;
+        double elastic_degree_two_load_love_number = -0.3;
+        double fluid_degree_two_load_love_number = -0.9;
+        double self_gravity_relaxation_time = 1e4;
+        double rotational_bulge_inertia_difference = 2.6e35;
+        double polar_wander_relaxation_time = 1e6;
+        double maximum_polar_wander_rate = 10.0;
+        Tensor<1,dim> spin_axis;
+        Tensor<1,dim> equilibrium_spin_axis;
+        SymmetricTensor<2,dim> reference_moment_of_inertia;
+        SymmetricTensor<2,dim> delayed_self_gravity_ice_load;
+        bool reference_moment_of_inertia_is_initialized = false;
+        bool self_gravity_state_is_initialized = false;
+        double rigid_ice_load_norm = 0.0;
+        double effective_ice_load_norm = 0.0;
+        mutable double last_polar_wander_output_time = -1.0;
+
+        bool regional_ice_load_response_enabled = false;
+        bool initialize_regional_ice_load_in_equilibrium = true;
+        double regional_compensation_density = 3300.0;
+        double regional_immediate_response_fraction = 0.0;
+        double regional_ice_load_relaxation_time = 1e4;
+        mutable std::vector<double> regional_delayed_ice_load_displacement;
+        mutable std::vector<double> regional_total_ice_load_displacement;
+        mutable std::vector<double> regional_ice_load_velocity;
+        mutable bool regional_ice_load_state_is_initialized = false;
+    };
+  }
+}
+
+#endif
+#endif
